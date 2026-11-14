@@ -1,0 +1,20 @@
+[package]
+name = "reflect"
+version.workspace = true
+edition.workspace = true
+description = "Reflect: Selfkit stats across Chrono, Hisab, Agenda and Dusk"
+
+[lib]
+name = "reflect_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+selfkit-core = { path = "../../../selfkit-core", default-features = false }
+tauri = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+rusqlite = "0.37"

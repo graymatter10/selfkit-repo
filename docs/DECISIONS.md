@@ -1,5 +1,12 @@
 # Decisions (newest first)
 
+## 2026-11-15 — Reflect 0.1
+- Amber accent (from the icon); other apps' colours appear only as small source markers.
+- Reflect computes its own numbers from the other apps' raw records (read-only), except Dusk's `dusk_nights` cache; screen-time aggregates are kept in memory and updated incrementally.
+- Streak settings are a synced record (`reflect_settings`) shared by phone and PC; theme is per device.
+- "Late-night phone use" = 00:00–05:00 local time.
+- On phones Reflect shows "not shared with phones yet" until the Android data bridge (ContentProvider) lands.
+
 ## 2026-11-15 — QA round (Agenda 0.4.1, Hisab 0.1.1, Dusk 0.1.2)
 - A damaged/unreadable database is moved aside as `<name>.damaged-<ms>` (never deleted) and the app starts fresh with a one-time notice (`recover.rs` in each app).
 - Desktop apps are single-instance (second launch focuses the first; `--capture`/`--rate` forwarded); disabled when `SELFKIT_DATA_DIR` is set so tests can run several.
