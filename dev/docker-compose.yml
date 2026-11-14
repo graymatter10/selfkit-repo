@@ -1,0 +1,22 @@
+# Local stand-ins for Neon (Postgres) and Backblaze B2 (S3). Data lives on /shared.
+name: selfkit-dev
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: selfkit
+      POSTGRES_PASSWORD: selfkit-dev
+      POSTGRES_DB: selfkit
+    ports: ["127.0.0.1:55432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]  # named volume: /shared is NTFS (no chmod); data is tiny
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=20"]
+    mem_limit: 256m
+  s3:
+    # SeaweedFS S3 gateway (MinIO's public images are no longer published)
+    image: chrislusf/seaweedfs:latest
+    command: ["server", "-dir=/data", "-s3", "-s3.port=9000", "-s3.config=/etc/s3.json", "-volume.max=64", "-master.volumeSizeLimitMB=64", "-master.volumePreallocate=false"]
+    ports: ["127.0.0.1:59000:9000"]
+    volumes: ["/shared/selfkitextra/s3:/data", "./s3.json:/etc/s3.json:ro"]
+    mem_limit: 384m
+volumes:
+  pgdata:

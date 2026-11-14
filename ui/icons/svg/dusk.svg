@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7a69ad"/><stop offset="1" stop-color="#463a73"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".14"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#sheen)"/>
+  <defs><mask id="moon"><rect width="1024" height="1024" fill="#fff"/><circle cx="588" cy="392" r="178" fill="#000"/></mask></defs>
+  <circle cx="478" cy="478" r="208" fill="#ffffff" mask="url(#moon)"/>
+  <path d="M676 300 l14 34 34 14 -34 14 -14 34 -14 -34 -34 -14 34 -14z" fill="#ffffff" fill-opacity=".85"/>
+  <path d="M300 744 L724 744" stroke="#ffffff" stroke-opacity=".45" stroke-width="36" stroke-linecap="round"/>
+</svg>

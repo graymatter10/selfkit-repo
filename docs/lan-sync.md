@@ -1,0 +1,37 @@
+# LAN sync (server-less, KDE Connect style)
+
+Devices on the same network sync directly, with no Postgres needed. Works alongside server sync; either one alone is enough.
+
+## Security (everything on the wire is encrypted)
+- **No pairing:** all your devices hold the same data key. `LanKeys::derive` = HKDF(data key, "selfkit-lan-v1") → `session-root`, `beacon`.
+- **Discovery beacons** (UDP 47616 broadcast, every 30 s + direct reply to new peers): `SKD1 || XChaCha20-Poly1305(beacon key, {device_id, name, port, ts})`. Strangers see random bytes and can't forge beacons. Beacons older than ±10 min are ignored.
+- **Sessions** (TCP 47617, falls back to a free port that the beacon announces): handshake swaps 32-byte nonces, then `c2s/s2c = HKDF(session-root, salt = cn‖sn)`. Fresh keys every session; every frame is `len ‖ XChaCha20-Poly1305(dir key, json, aad = frame counter)`, so replay, reorder and drop are detected. A device without the key fails on its first frame. Max frame 16 MiB, 30 s timeouts.
+- Test `lan::tests::two_way_lan_sync_is_encrypted_and_incremental` sniffs every byte and fails if record text, device names or collection names show up in plaintext.
+
+## Sync model (no server revisions)
+- Each record has `hist`: its last 16 versions (`"updated_at:device_id"`), kept by SQLite triggers (`core/002_versions`), and `lseq`, a local change sequence bumped on every content change from any source.
+- A session: hello (device id, name, apps), then each side pulls the other's `changes_since(cursor)` per shared app in pages of 500. Cursor per peer: kv `lan.cursor.<device_id>`. The client pulls first, then says `YourTurn`; the server pulls, then `Bye`.
+- `Store::apply_peer`: same/older version → ignore. Incoming history contains ours → fast-forward. Ours contains theirs → ignore. Same content under another version → merge histories. Otherwise → conflict (`conflicts.source = 'peer'`; the same Keep A / Keep B / Merge UI).
+- LAN-received records stay `dirty`, so they still reach the server. `hist` also travels inside the encrypted server payload, so a server pull of an edit already received over LAN fast-forwards or is adopted instead of conflicting.
+- Who connects: the lower device id starts the session when a peer appears and every `interval` (2 min). `sync_now` (agent `sync` command) triggers immediately. Static peers by address can be added for networks where broadcast doesn't reach (VPN, emulator).
+
+## Agent settings (env for now, Settings UI later)
+`SELFKIT_LAN=0` disables it · `SELFKIT_LAN_PEERS=ip:port,…` · `SELFKIT_LAN_PORT` · `SELFKIT_LAN_DISCOVERY_PORT` · `SELFKIT_LAN_SECS` · `SELFKIT_DEVICE_NAME`. Status: `selfkit-agent status` → `lan.peers`.
+
+## Platform notes
+- **Firewall:** allow UDP 47616 and TCP 47617 on the private network (Windows prompts on first run; ufw/firewalld on Linux).
+- **Android:** needs a `WifiManager.MulticastLock` to receive broadcasts, and runs only while an app is open or inside a WorkManager job (no always-on service).
+- Same-machine testing works: the UDP socket uses SO_REUSEADDR/SO_REUSEPORT.
+
+## Not yet
+- Photos/attachments over LAN (phase 2, after local blob storage exists).
+- Settings UI toggle and a peer list screen (Reflect health screen).
+- IPv6 / multicast discovery.
+
+## Code map
+- `selfkit-core/src/lan/mod.rs`: service (listen, announce, discover, schedule sessions), `LanConfig`, `LanState`, tests over real sockets.
+- `selfkit-core/src/lan/channel.rs`: handshake, key derivation, encrypted framing.
+- `selfkit-core/src/lan/discovery.rs`: encrypted beacons, UDP socket.
+- `selfkit-core/src/lan/session.rs`: protocol messages, pull/serve phases.
+- `selfkit-core/src/store.rs`: `apply_peer`, `changes_since`, `merge_hist`, `hist_push`, migration `core/002_versions`.
+- `selfkit-agent/src/sync_loop.rs`: `run_lan` (config from env, store factory).

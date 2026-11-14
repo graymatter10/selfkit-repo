@@ -1,0 +1,15 @@
+# Build output (normally in /shared/selfkitextra/target, see .cargo/config.toml)
+/target/
+node_modules/
+dist-web/
+*.db
+*.db-wal
+*.db-shm
+.env
+
+# Agentic-coding docs: kept locally, not committed for now
+/CLAUDE.md
+/AGENTS.md
+/docs/STATUS.md
+/docs/templates/
+/.claude/

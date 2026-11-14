@@ -1,0 +1,45 @@
+[package]
+name = "selfkit-core"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = ["remote", "keychain", "lan"]
+# Postgres sync + S3 blobs (needs tokio)
+remote = ["dep:tokio-postgres", "dep:tokio-postgres-rustls", "dep:rustls", "dep:webpki-roots", "dep:rust-s3", "dep:tokio"]
+# Server-less sync between your own devices on the local network (encrypted)
+lan = ["dep:tokio", "dep:socket2"]
+# OS keychain (Secret Service / Windows Credential Manager); Android uses a plugin instead
+keychain = ["dep:keyring"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+rusqlite = { version = "0.37", features = ["bundled", "functions"] }
+chacha20poly1305 = { version = "0.10", features = ["stream", "std"] }
+argon2 = "0.5"
+hkdf = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+zeroize = { version = "1", features = ["derive"] }
+data-encoding = "2"
+base64 = "0.22"
+tar = { version = "0.4", default-features = false }
+similar = "2"
+tempfile = "3"
+dirs = "6"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+tokio = { workspace = true, optional = true }
+socket2 = { version = "0.6", features = ["all"], optional = true }
+tokio-postgres = { version = "0.7", optional = true }
+tokio-postgres-rustls = { version = "0.13", optional = true }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+webpki-roots = { version = "1", optional = true }
+rust-s3 = { version = "0.37", default-features = false, features = ["tokio-rustls-tls"], optional = true }
+keyring = { version = "3", features = ["linux-native-sync-persistent", "windows-native", "crypto-rust"], optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

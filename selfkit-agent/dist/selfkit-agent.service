@@ -1,0 +1,14 @@
+# Install: cp selfkit-agent.service ~/.config/systemd/user/ && systemctl --user enable --now selfkit-agent
+# (or in i3 config: exec --no-startup-id ~/.local/bin/selfkit-agent)
+[Unit]
+Description=Selfkit agent (activity tracking + sync)
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/selfkit-agent run
+Restart=on-failure
+RestartSec=10
+MemoryMax=64M
+
+[Install]
+WantedBy=default.target
