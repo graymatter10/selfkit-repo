@@ -4,6 +4,7 @@
 pub mod focus;
 pub mod ics;
 pub mod photos;
+pub mod recover;
 pub mod tasks;
 
 use std::sync::Mutex;
@@ -19,6 +20,8 @@ use tauri_plugin_notification::NotificationExt;
 pub struct AppState {
     store: Mutex<Store>,
     settings: Mutex<Store>,
+    /// Set when a damaged DB was set aside at startup (shown once by the UI).
+    notice: Mutex<Option<String>>,
 }
 
 type Res<T> = Result<T, String>;
@@ -174,6 +177,38 @@ fn photo_get(state: State<AppState>, id: String) -> Res<String> {
     Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
+#[tauri::command]
+fn photo_export(state: State<AppState>, id: String) -> Res<String> {
+    let (mime, bytes) = photos::load(&state.store.lock().unwrap(), &id).map_err(e)?;
+    export_to_pictures(&id, ext_for(&mime), &bytes)
+}
+
+/// "Save to Pictures" from the photo viewer on desktop (Android saves through
+/// the SelfkitPhotos bridge instead): copy into ~/Pictures/Selfkit/Agenda.
+/// Docs: docs/components/photo-source.md.
+fn export_to_pictures(id: &str, ext: &str, bytes: &[u8]) -> Result<String, String> {
+    let dir = std::env::var_os("SELFKIT_PICTURES_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(dirs::picture_dir)
+        .or_else(|| dirs::home_dir().map(|h| h.join("Pictures")))
+        .ok_or("No Pictures folder")?
+        .join("Selfkit")
+        .join("Agenda");
+    std::fs::create_dir_all(&dir).map_err(e)?;
+    let stem: String = id.split('.').next().unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(40).collect();
+    let path = dir.join(format!("Agenda_{stem}.{ext}"));
+    std::fs::write(&path, bytes).map_err(e)?;
+    Ok(path.display().to_string())
+}
+
+fn ext_for(mime: &str) -> &'static str {
+    match mime {
+        "image/webp" => "webp",
+        "image/png" => "png",
+        _ => "jpg",
+    }
+}
+
 // ---- .ics ----
 
 #[tauri::command]
@@ -247,6 +282,12 @@ fn close_capture(app: AppHandle) {
     if let Some(w) = app.get_webview_window("capture") {
         let _ = w.close();
     }
+}
+
+/// A one-time startup message (damaged data file recovered), or None.
+#[tauri::command]
+fn startup_notice(state: State<AppState>) -> Option<String> {
+    state.notice.lock().unwrap().take()
 }
 
 /// Test hook for screenshots/automation: AGENDA_DEMO="…". Unset in normal use.
@@ -452,7 +493,26 @@ mod shortcut {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_notification::init()).plugin(tauri_plugin_opener::init());
+    let builder = tauri::Builder::default();
+    // Desktop: one instance (a second launch focuses the first or opens its
+    // capture popup), so reminders don't fire twice and the shortcut stays
+    // registered. Skipped when SELFKIT_DATA_DIR is set (tests run several apps on
+    // separate data dirs at once).
+    #[cfg(desktop)]
+    let builder = if std::env::var_os("SELFKIT_DATA_DIR").is_none() {
+        builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if argv.iter().any(|a| a == "--capture") {
+                shortcut::open_capture(app);
+            } else if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+    } else {
+        builder
+    };
+    let builder = builder.plugin(tauri_plugin_notification::init()).plugin(tauri_plugin_opener::init());
     #[cfg(desktop)]
     let builder = builder.plugin(shortcut::plugin());
     builder
@@ -460,9 +520,9 @@ pub fn run() {
             #[cfg(mobile)]
             paths::set_data_dir(app.path().app_data_dir()?);
             let device = paths::device_id()?;
-            let store = Store::open(paths::app_db("agenda"), "agenda", &device, tasks::MIGRATIONS)?;
-            let settings = Store::open(paths::app_db(selfkit_core::settings::APP), selfkit_core::settings::APP, &device, &[])?;
-            app.manage(AppState { store: Mutex::new(store), settings: Mutex::new(settings) });
+            let (store, n1) = recover::open(paths::app_db("agenda"), "agenda", &device, tasks::MIGRATIONS)?;
+            let (settings, n2) = recover::open(paths::app_db(selfkit_core::settings::APP), selfkit_core::settings::APP, &device, &[])?;
+            app.manage(AppState { store: Mutex::new(store), settings: Mutex::new(settings), notice: Mutex::new(n1.or(n2)) });
             #[cfg(desktop)]
             {
                 let s = Settings::load(&app.state::<AppState>().settings.lock().unwrap()).unwrap_or_default();
@@ -488,7 +548,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_tasks, create_task, update_task, replace_task, toggle_task, get_task, delete_task, restore_task, search,
             lists, add_list, prefs_get, prefs_set, settings_get, settings_set, close_capture, dev_hooks, history,
-            focus_state, focus_start, focus_stop, focus_sessions, photo_save, photo_get, ics_export, ics_import, save_export
+            focus_state, focus_start, focus_stop, focus_sessions, photo_save, photo_get, photo_export, ics_export, ics_import, save_export, startup_notice
         ])
         .run(tauri::generate_context!())
         .expect("error while running Agenda");

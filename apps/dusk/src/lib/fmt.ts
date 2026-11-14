@@ -84,3 +84,21 @@ export function nightRange(s: string) {
 export const wd2 = (s: string) => DAYS[parseDate(s).getUTCDay()].slice(0, 2);
 export const dayNum = (s: string) => String(parseDate(s).getUTCDate());
 export const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
+/** 12-hour clock? No app/shared preference exists, so follow the system locale
+ *  (Intl hour cycle; DUSK_DEMO `clock=12|24` overrides it for screenshots). */
+let clock12: boolean | null = null;
+export function setClock12(v: boolean | null) { clock12 = v; }
+export function uses12h(): boolean {
+  if (clock12 != null) return clock12;
+  try {
+    const hc = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hourCycle;
+    return hc === "h11" || hc === "h12";
+  } catch { return false; }
+}
+/** "HH:MM" → what a time field shows: "23:30" or "11:30 pm" (12h locales). */
+export function tdisp(t: string | null | undefined): string {
+  if (!t) return "";
+  if (!uses12h()) return t;
+  const [h, m] = t.split(":").map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
+}

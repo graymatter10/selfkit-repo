@@ -20,6 +20,7 @@
   import StatsView from "./components/StatsView.svelte";
   import Focus from "./components/Focus.svelte";
   import PhotoViewer from "./components/PhotoViewer.svelte";
+  import { PhotoSourceSheet, closePhotoSource } from "./lib/photo-source";
   import { api, type Task } from "./lib/api";
   import { allTags, app, groups, init, refresh, remove, startFocus, taskById, toggle, counts, type View } from "./lib/state.svelte";
   import type { Sort } from "./lib/time";
@@ -65,6 +66,7 @@
   const layered = $derived(!desktop && (app.panel.kind !== "none" || app.settingsOpen || app.searching || menu || app.focusOpen || !!app.photo || app.view === "history" || app.view === "stats"));
   /** Close the top layer; false when nothing was open. */
   function backAction(): boolean {
+    if (closePhotoSource()) return true; // "Add photo" camera/gallery sheet
     if (app.closeGuard?.()) return true;
     if (menu) menu = false;
     else if (app.photo) app.photo = null;
@@ -277,7 +279,7 @@
         {/if}
       </aside>
     {/if}
-    <div class="pointer-events-none fixed bottom-6 left-1/2 z-50 w-[400px] -translate-x-1/2"><Toast /></div>
+    <div class="pointer-events-none fixed bottom-6 left-1/2 z-[85] w-[400px] -translate-x-1/2"><Toast /></div>
   </div>
 {:else}
   <div class="relative flex flex-col overflow-hidden pt-[env(safe-area-inset-top)]" style="height:{vh}px">
@@ -321,8 +323,9 @@
     </div>
   {/if}
   <!-- Above sheets, so "Saved · Undo" is visible from the details screen too. -->
-  <div class="pointer-events-none fixed inset-x-3 bottom-[max(76px,calc(env(safe-area-inset-bottom)+64px))] z-[60]"><Toast /></div>
+  <div class="pointer-events-none fixed inset-x-3 bottom-[max(76px,calc(env(safe-area-inset-bottom)+64px))] z-[85]"><Toast /></div>
 {/if}
 <SettingsSheet {desktop} />
 <Focus {desktop} part="sheet" />
 <PhotoViewer />
+<PhotoSourceSheet privateNote="Stays private in Agenda, not in your gallery" />

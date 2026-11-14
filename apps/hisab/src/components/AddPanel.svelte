@@ -7,7 +7,7 @@
   import { api, type Tx } from "../lib/api";
   import { LOCALE, money, nowHm, shortDate, symbol, todayIso, dayLabel } from "../lib/fmt";
   import { addPhoto } from "../lib/photo";
-  import { accountById, accounts, app, catById, defaultAccount, openSheet, persistDraft, rankedCats, refresh, resetDraft, main } from "../lib/state.svelte";
+  import { accountById, accounts, app, catById, defaultAccount, emptyDraft, openSheet, persistDraft, rankedCats, refresh, resetDraft, main } from "../lib/state.svelte";
   import CategoryRow from "./CategoryRow.svelte";
   import Ic from "./Ic.svelte";
   import NumPad from "./NumPad.svelte";
@@ -26,6 +26,11 @@
   const amountNum = $derived(parseFloat(app.draft.amount || "0") || 0);
   const splitIds = $derived(app.draft.splits.map((s) => s.category));
   const canSave = $derived(amountNum > 0 && !busy);
+  // Long amounts shrink so "9,999,999,999.99" fits next to the chips on a 360 dp phone.
+  const amountPx = $derived.by(() => {
+    const n = display(app.draft.amount).length;
+    return compact ? (n > 12 ? 22 : n > 9 ? 27 : 34) : (n > 12 ? 25 : n > 9 ? 31 : 40);
+  });
 
   $effect(() => {
     // Keep the draft saved (and pick a default account once data is loaded).
@@ -115,10 +120,13 @@
     } else data.category = dr.category;
     busy = true;
     try {
-      const t = await api.save<Tx>("transactions", data);
-      await refresh();
+      // The cleared draft is written by the same command as the entry, and reset
+      // here before anything else is awaited: a kill or Home right after Save
+      // used to bring the saved amount back as a draft (double entry on next Save).
       const keep = { kind: dr.kind, account: dr.account };
+      const t = await api.save<Tx>("transactions", data, undefined, { ...emptyDraft(), ...keep });
       resetDraft(keep);
+      await refresh();
       const label = dr.kind === "transfer" ? "Moved" : dr.kind === "income" ? "Income saved" : "Saved";
       showToast(`${label} · ${money(t.amount, t.currency)}${dr.kind !== "transfer" ? " · " + (catById(t.category)?.name ?? "") : ""}`, async () => {
         await api.remove(t.id);
@@ -152,7 +160,7 @@
     <div class="min-w-0 flex-1 {shake ? 'animate-[shake_.3s]' : ''}">
       <div class="num flex items-baseline gap-1 truncate {app.draft.amount ? 'text-ink' : 'text-faint'} {app.draft.kind === 'income' && app.draft.amount ? 'text-accent-ink' : ''}" aria-live="polite" aria-label="Amount">
         <span class="text-[22px] font-medium text-muted">{symbol(cur)}</span>
-        <span class="{compact ? 'text-[34px]' : 'text-[40px]'} leading-none font-semibold tracking-[-1px]">{display(app.draft.amount)}</span>
+        <span class="leading-none font-semibold tracking-[-1px]" style="font-size: {amountPx}px">{display(app.draft.amount)}</span>
       </div>
     </div>
     <div class="flex shrink-0 flex-col items-end gap-1 pb-0.5">
@@ -195,8 +203,8 @@
       <input bind:value={app.draft.note} placeholder={app.draft.kind === "transfer" ? "Note" : "Note, #tag"} enterkeyhint="done" class="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
         onfocus={() => (noteFocus = true)} onblur={() => setTimeout(() => (noteFocus = false), 120)} onkeydown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()} />
     </label>
-    <label class="press relative flex h-10 shrink-0 items-center gap-1 rounded-[12px] bg-fill2 px-2.5 text-[13px] font-medium {app.draft.date !== todayIso() ? 'text-accent-ink' : 'text-ink2'}">
-      <Ic name="calendar" size={16} />{app.draft.date === todayIso() ? "Today" : dayLabel(app.draft.date).replace(/^\w+, /, "") || shortDate(app.draft.date)}
+    <label class="press relative flex h-10 shrink-0 items-center gap-1 rounded-[12px] bg-fill2 px-2.5 text-[13px] font-medium {app.draft.date && app.draft.date !== todayIso() ? 'text-accent-ink' : 'text-ink2'}">
+      <Ic name="calendar" size={16} />{!app.draft.date || app.draft.date === todayIso() ? "Today" : dayLabel(app.draft.date).replace(/^\w+, /, "") || shortDate(app.draft.date)}
       <input type="date" aria-label="Date" bind:value={app.draft.date} max="2100-12-31" class="absolute inset-0 opacity-0" />
     </label>
     <button type="button" aria-label="Add photo" class="press relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-fill2 {app.draft.photos.length ? 'text-accent-ink' : 'text-ink2'}" onclick={photo}>

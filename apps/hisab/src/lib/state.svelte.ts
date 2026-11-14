@@ -37,13 +37,20 @@ export interface Draft {
 const DRAFT_KEY = "hisab.draft";
 
 export function emptyDraft(): Draft {
-  return { kind: "expense", amount: "", currency: "", account: "", to_account: "", category: "", splits: [], note: "", tags: [], photos: [], date: todayIso(), time: "", };
+  // date "" = today at the moment of saving (a fixed date went stale overnight:
+  // an entry typed the next morning was silently saved on the previous day).
+  return { kind: "expense", amount: "", currency: "", account: "", to_account: "", category: "", splits: [], note: "", tags: [], photos: [], date: "", time: "", };
+}
+
+/** An untouched draft (no amount) follows today (older versions stored today's date in it). */
+function freshDate(d: Draft): Draft {
+  return d.amount ? d : { ...d, date: "" };
 }
 
 function loadDraft(): Draft {
   try {
     const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
-    if (d && typeof d === "object") return { ...emptyDraft(), ...d };
+    if (d && typeof d === "object") return freshDate({ ...emptyDraft(), ...d });
   } catch {}
   return emptyDraft();
 }
@@ -129,11 +136,14 @@ export async function init() {
   try {
     const b = await api.boot();
     app.prefs = b.prefs ?? {};
-    if (b.draft && typeof b.draft === "object") app.draft = { ...emptyDraft(), ...b.draft };
+    if (b.draft && typeof b.draft === "object") app.draft = freshDate({ ...emptyDraft(), ...b.draft });
     applyTheme();
     await refresh();
     app.ready = true;
     if (b.generated) showToast(`Added ${b.generated} recurring ${b.generated === 1 ? "entry" : "entries"}`);
+    // A damaged data file was set aside at startup: say so once.
+    const n = await api.startupNotice().catch(() => null);
+    if (n) showToast(n, undefined, 15000);
   } catch (e) {
     app.error = String(e);
   }
@@ -143,9 +153,25 @@ export async function init() {
     applyTheme();
   });
   // Recurring items that fall due while the app stays open (checked hourly).
-  setInterval(() => api.generateRecurring().catch(() => {}), 3600_000);
+  // A new month while the app stays open (Android keeps it alive for days): the
+  // home summary follows the calendar instead of staying on the old month.
+  let shown = monthIso();
+  const rollover = () => {
+    const m = monthIso();
+    if (m !== shown) {
+      shown = m;
+      app.month = m;
+      refresh();
+    }
+  };
+  setInterval(() => {
+    rollover();
+    api.generateRecurring().catch(() => {});
+  }, 3600_000);
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) api.generateRecurring().then(refresh).catch(() => {});
+    if (document.hidden) return;
+    rollover();
+    api.generateRecurring().then(refresh).catch(() => {});
   });
 }
 

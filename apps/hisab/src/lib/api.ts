@@ -48,11 +48,13 @@ export type Coll = "accounts" | "categories" | "transactions" | "recurring" | "l
 
 export const api = {
   boot: () => call<{ main: string; today: string; prefs: Prefs; generated: number; draft: object | null }>("boot"),
+  startupNotice: () => call<string | null>("startup_notice"),
   draftSet: (draft: object) => call<void>("draft_set", { draft }),
   snapshot: (month: string) => call<Snapshot>("snapshot", { month }),
   transactions: (filter: Filter) => call<Tx[]>("transactions", { filter }),
   trends: (month: string) => call<Trends>("trends", { month }),
-  save: <T>(collection: Coll, data: object, id?: string) => call<T>("save", { collection, id: id ?? null, data }),
+  /** `draft`: add-screen draft to store in the same call (cleared after a Save). */
+  save: <T>(collection: Coll, data: object, id?: string, draft?: object) => call<T>("save", { collection, id: id ?? null, data, draft: draft ?? null }),
   get: <T>(id: string) => call<T | null>("get", { id }),
   remove: (id: string) => call<void>("remove", { id }),
   restore: (id: string) => call<void>("restore", { id }),
@@ -64,6 +66,7 @@ export const api = {
   exportFile: (kind: "csv" | "pdf", from: string, to: string) => call<string>("export_file", { kind, from, to }),
   photoSave: (bytes: Uint8Array) => invoke<string>("photo_save", bytes),
   photoGet: (id: string) => invoke<ArrayBuffer>("photo_get", { id }),
+  photoExport: (id: string) => invoke<string>("photo_export", { id }),
   prefsSet: (prefs: Prefs) => call<void>("prefs_set", { prefs }),
   settingsGet: () => call<Settings>("settings_get"),
   settingsSet: (settings: Settings) => call<void>("settings_set", { settings }),

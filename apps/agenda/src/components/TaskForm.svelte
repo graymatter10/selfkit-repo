@@ -8,6 +8,7 @@
   import { SEVERITY, fmtMin, fmtWhen, parseWhen, reminderHint, dayLabel, hm, shortDay } from "../lib/time";
   import { allTags, app, createTask, defaultReminder, defaultSeverity, saveEdit } from "../lib/state.svelte";
   import { attachPhoto } from "../lib/photos";
+  import { askPhotoSource, cleanCaptures } from "../lib/photo-source";
   import Photo from "./Photo.svelte";
   import Confirm from "./Confirm.svelte";
   import Seg from "./Seg.svelte";
@@ -129,6 +130,7 @@
       error = `Could not add the photo: ${String(err).replace(/^Error:\s*/, "")}`;
     } finally {
       photoBusy = false;
+      cleanCaptures(); // drop the temporary camera file (photo is stored by now)
     }
   }
 
@@ -141,6 +143,7 @@
 
   async function save(e?: SubmitEvent) {
     e?.preventDefault();
+    if (saving) return; // double tap / held Enter
     const t = (titleEl?.value ?? title).trim();
     if (!t) {
       error = "Give the task a title.";
@@ -215,12 +218,8 @@
           </div>
         {/if}
         <div class="flex {photos.length ? 'border-t border-sep' : ''}">
-          <button type="button" disabled={photoBusy} class="hl flex min-h-11 flex-1 items-center justify-center gap-2 text-[17px] text-accent disabled:opacity-50" onclick={() => galleryEl?.click()}>
-            <Icon name="clip" size={18} stroke={2} />{photoBusy ? "Adding…" : layout === "sheet" ? "Choose Photo" : "Add Photo…"}</button>
-          {#if layout === "sheet"}
-            <button type="button" disabled={photoBusy} class="hl flex min-h-11 flex-1 items-center justify-center gap-2 border-l border-sep text-[17px] text-accent disabled:opacity-50" onclick={() => cameraEl?.click()}>
-              <Icon name="camera" size={18} stroke={2} />Take Photo</button>
-          {/if}
+          <button type="button" disabled={photoBusy} class="hl flex min-h-11 flex-1 items-center justify-center gap-2 text-[17px] text-accent disabled:opacity-50" onclick={() => askPhotoSource({ gallery: () => galleryEl?.click(), camera: () => cameraEl?.click() })}>
+            <Icon name="camera" size={18} stroke={2} />{photoBusy ? "Adding…" : layout === "sheet" ? "Add Photo" : "Add Photo…"}</button>
         </div>
       </div>
       <input bind:this={galleryEl} type="file" accept="image/*" multiple class="sr" tabindex="-1" aria-hidden="true" onchange={onPhotos} />

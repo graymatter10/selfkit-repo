@@ -104,7 +104,25 @@ async function guard<T>(p: Promise<T>): Promise<T | undefined> {
   }
 }
 
-export async function refresh() {
+/** Reload tasks. Calls that arrive while one runs are folded into one more
+ * run (a save used to reload twice: once itself, once via "tasks-changed"). */
+let inflight: Promise<void> | null = null;
+let again = false;
+export function refresh(): Promise<void> {
+  if (inflight) {
+    again = true;
+    return inflight;
+  }
+  inflight = (async () => {
+    do {
+      again = false;
+      await load();
+    } while (again);
+  })().finally(() => (inflight = null));
+  return inflight;
+}
+
+async function load() {
   const [tasks, lists] = await Promise.all([guard(api.list("all")), guard(api.lists())]);
   if (tasks) app.tasks = tasks;
   if (lists) app.lists = lists;
@@ -147,15 +165,24 @@ export async function saveEdit(id: string, patch: Record<string, unknown>): Prom
   return t;
 }
 
+/** Tasks with a toggle/move in flight: a double tap must not complete a repeating task twice. */
+const busy = new Set<string>();
+
 export async function toggle(t: Task) {
-  const before = dataOf(t);
-  const after = await guard(api.toggle(t.id));
-  if (!after) return;
-  const moved = !t.done_at && !after.done_at;
-  showToast(t.done_at ? `Not done · ${t.title}` : moved ? `Done · next ${whereLabel(after)}` : `Done · ${t.title}`, async () => {
-    await api.replace(t.id, before);
-  });
-  await refresh();
+  if (busy.has(t.id)) return;
+  busy.add(t.id);
+  try {
+    const before = dataOf(t);
+    const after = await guard(api.toggle(t.id));
+    if (!after) return;
+    const moved = !t.done_at && !after.done_at;
+    showToast(t.done_at ? `Not done · ${t.title}` : moved ? `Done · next ${whereLabel(after)}` : `Done · ${t.title}`, async () => {
+      await api.replace(t.id, before);
+    });
+    await refresh();
+  } finally {
+    busy.delete(t.id);
+  }
 }
 
 export async function remove(t: Task) {
@@ -172,7 +199,16 @@ export const STAGE_LABEL: Record<Stage, string> = { todo: "To Do", doing: "Doing
 /** Board move. Into/out of Done completes/reopens (repeating tasks move to their next date). */
 export async function moveStage(t: Task, to: Stage) {
   const from = stageOf(t);
-  if (from === to) return;
+  if (from === to || busy.has(t.id)) return;
+  busy.add(t.id);
+  try {
+    await doMove(t, from, to);
+  } finally {
+    busy.delete(t.id);
+  }
+}
+
+async function doMove(t: Task, from: Stage, to: Stage) {
   const before = dataOf(t);
   let after: Task | undefined;
   if (to === "done" || from === "done") {
@@ -248,6 +284,8 @@ export function init() {
   });
   guard(api.settings()).then((s) => s && (app.settings = s));
   refresh();
+  // A damaged data file was set aside at startup: say so once.
+  guard(api.startupNotice()).then((n) => n && showToast(n, undefined, 15000));
   on("tasks-changed", () => refresh());
   on("focus-changed", () => pollFocus());
   pollFocus();

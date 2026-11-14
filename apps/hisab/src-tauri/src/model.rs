@@ -106,9 +106,14 @@ fn tags(m: &Map<String, Value>) -> Value {
 fn str_list(m: &Map<String, Value>, k: &str) -> Value {
     json!(m.get(k).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect::<Vec<_>>()).unwrap_or_default())
 }
+/// Largest amount accepted: 1 trillion minus a cent fits f64 with exact cents;
+/// far bigger values turned into `null` (infinity) when stored (QA 2026-11-15).
+pub const MAX_AMOUNT: f64 = 1e13;
+
 fn positive(m: &Map<String, Value>, k: &str, what: &str) -> R<f64> {
     match num(m, k) {
-        Some(x) if x > 0.0 => Ok(round2(x)),
+        Some(x) if x >= MAX_AMOUNT => Err(format!("{what} is too large")),
+        Some(x) if round2(x) > 0.0 => Ok(round2(x)),
         _ => Err(format!("{what} must be more than 0")),
     }
 }
@@ -132,7 +137,11 @@ pub fn normalize(coll: &str, data: &Value, main: &str) -> R<Value> {
             out.insert("name".into(), json!(name));
             out.insert("kind".into(), json!(one_of(&text(m, "kind"), &["cash", "bank", "wallet", "card", "other"], "cash")));
             out.insert("currency".into(), json!(currency(m, main)?));
-            out.insert("opening".into(), json!(round2(num(m, "opening").unwrap_or(0.0))));
+            let opening = num(m, "opening").unwrap_or(0.0);
+            if opening.abs() >= MAX_AMOUNT {
+                return Err("Opening balance is too large".into());
+            }
+            out.insert("opening".into(), json!(round2(opening)));
             out.insert("archived".into(), json!(b(data, "archived")));
             out.insert("order".into(), json!(num(m, "order").unwrap_or(0.0)));
         }
@@ -150,6 +159,9 @@ pub fn normalize(coll: &str, data: &Value, main: &str) -> R<Value> {
             let budget = num(m, "budget").unwrap_or(0.0);
             if budget < 0.0 {
                 return Err("Budget can't be negative".into());
+            }
+            if budget >= MAX_AMOUNT {
+                return Err("Budget is too large".into());
             }
             out.insert("budget".into(), json!(round2(budget)));
             out.insert("archived".into(), json!(b(data, "archived")));
@@ -396,6 +408,12 @@ mod tests {
         assert!(tr.is_err());
         let tr = normalize(TRANSACTIONS, &json!({"kind":"transfer","amount":10,"date":"2026-11-02","account":"a","to_account":"b"}), "USD").unwrap();
         assert_eq!(f(&tr, "to_amount"), 10.0);
+        // Extremes (QA): 1e12 with cents is kept exactly; absurd amounts are refused, not stored as null.
+        let big = normalize(TRANSACTIONS, &json!({"kind":"expense","amount":999999999999.99,"date":"2026-11-02","account":"a","category":"c"}), "USD").unwrap();
+        assert_eq!(f(&big, "amount"), 999999999999.99);
+        assert!(normalize(TRANSACTIONS, &json!({"kind":"expense","amount":"0.004","date":"2026-11-02","account":"a","category":"c"}), "USD").is_err(), "0.004 rounds to 0.00");
+        assert!(normalize(TRANSACTIONS, &json!({"kind":"expense","amount":1e300,"date":"2026-11-02","account":"a","category":"c"}), "USD").unwrap_err().contains("too large"));
+        assert!(normalize(TRANSACTIONS, &json!({"kind":"expense","amount":-5,"date":"2026-11-02","account":"a","category":"c"}), "USD").is_err());
     }
 
     #[test]

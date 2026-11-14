@@ -2,18 +2,25 @@
 // small print stays readable) and store it as WebP through Rust. Falls back
 // to JPEG only when the webview cannot encode WebP.
 import { api } from "./api";
+import { askPhotoSource, cleanCaptures } from "./photo-source";
 
 const MAX = 2400;
 const urls = new Map<string, string>();
 
+// Android asks "Take photo / Choose from gallery" first (shared sheet, see
+// docs/components/photo-source.md); desktop opens the file picker directly.
 export function pickImage(): Promise<File | null> {
   return new Promise((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.onchange = () => resolve(input.files?.[0] ?? null);
-    input.oncancel = () => resolve(null);
-    input.click();
+    const open = (camera: boolean) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      if (camera) input.setAttribute("capture", "environment");
+      input.onchange = () => resolve(input.files?.[0] ?? null);
+      input.oncancel = () => resolve(null);
+      input.click();
+    };
+    askPhotoSource({ gallery: () => open(false), camera: () => open(true), cancel: () => resolve(null) });
   });
 }
 
@@ -42,7 +49,11 @@ export async function encode(file: Blob): Promise<Uint8Array> {
 export async function addPhoto(): Promise<string | null> {
   const f = await pickImage();
   if (!f) return null;
-  return api.photoSave(await encode(f));
+  try {
+    return await api.photoSave(await encode(f));
+  } finally {
+    cleanCaptures(); // drop the temporary camera file (photo is stored by now)
+  }
 }
 
 export async function photoUrl(id: string): Promise<string> {

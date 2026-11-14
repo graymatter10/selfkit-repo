@@ -155,5 +155,5 @@
     <button type="button" class="{row} w-full text-left text-[15px]" onclick={() => openSheet({ kind: "export" })}><span class="flex-1">Export CSV or PDF</span><Ic name="chevron" size={16} class="text-muted" /></button>
     <button type="button" class="{row} w-full text-left text-[15px]" onclick={() => go("recurring")}><span class="flex-1">Recurring and subscriptions</span><Ic name="chevron" size={16} class="text-muted" /></button>
   </div>
-  <p class="m-0 px-1 pt-1.5 pb-6 text-[12px] text-muted">Everything stays on this device and syncs encrypted through Selfkit. Hisab 0.1.0</p>
+  <p class="m-0 px-1 pt-1.5 pb-6 text-[12px] text-muted">Everything stays on this device and syncs encrypted through Selfkit. Hisab 0.1.1</p>
 </div>

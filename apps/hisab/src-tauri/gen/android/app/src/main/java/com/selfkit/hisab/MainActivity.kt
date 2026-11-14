@@ -98,5 +98,9 @@ class MainActivity : TauriActivity() {
         return a
       }
     }, "HisabNative")
+
+    // ---- Selfkit photos (SelfkitPhotos.kt): camera/gallery choice, capture cleanup, Save to gallery.
+    webView.addJavascriptInterface(SelfkitPhotos(this, "Hisab"), "SelfkitPhotos")
+    // ---- end Selfkit photos
   }
 }

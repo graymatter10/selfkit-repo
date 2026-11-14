@@ -18,6 +18,7 @@
   import Loans from "./components/Loans.svelte";
   import More from "./components/More.svelte";
   import PhotoViewer from "./components/PhotoViewer.svelte";
+  import { PhotoSourceSheet, closePhotoSource } from "./lib/photo-source";
   import RecurringList from "./components/RecurringList.svelte";
   import RecurringSheet from "./components/RecurringSheet.svelte";
   import Settings from "./components/Settings.svelte";
@@ -78,6 +79,7 @@
   // Only the form on top may stop Back/Escape (not a picker opened over it).
   const guarded = () => (!app.sheets.length || FORMS.includes(app.sheets[app.sheets.length - 1].kind)) && !!app.guard?.();
   function onBack() {
+    if (closePhotoSource()) return; // "Add photo" camera/gallery sheet
     if (guarded()) return;
     if (app.sheets.length) closeSheet();
     else if (app.pages.length > 1) back();
@@ -111,6 +113,7 @@
     const tag = (e.target as HTMLElement)?.tagName;
     const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);
     if (e.key === "Escape") {
+      if (closePhotoSource()) return;
       if (guarded()) return;
       if (app.sheets.length) closeSheet();
       else if (typing) (e.target as HTMLElement).blur();
@@ -221,4 +224,7 @@
   {:else if s.kind === "photo"}<PhotoViewer id={s.id} />{/if}
 {/each}
 
-<div class="pointer-events-none fixed z-[90] {desktop ? 'bottom-6 left-1/2 w-[420px] -translate-x-1/2' : 'inset-x-3 top-[max(12px,calc(env(safe-area-inset-top)+8px))]'}"><Toast /></div>
+<!-- Phone: below the top bar, so a tap on History/Insights/Accounts/More right after Save
+     can't hit "Undo" by accident (QA 2026-11-15). -->
+<PhotoSourceSheet privateNote="Stays private in Hisab, not in your gallery" />
+<div class="pointer-events-none fixed z-[90] {desktop ? 'bottom-6 left-1/2 w-[420px] -translate-x-1/2' : 'inset-x-3 top-[calc(env(safe-area-inset-top)+64px)]'}"><Toast /></div>

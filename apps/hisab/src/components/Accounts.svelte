@@ -24,6 +24,8 @@
     if (from) app.draft.account = from;
     go("home");
   }
+  /** Long balances shrink so "-৳179,840.50" fits a half-width card on a 360 dp phone. */
+  const balSize = (t: string) => (t.length > 12 ? "text-[15px]" : t.length > 9 ? "text-[18px]" : "text-[21px]");
 </script>
 
 <div class="flex flex-col gap-3">
@@ -38,11 +40,11 @@
         <button type="button" class="press absolute inset-0 rounded-[18px]" aria-label="Show {a.name} entries" onclick={() => openHistory({ account: a.id, period: "all" })}></button>
         <div class="pointer-events-none flex items-center gap-2.5">
           <CatBadge icon={ACCOUNT_ICON[a.kind] ?? "wallet"} color={COLORS[a.kind] ?? "#8a8a8e"} size={34} />
-          <div class="min-w-0 flex-1"><div class="truncate text-[15px] font-semibold">{a.name}</div><div class="text-[12.5px] text-muted capitalize">{a.kind === "wallet" ? "Mobile wallet" : a.kind}</div></div>
+          <div class="min-w-0 flex-1 pr-6"><div class="truncate text-[15px] font-semibold">{a.name}</div><div class="text-[12.5px] text-muted capitalize">{a.kind === "wallet" ? "Mobile wallet" : a.kind}</div></div>
         </div>
         <button type="button" aria-label="Edit {a.name}" class="press absolute top-3 right-2 flex h-8 w-8 items-center justify-center rounded-full text-muted" onclick={() => openSheet({ kind: "account", id: a.id })}><Ic name="more" size={18} stroke={2.4} /></button>
         <div class="pointer-events-none">
-          <div class="num truncate text-[21px] font-semibold tracking-[-0.5px] {a.balance < 0 ? 'text-danger' : ''}">{money(a.balance, a.currency)}</div>
+          <div class="num truncate {balSize(money(a.balance, a.currency))} font-semibold tracking-[-0.5px] {a.balance < 0 ? 'text-danger' : ''}">{money(a.balance, a.currency)}</div>
           <div class="text-[12.5px] text-muted">{a.currency !== main() ? `≈ ${money(a.balance_main, main())}` : a.currency}</div>
         </div>
       </div>

@@ -241,12 +241,17 @@ fn fill_days(mut m: BTreeMap<NaiveDate, f64>, first: Option<NaiveDate>, today: N
 /// Money spent per logical day from hisab.db `transactions` (falls back to
 /// `expenses`). Hisab's shape (apps/hisab/src-tauri/src/model.rs):
 /// `{kind: "expense"|"income"|"transfer", amount, currency, amount_main, date: "YYYY-MM-DD", time: "HH:MM"|""}`.
-/// Uses `amount_main` (main currency) when present, else `amount`. A time
+/// Uses `amount_main` (main currency) when present, else `amount` converted
+/// from its `currency` into `main` with Hisab's `rates` record (Hisab never
+/// stores `amount_main`; QA 2026-11-15 found BDT amounts summed as if they were
+/// USD). An amount in a currency without a rate is left out. A time
 /// before the day-start hour counts for the day before. Unknown shapes are
 /// skipped, so a changed Hisab schema degrades to "no data".
-pub fn spent_per_day(hisab: &Store, day_start: u16, today: NaiveDate) -> BTreeMap<NaiveDate, f64> {
+pub fn spent_per_day(hisab: &Store, day_start: u16, today: NaiveDate, main: &str) -> BTreeMap<NaiveDate, f64> {
     let mut out: BTreeMap<NaiveDate, f64> = BTreeMap::new();
     let mut first: Option<NaiveDate> = None;
+    let rates = hisab_rates(hisab);
+    let main = main.to_ascii_uppercase();
     for coll in ["transactions", "expenses"] {
         let Ok(mut st) = hisab.conn().prepare("SELECT data, tz_offset FROM records WHERE collection=?1 AND deleted=0") else { continue };
         let Ok(rows) = st.query_map([coll], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))) else { continue };
@@ -254,6 +259,16 @@ pub fn spent_per_day(hisab: &Store, day_start: u16, today: NaiveDate) -> BTreeMa
             let Ok(v) = serde_json::from_str::<Value>(&data) else { continue };
             let Some((day, amount)) = hisab_expense(&v, rec_tz as i32, day_start, coll == "expenses") else { continue };
             first = Some(first.map_or(day, |f: NaiveDate| f.min(day)));
+            let has_main = v.get("amount_main").is_some_and(|x| !x.is_null());
+            let cur = v.get("currency").and_then(Value::as_str).unwrap_or("").to_ascii_uppercase();
+            let amount = if has_main || cur.is_empty() || cur == main {
+                amount
+            } else {
+                match (rates.get(&cur), rates.get(&main)) {
+                    (Some(a), Some(b)) => amount / a * b,
+                    _ => continue,
+                }
+            };
             if amount > 0.0 {
                 *out.entry(day).or_default() += amount;
             }
@@ -263,6 +278,26 @@ pub fn spent_per_day(hisab: &Store, day_start: u16, today: NaiveDate) -> BTreeMa
         }
     }
     fill_days(out, first, today)
+}
+
+/// Hisab's exchange rates (record `hisab-rates`: units per 1 `base`; `manual`
+/// overrides `rates`), as currency → rate. Empty when there is none.
+pub fn hisab_rates(hisab: &Store) -> std::collections::HashMap<String, f64> {
+    let mut m = std::collections::HashMap::new();
+    let data: Option<String> = hisab.conn().query_row("SELECT data FROM records WHERE id='hisab-rates' AND deleted=0", [], |r| r.get(0)).ok();
+    let Some(v) = data.and_then(|d| serde_json::from_str::<Value>(&d).ok()) else { return m };
+    for k in ["rates", "manual"] {
+        if let Some(o) = v.get(k).and_then(Value::as_object) {
+            for (c, r) in o {
+                if let Some(x) = r.as_f64().filter(|x| *x > 0.0 && x.is_finite()) {
+                    m.insert(c.to_ascii_uppercase(), x);
+                }
+            }
+        }
+    }
+    let base = v.get("base").and_then(Value::as_str).unwrap_or("USD").to_ascii_uppercase();
+    m.insert(base, 1.0);
+    m
 }
 
 /// (day, spent amount; 0 for income/transfers) of one Hisab record.
@@ -365,11 +400,27 @@ mod tests {
         h.put("transactions", None, &json!({"kind":"expense","amount":1000,"amount_main":9.0,"currency":"BDT","date":"2026-01-05","time":"02:00"})).unwrap();
         h.put("transactions", None, &json!({"kind":"income","amount":100,"at": now})).unwrap();
         h.put("transactions", None, &json!({"amount_minor":-250,"date":"2026-01-02"})).unwrap();
-        let m = spent_per_day(&h, 0, today + chrono::Duration::days(1));
+        let m = spent_per_day(&h, 0, today + chrono::Duration::days(1), "USD");
         assert_eq!(m.get(&parse_date("2026-01-02").unwrap()), Some(&2.5));
         assert!(m.values().any(|v| (*v - 12.5).abs() < 1e-9));
         assert_eq!(m.get(&parse_date("2026-01-05").unwrap()), Some(&9.0));
-        let m = spent_per_day(&h, 240, today + chrono::Duration::days(1));
+        let m = spent_per_day(&h, 240, today + chrono::Duration::days(1), "USD");
         assert_eq!(m.get(&parse_date("2026-01-04").unwrap()), Some(&9.0), "02:00 is still the day before with a 04:00 day start");
+    }
+
+    #[test]
+    fn hisab_amounts_are_converted_to_the_main_currency() {
+        let h = Store::open_in_memory("hisab", "d", &[]).unwrap();
+        h.put("rates", Some("hisab-rates"), &json!({"base":"USD","rates":{"BDT":120.0,"EUR":0.9},"manual":{"EUR":0.8}})).unwrap();
+        h.put("transactions", None, &json!({"kind":"expense","amount":1200,"currency":"BDT","date":"2026-01-02","time":"12:00"})).unwrap();
+        h.put("transactions", None, &json!({"kind":"expense","amount":8,"currency":"EUR","date":"2026-01-02","time":"13:00"})).unwrap();
+        h.put("transactions", None, &json!({"kind":"expense","amount":5,"currency":"USD","date":"2026-01-02","time":"14:00"})).unwrap();
+        h.put("transactions", None, &json!({"kind":"expense","amount":99,"currency":"XYZ","date":"2026-01-02","time":"15:00"})).unwrap();
+        let today = parse_date("2026-01-03").unwrap();
+        let m = spent_per_day(&h, 0, today, "USD");
+        // 1200 BDT = 10 USD, 8 EUR (manual 0.8) = 10 USD, 5 USD; XYZ has no rate.
+        assert!((m[&parse_date("2026-01-02").unwrap()] - 25.0).abs() < 1e-9, "{m:?}");
+        let m = spent_per_day(&h, 0, today, "BDT");
+        assert!((m[&parse_date("2026-01-02").unwrap()] - 3000.0).abs() < 1e-6, "{m:?}");
     }
 }

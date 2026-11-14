@@ -11,7 +11,7 @@
   import Toast from "./components/Toast.svelte";
   import TrendsPage from "./components/TrendsPage.svelte";
   import { api } from "./lib/api";
-  import { addDays } from "./lib/fmt";
+  import { addDays, setClock12 } from "./lib/fmt";
   import { app, bridge, currentKey, init, openTab, rate, show, shownKey, step, type Tab } from "./lib/state.svelte";
   import { exit, onBackButtonPress } from "@tauri-apps/api/app";
 
@@ -70,11 +70,13 @@
     else if (e.key.toLowerCase() === "n") (e.preventDefault(), (app.edit = { kind: "nap", night: shownKey() }));
   }
 
-  // Test hook (DUSK_DEMO env, desktop) for screenshots: tab=, back=<nights>, edit=adjust|nap, focus=, details=<id>.
+  // Test hook (DUSK_DEMO env, desktop) for screenshots: tab=, back=<nights>, edit=adjust|nap, focus=, details=<id>,
+  // clock=12|24 (dial hour format), dial=a|b (Adjust) or dial=goal (Settings) opens the clock dial.
   api.devHooks().then(async (h) => {
     if (!h) return;
     const p = Object.fromEntries(new URLSearchParams(h));
     app.demo = p;
+    if (p.clock) setClock12(p.clock === "12");
     for (let i = 0; i < 50 && !app.dash; i++) await new Promise((r) => setTimeout(r, 100));
     if (p.back) await show(addDays(currentKey(), -Number(p.back)));
     if (p.tab) openTab(p.tab as Tab);

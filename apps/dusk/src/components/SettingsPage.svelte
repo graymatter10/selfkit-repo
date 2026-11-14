@@ -1,34 +1,28 @@
 <script lang="ts">
   // Settings: goals, wind-down reminder (off until turned on), day start,
   // appearance, data sources. Every row says what it is for.
-  import { clock, dur, normTime, toMin } from "../lib/fmt";
+  import { clock, dur, tdisp, toMin } from "../lib/fmt";
   import { app, bridge, importUsage, refresh, saveGoals, savePrefs, saveSettings } from "../lib/state.svelte";
   import Icon from "./Icon.svelte";
   import Seg from "./Seg.svelte";
+  import TimeSheet from "./TimeSheet.svelte";
 
   let { desktop }: { desktop: boolean } = $props();
   const goals = $derived(app.dash?.goals ?? { goal_min: 480, bedtime: "23:00", winddown_min: 30 });
-  let bedText = $state("");
-  let bedErr = $state("");
+  let bedDial = $state(app.demo.dial === "goal");
   let shortcut = $state("");
   let shortcutErr = $state("");
   $effect(() => {
-    bedText = goals.bedtime;
-  });
-  $effect(() => {
     shortcut = app.settings?.shortcuts?.rate_sleep ?? "";
   });
-  const winddownAt = $derived(clock(toMin(goals.bedtime) - goals.winddown_min));
+  const winddownAt = $derived(tdisp(clock(toMin(goals.bedtime) - goals.winddown_min)));
 
   async function setGoal(by: number) {
     const g = Math.min(840, Math.max(180, goals.goal_min + by));
     await saveGoals({ ...goals, goal_min: g });
   }
-  async function setBedtime() {
-    const t = normTime(bedText);
-    if (!t) return void (bedErr = "Type a time like 2300 or 11pm");
-    bedErr = "";
-    bedText = t;
+  async function setBedtime(t: string) {
+    bedDial = false;
     if (t !== goals.bedtime) await saveGoals({ ...goals, bedtime: t });
   }
   async function setShortcut() {
@@ -60,9 +54,9 @@
       </div>
       <div class="h-px bg-sep"></div>
       <div class="flex min-h-[60px] items-center gap-3 px-4 py-2 text-[15.5px]">
-        <label for="bedgoal" class="flex min-w-0 flex-1 flex-col gap-0.5">Bedtime goal<small class="text-[13px] {bedErr ? 'text-danger' : 'text-muted'}">{bedErr || "In bed by this time"}</small></label>
-        <input id="bedgoal" bind:value={bedText} inputmode="numeric" autocomplete="off" enterkeyhint="done" onblur={setBedtime} onkeydown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
-          class="num h-11 w-24 rounded-[12px] bg-fill text-center text-[17px] font-semibold outline-none focus:bg-card focus:shadow-[inset_0_0_0_2px_var(--accent)]" />
+        <span class="flex min-w-0 flex-1 flex-col gap-0.5">Bedtime goal<small class="text-[13px] text-muted">In bed by this time</small></span>
+        <button type="button" id="bedgoal" aria-haspopup="dialog" aria-label="Bedtime goal {tdisp(goals.bedtime)}. Pick on the clock" onclick={() => (bedDial = true)}
+          class="press num h-11 min-w-24 rounded-[12px] px-3 text-center text-[17px] font-semibold {bedDial ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'}">{tdisp(goals.bedtime)}</button>
       </div>
     </div>
 
@@ -155,4 +149,7 @@
   </div>
 {:else}
   <div class="pb-6">{@render colA()}<div class="h-4"></div>{@render colB()}</div>
+{/if}
+{#if bedDial}
+  <TimeSheet title="Bedtime goal" value={goals.bedtime} {desktop} ondone={setBedtime} oncancel={() => (bedDial = false)} />
 {/if}

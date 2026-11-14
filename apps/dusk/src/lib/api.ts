@@ -34,6 +34,7 @@ export type LogPatch = { bed?: string | null; wake?: string | null; quality?: nu
 
 export const api = {
   dashboard: () => call<Dashboard>("dashboard"),
+  startupNotice: () => call<string | null>("startup_notice"),
   night: (night: string) => call<Night>("night", { night }),
   sources: () => call<Sources>("sources_status"),
   connections: () => call<Connection[]>("connections"),

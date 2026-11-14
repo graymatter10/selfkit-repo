@@ -1,5 +1,12 @@
 # Decisions (newest first)
 
+## 2026-11-15 — QA round (Agenda 0.4.1, Hisab 0.1.1, Dusk 0.1.2)
+- A damaged/unreadable database is moved aside as `<name>.damaged-<ms>` (never deleted) and the app starts fresh with a one-time notice (`recover.rs` in each app).
+- Desktop apps are single-instance (second launch focuses the first; `--capture`/`--rate` forwarded); disabled when `SELFKIT_DATA_DIR` is set so tests can run several.
+- Hisab draft date "" means "today" so an overnight draft doesn't save on yesterday.
+- Dusk converts Hisab amounts with Hisab's own rates before correlating spending.
+- Dusk time entry is a clock dial (user request) instead of a keypad; minutes snap to 5-min marks within ±1 min, exact minute elsewhere; 12h/24h follows the locale; typing remains on desktop only.
+
 ## 2026-11-15 — App-side sync (selfkit-appsync)
 - One shared crate behind a small interface (status, sync_now, settings, encryption, conflicts/resolve); Android adds Kotlin only for what Rust can't do (WorkManager, Keystore, multicast lock). Apps stay free of sync code and a future companion app uses the same calls.
 - Apps run a one-shot LAN pass (beacon + 2.5 s listen + connect to known peers), not the always-on LAN service; if no LAN peer answers, Postgres + S3. Same encrypted protocol as the agent, so it works against the existing agent unchanged.

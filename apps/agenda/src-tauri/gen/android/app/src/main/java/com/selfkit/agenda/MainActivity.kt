@@ -65,5 +65,9 @@ class MainActivity : TauriActivity() {
         }
       }
     }, "AgendaFiles")
+
+    // ---- Selfkit photos (SelfkitPhotos.kt): camera/gallery choice, capture cleanup, Save to gallery.
+    webView.addJavascriptInterface(SelfkitPhotos(this, "Agenda"), "SelfkitPhotos")
+    // ---- end Selfkit photos
   }
 }

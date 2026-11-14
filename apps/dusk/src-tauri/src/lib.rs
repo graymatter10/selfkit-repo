@@ -2,6 +2,7 @@
 //! Docs: docs/apps/dusk/README.md (code map).
 
 pub mod data;
+pub mod recover;
 pub mod health;
 pub mod model;
 pub mod sources;
@@ -21,6 +22,8 @@ use model::{HOUR, Inputs, Ms, NightView};
 pub struct AppState {
     store: Mutex<Store>,
     settings: Mutex<Store>,
+    /// Set when a damaged DB was set aside at startup (shown once by the UI).
+    notice: Mutex<Option<String>>,
 }
 
 type Res<T> = Result<T, String>;
@@ -150,7 +153,7 @@ fn connections(state: State<AppState>) -> Res<Vec<model::Connection>> {
     let tasks = agenda.as_ref().map(|a| sources::tasks_done_per_day(a, ds, today)).unwrap_or_default();
     out.push(model::sleep_vs_next_day(&nights, &tasks, ds, "tasks", "tasks", agenda.is_some()));
     let hisab = sources::open_other("hisab");
-    let spent = hisab.as_ref().map(|h| sources::spent_per_day(h, ds, today)).unwrap_or_default();
+    let spent = hisab.as_ref().map(|h| sources::spent_per_day(h, ds, today, &currency)).unwrap_or_default();
     out.push(model::sleep_vs_next_day(&nights, &spent, ds, "money", &currency_symbol(&currency), hisab.is_some()));
     Ok(out)
 }
@@ -161,9 +164,18 @@ fn log_set(app: AppHandle, state: State<AppState>, night: String, patch: Map<Str
     let n = model::parse_date(&night).ok_or("bad date")?;
     let store = state.store.lock().unwrap();
     // Place typed times with the night's own offset (travel).
-    let tz = compute(&store, n, n, false).map_err(e)?.first().map(|v| v.tz_offset).unwrap_or_else(tz_now);
+    let cur = compute(&store, n, n, false).map_err(e)?.into_iter().next();
+    let tz = cur.as_ref().map(|v| v.tz_offset).unwrap_or_else(tz_now);
     data::set_main(&store, &night, &patch, tz).map_err(e)?;
     let v = compute(&store, n, n, true).map_err(e)?;
+    // Changing only one time keeps the estimate for the other: check the pair
+    // that will show (QA: bedtime 03:00 with an estimated wake of 02:52 was saved).
+    if let Some((b, w)) = v.first().and_then(|x| Some((x.bed?, x.wake?)))
+        && (w <= b || w - b > 20 * HOUR)
+    {
+        let _ = data::replace_main(&store, &night, cur.and_then(|c| c.log).as_ref());
+        return Err(if w <= b { "Wake time must be after bedtime".into() } else { "That's over 20 hours of sleep. Check the times.".into() });
+    }
     let _ = data::cache_nights(&store, &v);
     let _ = app.emit("sleep-changed", ());
     v.into_iter().next().ok_or_else(|| "no night".into())
@@ -408,9 +420,34 @@ mod shortcut {
     }
 }
 
+/// A one-time startup message (damaged data file recovered), or None.
+#[tauri::command]
+fn startup_notice(state: State<AppState>) -> Option<String> {
+    state.notice.lock().unwrap().take()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
+    let builder = tauri::Builder::default();
+    // Desktop: one instance (a second launch focuses the first, or opens its
+    // popup for --rate), so reminders don't fire twice and the shortcut stays
+    // registered. Skipped when SELFKIT_DATA_DIR is set (tests run several apps on
+    // separate data dirs at once).
+    #[cfg(desktop)]
+    let builder = if std::env::var_os("SELFKIT_DATA_DIR").is_none() {
+        builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if argv.iter().any(|a| a == "--rate") {
+                shortcut::open_capture(app);
+            } else if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+    } else {
+        builder
+    };
+    let builder = builder.plugin(tauri_plugin_notification::init());
     #[cfg(desktop)]
     let builder = builder.plugin(shortcut::plugin());
     builder
@@ -418,9 +455,9 @@ pub fn run() {
             #[cfg(mobile)]
             paths::set_data_dir(app.path().app_data_dir()?);
             let device = paths::device_id()?;
-            let store = Store::open(paths::app_db("dusk"), "dusk", &device, MIGRATIONS)?;
-            let settings = Store::open(paths::app_db(selfkit_core::settings::APP), selfkit_core::settings::APP, &device, &[])?;
-            app.manage(AppState { store: Mutex::new(store), settings: Mutex::new(settings) });
+            let (store, n1) = recover::open(paths::app_db("dusk"), "dusk", &device, MIGRATIONS)?;
+            let (settings, n2) = recover::open(paths::app_db(selfkit_core::settings::APP), selfkit_core::settings::APP, &device, &[])?;
+            app.manage(AppState { store: Mutex::new(store), settings: Mutex::new(settings), notice: Mutex::new(n1.or(n2)) });
             #[cfg(desktop)]
             {
                 let s = Settings::load(&app.state::<AppState>().settings.lock().unwrap()).unwrap_or_default();
@@ -460,7 +497,7 @@ pub fn run() {
             settings_set,
             android_import,
             close_capture,
-            dev_hooks
+            dev_hooks, startup_notice
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dusk");

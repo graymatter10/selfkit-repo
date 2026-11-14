@@ -28,22 +28,26 @@
   const close = () => api.closeCapture();
   const cycle = [null, 0, 5, 10, 15, 30, 60, 120];
 
+  let saving = false;
   async function save(e: SubmitEvent) {
     e.preventDefault();
+    if (saving) return; // held Enter / double click used to add the task several times
     const t = (el?.value ?? title).trim();
     if (!t) return void (error = "Give the task a title.");
     let start: string | undefined;
     if (day !== "none") {
-      const [h, m] = time.split(":").map(Number);
+      const [h, m] = (time || "09:00").split(":").map(Number);
       const d = addDays(startOfDay(new Date()), day === "tomorrow" ? 1 : 0);
       d.setHours(h, m);
       start = fmtWhen(d, false);
     }
+    saving = true;
     try {
       await createTask({ title: t, severity, start, reminder_min: start ? (reminder ?? undefined) : undefined });
       close();
     } catch (err) {
       error = String(err);
+      saving = false;
     }
   }
 </script>

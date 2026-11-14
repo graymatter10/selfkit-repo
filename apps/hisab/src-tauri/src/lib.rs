@@ -1,10 +1,12 @@
 //! Hisab (com.selfkit.hisab): money app. Tauri commands over selfkit-core.
 //! Docs: docs/apps/hisab/README.md (code map, data model).
 
+pub mod currency;
 pub mod export;
 pub mod fx;
 pub mod model;
 pub mod photos;
+pub mod recover;
 pub mod recur;
 pub mod sms;
 pub mod stats;
@@ -23,6 +25,11 @@ use model::{LOANS, R, TRANSACTIONS, f, s};
 pub struct AppState {
     store: Mutex<Store>,
     settings: Mutex<Store>,
+    /// Set when a damaged DB was set aside at startup (shown once by the UI).
+    notice: Mutex<Option<String>>,
+    /// Last main currency read (also kept in kv `hisab.main`): used when the
+    /// shared settings can't be read, instead of silently switching to USD.
+    last_main: Mutex<String>,
 }
 
 fn e(err: impl std::fmt::Display) -> String {
@@ -33,8 +40,21 @@ fn today() -> NaiveDate {
     Local::now().date_naive()
 }
 
+/// The global main currency. Only the `main_currency` field is read (see
+/// currency.rs); if it can't be read, the last known value is kept.
 fn main_currency(state: &AppState) -> String {
-    Settings::load(&state.settings.lock().unwrap()).map(|s| s.main_currency).unwrap_or_else(|_| "USD".into())
+    let read = currency::read_main(&state.settings.lock().unwrap());
+    let mut last = state.last_main.lock().unwrap();
+    match read {
+        Some(c) => {
+            if *last != c {
+                *last = c.clone();
+                let _ = state.store.lock().unwrap().kv_set("hisab.main", &c);
+            }
+            c
+        }
+        None => last.clone(),
+    }
 }
 
 fn changed(app: &AppHandle) {
@@ -117,7 +137,7 @@ fn trends(state: State<AppState>, month: String) -> R<Value> {
 
 /// Create (id = None) or replace a record after validation.
 #[tauri::command]
-fn save(app: AppHandle, state: State<AppState>, collection: String, id: Option<String>, data: Value) -> R<Value> {
+fn save(app: AppHandle, state: State<AppState>, collection: String, id: Option<String>, data: Value, draft: Option<Value>) -> R<Value> {
     let main = main_currency(&state);
     let rec = {
         let store = state.store.lock().unwrap();
@@ -134,6 +154,9 @@ fn save(app: AppHandle, state: State<AppState>, collection: String, id: Option<S
         }
         let v = model::normalize(&collection, &data, &main)?;
         let r = store.put(&collection, id.as_deref(), &v).map_err(e)?;
+        if let Some(d) = draft.filter(|d| d.is_object()) {
+            store.kv_set("hisab.draft", &d.to_string()).map_err(e)?;
+        }
         model::flat(&r.id, &r.data)
     };
     if collection == LOANS {
@@ -278,6 +301,31 @@ fn photo_get(id: String) -> R<tauri::ipc::Response> {
 }
 
 #[tauri::command]
+fn photo_export(id: String) -> Result<String, String> {
+    let bytes = photos::load(&id)?;
+    let ext = id.rsplit_once('.').map(|(_, x)| x).unwrap_or("jpg");
+    export_to_pictures(&id, ext, &bytes)
+}
+
+/// "Save to Pictures" from the photo viewer on desktop (Android saves through
+/// the SelfkitPhotos bridge instead): copy into ~/Pictures/Selfkit/Hisab.
+/// Docs: docs/components/photo-source.md.
+fn export_to_pictures(id: &str, ext: &str, bytes: &[u8]) -> Result<String, String> {
+    let dir = std::env::var_os("SELFKIT_PICTURES_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(dirs::picture_dir)
+        .or_else(|| dirs::home_dir().map(|h| h.join("Pictures")))
+        .ok_or("No Pictures folder")?
+        .join("Selfkit")
+        .join("Hisab");
+    std::fs::create_dir_all(&dir).map_err(e)?;
+    let stem: String = id.split('.').next().unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(40).collect();
+    let path = dir.join(format!("Hisab_{stem}.{ext}"));
+    std::fs::write(&path, bytes).map_err(e)?;
+    Ok(path.display().to_string())
+}
+
+#[tauri::command]
 fn prefs_set(app: AppHandle, state: State<AppState>, prefs: Value) -> R<()> {
     state.store.lock().unwrap().kv_set("hisab.prefs", &prefs.to_string()).map_err(e)?;
     let _ = app.emit("prefs-changed", &prefs);
@@ -293,17 +341,47 @@ fn draft_set(state: State<AppState>, draft: Value) -> R<()> {
 
 #[tauri::command]
 fn settings_get(state: State<AppState>) -> R<Settings> {
-    Settings::load(&state.settings.lock().unwrap()).map_err(e)
+    let mut st = Settings::load(&state.settings.lock().unwrap()).map_err(e)?;
+    st.main_currency = main_currency(&state);
+    Ok(st)
 }
 
+/// Save shared settings (shortcuts). The main currency is never changed here
+/// (a stale copy in the UI must not undo it); use `main_currency_set`.
 #[tauri::command]
 fn settings_set(app: AppHandle, state: State<AppState>, settings: Settings) -> R<()> {
+    let mut settings = settings;
+    settings.main_currency = main_currency(&state);
     settings.save(&state.settings.lock().unwrap()).map_err(e)?;
     #[cfg(desktop)]
     shortcut::register(&app, &settings);
     let _ = app.emit("settings-changed", &settings);
     changed(&app);
     Ok(())
+}
+
+/// Change the global main currency; unused accounts that followed the old one
+/// switch with it. Returns the used accounts still in the old currency so the
+/// UI can offer to relabel them.
+#[tauri::command]
+fn main_currency_set(app: AppHandle, state: State<AppState>, code: String) -> R<currency::MainChange> {
+    let old = main_currency(&state);
+    let ch = currency::set_main(&state.settings.lock().unwrap(), &state.store.lock().unwrap(), &code, &old)?;
+    main_currency(&state);
+    if let Ok(st) = Settings::load(&state.settings.lock().unwrap()) {
+        let _ = app.emit("settings-changed", &st);
+    }
+    changed(&app);
+    Ok(ch)
+}
+
+/// Relabel an account (and its entries in the old currency) to another
+/// currency, after the user said yes. Numbers are not converted.
+#[tauri::command]
+fn account_relabel(app: AppHandle, state: State<AppState>, id: String, currency: String) -> R<usize> {
+    let n = currency::relabel_account(&state.store.lock().unwrap(), &id, &currency)?;
+    changed(&app);
+    Ok(n)
 }
 
 #[tauri::command]
@@ -503,9 +581,34 @@ mod shortcut {
     }
 }
 
+/// A one-time startup message (damaged data file recovered), or None.
+#[tauri::command]
+fn startup_notice(state: State<AppState>) -> Option<String> {
+    state.notice.lock().unwrap().take()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
+    let builder = tauri::Builder::default();
+    // Desktop: one instance (a second launch focuses the first, or opens its
+    // popup for --capture), so reminders don't fire twice and the shortcut stays
+    // registered. Skipped when SELFKIT_DATA_DIR is set (tests run several apps on
+    // separate data dirs at once).
+    #[cfg(desktop)]
+    let builder = if std::env::var_os("SELFKIT_DATA_DIR").is_none() {
+        builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if argv.iter().any(|a| a == "--capture") {
+                shortcut::open_capture(app);
+            } else if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+    } else {
+        builder
+    };
+    let builder = builder.plugin(tauri_plugin_notification::init());
     #[cfg(desktop)]
     let builder = builder.plugin(shortcut::plugin());
     builder
@@ -513,9 +616,13 @@ pub fn run() {
             #[cfg(mobile)]
             paths::set_data_dir(app.path().app_data_dir()?);
             let device = paths::device_id()?;
-            let store = Store::open(paths::app_db("hisab"), "hisab", &device, model::MIGRATIONS)?;
-            let settings = Store::open(paths::app_db(selfkit_core::settings::APP), selfkit_core::settings::APP, &device, &[])?;
-            app.manage(AppState { store: Mutex::new(store), settings: Mutex::new(settings) });
+            let (store, n1) = recover::open(paths::app_db("hisab"), "hisab", &device, model::MIGRATIONS)?;
+            let (settings, n2) = recover::open(paths::app_db(selfkit_core::settings::APP), selfkit_core::settings::APP, &device, &[])?;
+            // First start ever: the shared default (USD) until the user picks one.
+            let last = currency::read_main(&settings)
+                .or_else(|| store.kv_get("hisab.main").ok().flatten())
+                .unwrap_or_else(|| Settings::default().main_currency);
+            app.manage(AppState { store: Mutex::new(store), settings: Mutex::new(settings), notice: Mutex::new(n1.or(n2)), last_main: Mutex::new(last) });
             #[cfg(desktop)]
             {
                 let s = Settings::load(&app.state::<AppState>().settings.lock().unwrap()).unwrap_or_default();
@@ -540,8 +647,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             boot, snapshot, transactions, trends, save, get, remove, restore, generate_recurring, sms_ingest, sms_pending, sms_parse,
-            rates_save, rates_manual, export_file, photo_save, photo_get, prefs_set, draft_set, settings_get, settings_set, close_capture,
-            reschedule, dev_hooks
+            rates_save, rates_manual, export_file, photo_save, photo_get, photo_export, prefs_set, draft_set, settings_get, settings_set, main_currency_set, account_relabel, close_capture,
+            reschedule, dev_hooks, startup_notice
         ])
         .run(tauri::generate_context!())
         .expect("error while running Hisab");

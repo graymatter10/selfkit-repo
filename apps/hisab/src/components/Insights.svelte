@@ -42,7 +42,7 @@
 </script>
 
 {#snippet stat(label: string, v: string, cls = "")}
-  <div class="min-w-0 flex-1 px-4 py-3.5"><div class="text-[12.5px] font-medium text-muted">{label}</div><div class="num mt-0.5 truncate {desktop ? "text-[21px]" : "text-[18px]"} font-semibold tracking-[-0.5px] {cls}">{v}</div></div>
+  <div class="min-w-0 flex-1 {desktop ? 'px-4' : 'px-3'} py-3.5"><div class="text-[12.5px] font-medium text-muted">{label}</div><div class="num mt-0.5 truncate {desktop ? "text-[21px]" : v.length > 11 ? "text-[13px]" : v.length > 7 ? "text-[15px]" : "text-[18px]"} font-semibold tracking-[-0.5px] {cls}">{v}</div></div>
 {/snippet}
 
 <div class="flex flex-col gap-3">

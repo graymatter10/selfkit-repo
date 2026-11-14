@@ -1,14 +1,16 @@
 <script lang="ts">
-  // Adjust times (or add a nap). Phone: a page with the in-app number pad
-  // under the fields while a time field is focused; desktop: a side panel
-  // typed on the keyboard (↑/↓ ±15 min, Tab next field, Enter/Ctrl+Enter save,
-  // Esc close). Leaving with changes asks first ("Back never loses input").
+  // Adjust times (or add a nap). Times are picked on a clock dial (TimeSheet):
+  // phone: tap the time to open it in a bottom sheet; desktop: side panel where
+  // the field can also be typed (↑/↓ ±15 min, Alt+↓ or the clock button opens
+  // the dial, Tab next field, Enter/Ctrl+Enter save, Esc close).
+  // Leaving with changes asks first ("Back never loses input").
   import { onMount } from "svelte";
   import type { Edit } from "../lib/state.svelte";
   import { addNap, app, nightByKey, resetToEstimate, setLog } from "../lib/state.svelte";
-  import { dur, hm, nightRange, normTime, shiftTime, toMin } from "../lib/fmt";
+  import { dur, hm, nightRange, normTime, shiftTime, tdisp, toMin, uses12h } from "../lib/fmt";
   import Confirm from "./Confirm.svelte";
   import Icon from "./Icon.svelte";
+  import TimeSheet from "./TimeSheet.svelte";
 
   let { edit, desktop, onclose }: { edit: Edit; desktop: boolean; onclose: () => void } = $props();
   const nap = edit.kind === "nap";
@@ -23,12 +25,14 @@
   };
   const est = { a: !nap && n0?.estimate.bed != null ? hm(n0.estimate.bed, tz) : "", b: !nap && n0?.estimate.wake != null ? hm(n0.estimate.wake, tz) : "" };
   const LABEL = nap ? { a: "Fell asleep", b: "Woke up" } : { a: "Bedtime", b: "Woke up" };
+  const DEF = nap ? { a: "14:00", b: "14:30" } : { a: "23:00", b: "07:00" };
+  const typeHint = uses12h() ? "11:30pm or 2330" : "2330 or 23:30";
 
-  let a = $state(init.a), b = $state(init.b);
+  // a / b hold what the field shows ("23:30" or "11:30 pm"); val() normalises to "HH:MM".
+  let a = $state(tdisp(init.a)), b = $state(tdisp(init.b));
   let before = $state(init.before), after = $state(init.after);
   let focused: "a" | "b" | null = $state(null);
-  let lastField: "a" | "b" | null = null; // refocused after "Keep editing"
-  let fresh = false; // first key after focusing replaces the value
+  let dial: "a" | "b" | null = $state(null);
   let error = $state("");
   let saving = $state(false);
   let confirm = $state(false);
@@ -46,25 +50,24 @@
     const wm = toMin(y) >= 18 * 60 ? toMin(y) - 1440 : toMin(y);
     return wm - bm;
   });
-  const canReset = $derived(!nap && night?.source === "logged" && night.estimate.status === "found");
+  // Any typed time can be dropped again (also when the pair shows "No data").
+  const canReset = $derived(!nap && (night?.log?.bed != null || night?.log?.wake != null) && night?.estimate.status === "found");
 
-  function keepEditing() {
-    confirm = false;
-    if (!desktop && lastField) setTimeout(() => (lastField === "a" ? elA : elB)?.focus(), 30);
-  }
   function guard() {
-    if (confirm) return keepEditing(), true;
-    if (dirty && !saving) return (lastField = focused), (confirm = true), true;
+    if (confirm) return (confirm = false), true;
+    if (dirty && !saving) return (confirm = true), true;
     return false;
   }
   onMount(() => {
     app.closeGuard = guard;
-    const f = edit.focus ?? (nap || !init.a ? "bed" : "bed");
+    const f = edit.focus;
     setTimeout(() => {
-      if (f === "note_before") elBefore?.focus();
+      if (app.demo.dial === "a" || app.demo.dial === "b") dial = app.demo.dial;
+      else if (f === "note_before") elBefore?.focus();
       else if (f === "note_after") elAfter?.focus();
-      else if (f === "wake") elB?.focus();
-      else elA?.focus();
+      else if (desktop) (f === "wake" ? elB : elA)?.focus();
+      // phone: go straight to the dial when there is nothing to adjust yet
+      else if (nap || f === "bed" || f === "wake" || (!init.a && !est.a)) dial = f === "wake" ? "b" : "a";
     }, 60);
     return () => {
       if (app.closeGuard === guard) app.closeGuard = null;
@@ -74,48 +77,49 @@
     if (!guard()) onclose();
   }
 
-  function nudge(which: "a" | "b", by: number) {
-    const cur = val(which === "a" ? a : b) || (which === "a" ? est.a || (nap ? "14:00" : "23:00") : est.b || (nap ? "14:30" : "07:00"));
-    const next = shiftTime(cur!, by);
-    if (which === "a") a = next;
-    else b = next;
+  const current = (w: "a" | "b") =>
+    val(w === "a" ? a : b) || (w === "a" ? est.a || DEF.a : est.b || (nap && val(a) ? shiftTime(val(a)!, 30) : DEF.b));
+  function setField(w: "a" | "b", t: string) {
+    if (w === "a") a = tdisp(t);
+    else b = tdisp(t);
     error = "";
   }
-
-  // Number pad (phone) — types into the focused time field.
-  function key(k: string) {
-    if (!focused) return;
-    let s = focused === "a" ? a : b;
-    if (fresh && k !== "⌫" && k !== "next") s = "";
-    fresh = false;
-    if (k === "⌫") s = s.slice(0, -1);
-    else if (k === "next") return next();
-    else if (k === "am" || k === "pm") s = s.replace(/\s*(am|pm)$/, "") + k;
-    else if (k === ".") { if (!s.includes(":") && s.length) s += ":"; }
-    else if (s.replace(/\D/g, "").length < 4 && !/(am|pm)$/.test(s)) s += k;
-    if (focused === "a") a = s;
-    else b = s;
-    error = "";
+  function nudge(w: "a" | "b", by: number) {
+    setField(w, shiftTime(current(w), by));
   }
-  function next() {
-    if (focused === "a") elB?.focus();
-    else { elB?.blur(); focused = null; }
+  // Same rule as log_set: the effective pair (typed time, else the estimate) must have wake after bed.
+  function pairError(): string {
+    if (nap) return "";
+    const x = val(a) || est.a, y = val(b) || est.b;
+    if (!x || !y) return "";
+    const bm = toMin(x) >= 18 * 60 ? toMin(x) - 1440 : toMin(x);
+    const wm = toMin(y) >= 18 * 60 ? toMin(y) - 1440 : toMin(y);
+    return wm <= bm ? `Wake time must be after bedtime (${tdisp(x)} → ${tdisp(y)}).` : "";
+  }
+  function dialDone(t: string) {
+    const w = dial!;
+    setField(w, t);
+    dial = null;
+    error = pairError();
+    // first time through (nap, or no times yet): go on to the wake time
+    if (!desktop && w === "a" && !val(b)) setTimeout(() => (dial = "b"), 220);
   }
   function onFocus(w: "a" | "b", e: FocusEvent) {
     focused = w;
-    fresh = true;
-    if (desktop) (e.target as HTMLInputElement).select();
+    (e.target as HTMLInputElement).select();
   }
   function onBlur(w: "a" | "b") {
-    const v = w === "a" ? a : b;
-    const t = normTime(v);
-    if (t) w === "a" ? (a = t) : (b = t);
+    const t = normTime(w === "a" ? a : b);
+    if (t) setField(w, t);
     setTimeout(() => {
       if (document.activeElement !== elA && document.activeElement !== elB) focused = null;
     }, 0);
   }
   function fieldKeys(w: "a" | "b", e: KeyboardEvent) {
-    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+    if (e.key === "ArrowDown" && e.altKey) {
+      e.preventDefault();
+      dial = w;
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
       nudge(w, e.key === "ArrowUp" ? 15 : -15);
     } else if (e.key === "Enter") {
@@ -136,7 +140,8 @@
 
   async function save() {
     if (saving) return;
-    if (invalid(a) || invalid(b)) return void (error = "Check the times: type 2330, 23:30 or 11:30pm.");
+    if (invalid(a) || invalid(b)) return void (error = `Check the times: pick them on the clock or type ${typeHint}.`);
+    if ((val(a) !== init.a || val(b) !== init.b) && pairError()) return void (error = pairError());
     saving = true;
     error = "";
     try {
@@ -169,33 +174,44 @@
 
 {#snippet timeRow(w: "a" | "b")}
   {@const v = w === "a" ? a : b}
+  {@const bad = invalid(v)}
   <div class="flex items-center gap-2 py-3">
     <div class="flex min-w-0 flex-1 flex-col gap-1">
       <label for="tf-{w}" class="text-[16px] font-[550]">{LABEL[w]}</label>
-      {#if est[w]}<span class="num text-[12.5px] whitespace-nowrap text-muted">Estimate {est[w]}</span>{/if}
+      {#if est[w]}<span class="num text-[12.5px] whitespace-nowrap text-muted">Estimate {tdisp(est[w])}</span>{/if}
     </div>
-    <button type="button" tabindex="-1" class="press grid h-12 w-12 shrink-0 place-items-center rounded-[12px] bg-fill text-[14.5px] font-semibold text-ink2" aria-label="{LABEL[w]} 15 minutes earlier" onmousedown={(e) => e.preventDefault()} onclick={() => nudge(w, -15)}>−15</button>
-    {#if w === "a"}
-      <input id="tf-a" bind:this={elA} bind:value={a} inputmode={desktop ? "text" : "none"} autocomplete="off" placeholder={est.a || "hh:mm"} aria-invalid={invalid(v)}
-        onfocus={(e) => onFocus("a", e)} onblur={() => onBlur("a")} onkeydown={(e) => fieldKeys("a", e)} oninput={() => (error = "")}
-        class="num h-12 w-24 shrink-0 rounded-[12px] text-center text-[19px] font-semibold outline-none {focused === 'a' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {invalid(v) ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
+    <button type="button" tabindex="-1" class="press grid h-12 shrink-0 place-items-center rounded-[12px] bg-fill text-[14.5px] font-semibold text-ink2 {desktop ? 'w-11' : 'w-12'}" aria-label="{LABEL[w]} 15 minutes earlier" onmousedown={(e) => e.preventDefault()} onclick={() => nudge(w, -15)}>−15</button>
+    {#if desktop}
+      <div class="relative shrink-0">
+        {#if w === "a"}
+          <input id="tf-a" bind:this={elA} bind:value={a} autocomplete="off" placeholder={tdisp(est.a) || "hh:mm"} aria-invalid={bad} aria-describedby="tf-help"
+            onfocus={(e) => onFocus("a", e)} onblur={() => onBlur("a")} onkeydown={(e) => fieldKeys("a", e)} oninput={() => (error = "")}
+            class="num h-12 w-[100px] rounded-[12px] pr-7 pl-1.5 text-center text-[18px] font-semibold outline-none {focused === 'a' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {bad ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
+        {:else}
+          <input id="tf-b" bind:this={elB} bind:value={b} autocomplete="off" placeholder={tdisp(est.b) || "hh:mm"} aria-invalid={bad} aria-describedby="tf-help"
+            onfocus={(e) => onFocus("b", e)} onblur={() => onBlur("b")} onkeydown={(e) => fieldKeys("b", e)} oninput={() => (error = "")}
+            class="num h-12 w-[100px] rounded-[12px] pr-7 pl-1.5 text-center text-[18px] font-semibold outline-none {focused === 'b' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {bad ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
+        {/if}
+        <button type="button" tabindex="-1" class="press absolute top-1.5 right-1 grid h-9 w-7 place-items-center rounded-[9px] text-muted hover:bg-fill2 hover:text-accent" aria-label="Pick {LABEL[w]} on the clock (Alt+↓)" title="Pick on the clock (Alt+↓)"
+          onmousedown={(e) => e.preventDefault()} onclick={() => (dial = w)}><Icon name="clock" size={17} stroke={2} /></button>
+      </div>
     {:else}
-      <input id="tf-b" bind:this={elB} bind:value={b} inputmode={desktop ? "text" : "none"} autocomplete="off" placeholder={est.b || "hh:mm"} aria-invalid={invalid(v)}
-        onfocus={(e) => onFocus("b", e)} onblur={() => onBlur("b")} onkeydown={(e) => fieldKeys("b", e)} oninput={() => (error = "")}
-        class="num h-12 w-24 shrink-0 rounded-[12px] text-center text-[19px] font-semibold outline-none {focused === 'b' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {invalid(v) ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
+      <button type="button" id="tf-{w}" aria-haspopup="dialog" aria-label="{LABEL[w]}: {val(v) ? tdisp(val(v)) : est[w] ? 'estimate ' + tdisp(est[w]) : 'not set'}. Pick on the clock"
+        class="press num h-12 shrink-0 rounded-[12px] px-2 text-center font-semibold {uses12h() ? 'w-[104px] text-[17px]' : 'w-24 text-[19px]'} {dial === w ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {bad ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : val(v) ? '' : 'text-muted'}"
+        onclick={() => (dial = w)}>{v || tdisp(est[w]) || "––:––"}</button>
     {/if}
-    <button type="button" tabindex="-1" class="press grid h-12 w-12 shrink-0 place-items-center rounded-[12px] bg-fill text-[14.5px] font-semibold text-ink2" aria-label="{LABEL[w]} 15 minutes later" onmousedown={(e) => e.preventDefault()} onclick={() => nudge(w, 15)}>+15</button>
+    <button type="button" tabindex="-1" class="press grid h-12 shrink-0 place-items-center rounded-[12px] bg-fill text-[14.5px] font-semibold text-ink2 {desktop ? 'w-11' : 'w-12'}" aria-label="{LABEL[w]} 15 minutes later" onmousedown={(e) => e.preventDefault()} onclick={() => nudge(w, 15)}>+15</button>
   </div>
 {/snippet}
 
 {#snippet form()}
   <div class="card px-4 py-1">{@render timeRow("a")}<div class="h-px bg-sep"></div>{@render timeRow("b")}</div>
   <div class="mx-1 mt-2.5 flex text-[13px]">
-    <span class="text-muted">Type 2330 or 11:30pm</span><span class="flex-1"></span>
+    <span class="text-muted">{desktop ? `Type ${typeHint} or use the clock` : "Tap a time to pick it on the clock"}</span><span class="flex-1"></span>
     {#if asleep != null && asleep > 0}<span class="num text-ink2">{nap ? "Nap" : "Asleep"} <b class="text-ink">{dur(asleep)}</b></span>{/if}
   </div>
   {#if error}<p role="alert" class="mx-1 mt-2 mb-0 text-[14px] text-danger">{error}</p>{/if}
-  {#if !nap && !(focused && !desktop)}
+  {#if !nap}
     <div class="mx-1 mt-[22px] mb-2 text-[13.5px] font-semibold text-ink2">Notes</div>
     <div class="card">
       <label class="block px-4 pt-2.5 pb-3">
@@ -211,24 +227,6 @@
   {/if}
 {/snippet}
 
-{#snippet pad()}
-  <div class="border-t border-sep bg-card px-2 pt-2 pb-[max(14px,env(safe-area-inset-bottom))]">
-    <div class="flex items-center px-1.5 pb-2 text-[12.5px]">
-      <span class="flex-1 text-muted">{focused === "a" ? LABEL.a : LABEL.b} · type 2330 or 11:30pm</span>
-      <span class="flex gap-2">
-        {#each ["am", "pm"] as k}<button type="button" class="press h-9 rounded-[10px] bg-fill px-3 text-[13px] font-semibold text-ink2" onmousedown={(e) => e.preventDefault()} onclick={() => key(k)}>{k}</button>{/each}
-        <button type="button" class="press h-9 rounded-[10px] bg-fill px-3 text-[13px] font-semibold text-accent" onmousedown={(e) => e.preventDefault()} onclick={() => key("next")}>{focused === "a" ? "Next" : "Done"}</button>
-      </span>
-    </div>
-    <div class="grid grid-cols-3 gap-1.5">
-      {#each ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"] as k}
-        <button type="button" class="press num grid h-[50px] place-items-center rounded-[12px] bg-fill text-[22px] font-[550]" aria-label={k === "⌫" ? "Delete" : k === "." ? "Colon" : k}
-          onmousedown={(e) => e.preventDefault()} onclick={() => key(k)}>{#if k === "⌫"}<Icon name="bksp" size={24} stroke={1.8} />{:else}{k}{/if}</button>
-      {/each}
-    </div>
-  </div>
-{/snippet}
-
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="flex h-full min-h-0 flex-col" onkeydown={panelKeys}>
   {#if desktop}
@@ -238,8 +236,8 @@
         <button type="button" class="press -mr-2 grid h-11 w-11 place-items-center rounded-[12px] text-ink2" aria-label="Close (Esc)" onclick={close}><Icon name="close" size={20} stroke={2} /></button>
       </div>
       {@render form()}
-      <div class="mx-1 mt-3.5 rounded-[10px] bg-fill2 px-3 py-2 text-[12px] leading-[1.7] text-muted">
-        Type a time (2330, 11:30pm) · <b class="font-semibold text-ink2">↑ ↓</b> ±15 min<br /><b class="font-semibold text-ink2">Tab</b> next field · <b class="font-semibold text-ink2">Ctrl+Enter</b> save · <b class="font-semibold text-ink2">Esc</b> close
+      <div id="tf-help" class="mx-1 mt-3.5 rounded-[10px] bg-fill2 px-3 py-2 text-[12px] leading-[1.7] text-muted">
+        <b class="font-semibold text-ink2">Alt+↓</b> clock dial · <b class="font-semibold text-ink2">↑ ↓</b> ±15 min<br /><b class="font-semibold text-ink2">Tab</b> next field · <b class="font-semibold text-ink2">Ctrl+Enter</b> save · <b class="font-semibold text-ink2">Esc</b> close
       </div>
       <span class="flex-1"></span>
       {#if canReset}<button type="button" class="press mt-4 mb-2 h-11 w-full text-[15px] font-[550] text-accent" onclick={useEstimate}>Use the estimate instead</button>{/if}
@@ -251,23 +249,17 @@
       <div class="ml-1 flex flex-col"><h2 class="m-0 text-[18px] font-bold tracking-[-0.02em]">{nap ? "Add nap" : "Adjust times"}</h2><span class="text-[12.5px] text-muted">{nightRange(edit.night)}</span></div>
     </div>
     <div class="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-4">{@render form()}</div>
-    <div class="shrink-0 bg-bg">
-      {#if focused}
-        <div class="flex items-center gap-2 px-4 py-2.5">
-          {#if canReset}<button type="button" class="press h-11 px-1 text-[15px] font-[550] text-accent" onmousedown={(e) => e.preventDefault()} onclick={useEstimate}>Use the estimate</button>{/if}
-          <span class="flex-1"></span>
-          <button type="button" class="press h-12 rounded-[14px] bg-accent px-7 text-[16px] font-semibold text-on-accent" onmousedown={(e) => e.preventDefault()} onclick={save}>{nap ? "Add nap" : "Save"}</button>
-        </div>
-        {@render pad()}
-      {:else}
-        <div class="px-4 pt-3 pb-[max(20px,env(safe-area-inset-bottom))]">
-          {#if canReset}<button type="button" class="press mb-2 h-11 w-full text-[15px] font-[550] text-accent" onclick={useEstimate}>Use the estimate instead</button>{/if}
-          <button type="button" class="press h-[52px] w-full rounded-[14px] bg-accent text-[16px] font-semibold text-on-accent disabled:opacity-60" disabled={saving} onclick={save}>{nap ? "Add nap" : "Save"}</button>
-        </div>
-      {/if}
+    <div class="shrink-0 bg-bg px-4 pt-3 pb-[max(20px,env(safe-area-inset-bottom))]">
+      {#if canReset}<button type="button" class="press mb-2 h-11 w-full text-[15px] font-[550] text-accent" onclick={useEstimate}>Use the estimate instead</button>{/if}
+      <button type="button" class="press h-[52px] w-full rounded-[14px] bg-accent text-[16px] font-semibold text-on-accent disabled:opacity-60" disabled={saving} onclick={save}>{nap ? "Add nap" : "Save"}</button>
     </div>
   {/if}
 </div>
+{#if dial}
+  {#key dial}
+    <TimeSheet title={LABEL[dial]} value={current(dial)} hint={est[dial] ? `Estimate ${tdisp(est[dial])}` : ""} {desktop} ondone={dialDone} oncancel={() => (dial = null)} />
+  {/key}
+{/if}
 {#if confirm}
-  <Confirm title={nap ? "Discard this nap?" : "Discard your changes?"} action="Discard" onconfirm={() => ((confirm = false), (saving = true), onclose())} oncancel={keepEditing} />
+  <Confirm title={nap ? "Discard this nap?" : "Discard your changes?"} action="Discard" onconfirm={() => ((confirm = false), (saving = true), onclose())} oncancel={() => (confirm = false)} />
 {/if}

@@ -3,6 +3,8 @@
 //! `SELFKIT_DATA_DIR=/tmp/x cargo run -p hisab --example seed`
 //! `--theme light|dark|system` only sets the theme preference.
 //! `--fresh` wipes hisab.db first.
+//! `--year`: a full year of everyday use (QA, performance): ~2,000 entries, 3 currencies
+//! (USD, BDT, EUR), ~20 categories, more loans with repayments, goals and subscriptions.
 
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use hisab_lib::model::{self, ACCOUNTS, CATEGORIES, GOALS, LOANS, RECURRING, SMS, TRANSACTIONS};
@@ -55,12 +57,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         put(CATEGORIES, id, json!({"name": n, "kind":"expense","icon": ic,"color": col,"budget": b,"order": i}));
     }
     put(CATEGORIES, "cat-old", json!({"name":"Gym","kind":"expense","icon":"fitness","color":"#8a8a8e","order": 20, "archived": true}));
+    let year = args.iter().any(|a| a == "--year");
+    if year {
+        put(ACCOUNTS, "acc-eur", json!({"name":"Wise EUR","kind":"bank","currency":"EUR","opening":850,"order":4}));
+        let more = [("cat-snack", "Snacks", "coffee", "#b07a3b", 40.0), ("cat-mob", "Mobile", "phone", "#4a7fb5", 15.0), ("cat-book", "Books", "book", "#7b5ea7", 0.0),
+            ("cat-edu", "Education", "school", "#3b8f8f", 0.0), ("cat-travel", "Travel", "plane", "#c46a3b", 0.0), ("cat-charity", "Charity", "heart", "#5e9e7a", 0.0),
+            ("cat-pet", "Pet", "paw", "#a07a5a", 0.0), ("cat-clothes", "Clothes", "shirt", "#9b5aa0", 60.0)];
+        for (i, (id, n, ic, col, b)) in more.iter().enumerate() {
+            put(CATEGORIES, id, json!({"name": n, "kind":"expense","icon": ic,"color": col,"budget": b,"order": 10 + i}));
+        }
+        put(CATEGORIES, "cat-int", json!({"name":"Interest","kind":"income","icon":"chart","color":"#5a9e5f","order":3}));
+    }
     put(CATEGORIES, "cat-sal", json!({"name":"Salary","kind":"income","icon":"briefcase","color":"#2e7a4d","order":0}));
     put(CATEGORIES, "cat-free", json!({"name":"Freelance","kind":"income","icon":"chart","color":"#3b82c4","order":1}));
     put(CATEGORIES, "cat-ginc", json!({"name":"Gift","kind":"income","icon":"gift","color":"#e0719c","order":2}));
 
     let today = Local::now().date_naive();
-    let start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap() - Duration::days(200);
+    let start = if year { today - Duration::days(365) } else { NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap() - Duration::days(200) };
     let mut seed: u64 = 42;
     let mut rnd = move || {
         seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
@@ -116,6 +129,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if d.day() == 20 && d.month() % 2 == 0 {
             tx(json!({"kind":"expense","amount":60,"date":ds,"account":"acc-visa","splits":[{"category":"cat-shop","amount":35},{"category":"cat-gift","amount":25}],"note":"Mall: shirt + gift for Mum","tags":["family"]}));
         }
+        if year {
+            for _ in 0..(2 + (rnd() * 3.0) as u32) {
+                let r = rnd();
+                let (cat, note, lo, hi, cur, acc) = if r < 0.3 { ("cat-snack", "Chips + tea", 20.0, 120.0, "BDT", "acc-bkash") }
+                    else if r < 0.45 { ("cat-food", "Office lunch", 4.0, 14.0, "USD", "acc-cash") }
+                    else if r < 0.55 { ("cat-mob", "Mobile recharge", 50.0, 500.0, "BDT", "acc-bkash") }
+                    else if r < 0.65 { ("cat-tr", "Bus", 20.0, 80.0, "BDT", "acc-bkash") }
+                    else if r < 0.72 { ("cat-book", "Rokomari books", 300.0, 1500.0, "BDT", "acc-bkash") }
+                    else if r < 0.8 { ("cat-gro", "Vegetables", 2.0, 12.0, "USD", "acc-cash") }
+                    else if r < 0.86 { ("cat-clothes", "Aarong", 15.0, 70.0, "USD", "acc-visa") }
+                    else if r < 0.9 { ("cat-pet", "Cat food", 5.0, 25.0, "USD", "acc-visa") }
+                    else if r < 0.93 { ("cat-charity", "Donation", 100.0, 1000.0, "BDT", "acc-bkash") }
+                    else { ("cat-cafe", "Cappuccino", 3.0, 6.0, "USD", "acc-cash") };
+                let amt = ((lo + rnd() * (hi - lo)) * 100.0).round() / 100.0;
+                tx(json!({"kind":"expense","amount": amt,"currency": cur,"date":ds,"time": format!("{:02}:{:02}", 7 + (rnd()*15.0) as u32, (rnd()*59.0) as u32),"account": acc,"category": cat,"note": note,"tags": if rnd() < 0.1 {json!(["work"])} else if rnd() < 0.05 {json!(["trip"])} else {json!([])}}));
+            }
+            // Two trips abroad paid from the EUR account.
+            let back = (today - d).num_days();
+            if (200..207).contains(&back) || (60..64).contains(&back) {
+                tx(json!({"kind":"expense","amount": (20.0 + rnd() * 80.0).round(),"currency":"EUR","date":ds,"account":"acc-eur","category":"cat-travel","note":"Hotel + food","tags":["trip"]}));
+                tx(json!({"kind":"expense","amount": (2.0 + rnd() * 8.0).round(),"currency":"EUR","date":ds,"account":"acc-eur","category":"cat-tr","note":"Metro","tags":["trip"]}));
+            }
+            if d.day() == 28 {
+                tx(json!({"kind":"income","amount": 1.5,"currency":"EUR","date":ds,"account":"acc-eur","category":"cat-int","note":"Interest"}));
+            }
+            if d.day() == 3 && d.month() % 3 == 0 {
+                tx(json!({"kind":"transfer","amount":300,"date":ds,"account":"acc-bank","to_account":"acc-eur","note":"Move to EUR"}));
+            }
+            if d.day() == 12 && d.month() % 4 == 1 {
+                tx(json!({"kind":"expense","amount":(18000.0 + rnd() * 6000.0).round(),"currency":"BDT","date":ds,"account":"acc-bkash","category":"cat-edu","note":"Semester fee","tags":["study"]}));
+            }
+        }
         if d < today - Duration::days(120) && d.day() == 10 {
             tx(json!({"kind":"expense","amount":25,"date":ds,"account":"acc-cash","category":"cat-old","note":"Gym membership"}));
         }
@@ -137,6 +182,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     put(LOANS, "loan-nadia", json!({"direction":"lent","person":"Nadia","title":"Rent share","amount":680,"given":day(-10),"due":day(46),"repayments":[]}));
     put(LOANS, "loan-arif", json!({"direction":"lent","person":"Arif","title":"Bike part","amount":45,"given":day(-90),"due":day(-60),"repayments":[{"date":day(-70),"amount":45}]}));
     put(LOANS, "loan-uncle", json!({"direction":"borrowed","person":"Uncle Karim","title":"Course fee","amount":30000,"currency":"BDT","given":day(-45),"due":day(75),"account":"acc-bkash","repayments":[{"date":day(-15),"amount":10000}],"remind_days":3}));
+    if year {
+        put(LOANS, "loan-tanvir", json!({"direction":"borrowed","person":"Tanvir","title":"Trip money","amount":400,"currency":"EUR","given":day(-210),"due":day(-120),"account":"acc-eur",
+            "repayments":[{"date":day(-190),"amount":100},{"date":day(-160),"amount":100},{"date":day(-130),"amount":100},{"date":day(-110),"amount":100}]}));
+        put(LOANS, "loan-mitu", json!({"direction":"lent","person":"Mitu","title":"Phone EMI help","amount":24000,"currency":"BDT","given":day(-300),"due":day(30),"account":"acc-bkash",
+            "repayments": (0..9).map(|k| json!({"date": day(-280 + k * 30), "amount": 2000, "note": format!("installment {}", k + 1)})).collect::<Vec<_>>(), "remind_days": 2}));
+        put(LOANS, "loan-office", json!({"direction":"lent","person":"Office canteen","title":"","amount":12.5,"given":day(-3),"due":day(-1),"repayments":[]}));
+        put(GOALS, "goal-trip", json!({"name":"Japan trip 🗾","target":2500,"currency":"EUR","deadline":day(240),"contributions": (0..10).map(|k| json!({"date": day(-330 + k * 33), "amount": 120 + k * 5})).collect::<Vec<_>>()}));
+        put(GOALS, "goal-done", json!({"name":"Laptop","target":900,"contributions":[{"date":day(-300),"amount":500},{"date":day(-200),"amount":400}],"archived":true}));
+        put(RECURRING, "rec-gym", json!({"name":"Gym","freq":"monthly","start":day(-330),"subscription":true,"template":{"kind":"expense","amount":1500,"currency":"BDT","account":"acc-bkash","category":"cat-health"}}));
+        put(RECURRING, "rec-coffee", json!({"name":"Coffee beans","freq":"weekly","interval":2,"start":day(-200),"template":{"kind":"expense","amount":8.5,"account":"acc-visa","category":"cat-cafe"}}));
+        recur::generate(&s, "USD", today)?;
+    }
     // Goals.
     put(GOALS, "goal-phone", json!({"name":"New phone","target":800,"deadline":day(120),"contributions":[{"date":day(-60),"amount":150},{"date":day(-30),"amount":200},{"date":day(-3),"amount":120}]}));
     put(GOALS, "goal-emergency", json!({"name":"Emergency fund","target":3000,"contributions":[{"date":day(-150),"amount":500},{"date":day(-90),"amount":700},{"date":day(-20),"amount":400}]}));

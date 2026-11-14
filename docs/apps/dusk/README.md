@@ -1,21 +1,33 @@
 # Dusk (com.selfkit.dusk)
 
-Status: **v0.1, usable on Linux and Android.** Automatic sleep estimate from device use (Chrono data on desktop, UsageStatsManager on Android), manual log (bedtime, wake time, 1–5 quality, notes, naps), trends, consistency, sleep debt, bedtime goal, wind-down reminder, connections (late screen use vs quality; sleep vs next-day tasks and spending), desktop rate-sleep popup. Later: Health Connect (extension point only, see [estimation.md](estimation.md#health-connect)).
+Status: **v0.1.1, usable on Linux and Android.** (0.1.1 = QA fixes, see [QA 2026-11-15](#qa-2026-11-15).) Automatic sleep estimate from device use (Chrono data on desktop, UsageStatsManager on Android), manual log (bedtime, wake time, 1–5 quality, notes, naps), trends, consistency, sleep debt, bedtime goal, wind-down reminder, connections (late screen use vs quality; sleep vs next-day tasks and spending), desktop rate-sleep popup. Later: Health Connect (extension point only, see [estimation.md](estimation.md#health-connect)).
 
-Design: approved mockup `dusk-final.html` (2026-11-15; reviewed design + "This week" on Night + number pad in Adjust). Neutral greys, one violet accent (#6552b8 light / #a898f2 dark), red only for errors and destructive actions, Inter (bundled). Light/dark follow the system unless set.
+Design: approved mockup `dusk-final.html` (2026-11-15; reviewed design + "This week" on Night; the Adjust number pad was replaced by a clock dial on 2026-11-15, see [Time picker](#time-picker-clock-dial)). Neutral greys, one violet accent (#6552b8 light / #a898f2 dark), red only for errors and destructive actions, Inter (bundled). Light/dark follow the system unless set.
 
 Feature notes: [estimation.md](estimation.md) (how a night is estimated, naps, all-nighters, time zones, day start, connections) · [android.md](android.md) (Usage access bridge, reminders, testing).
 
 ## Screens
 - **Night** (opens here): "Last night" with ‹ › to other nights, the big duration (or "No sleep" / "Not over yet" / "No data"), a pill saying where it comes from ("Estimated from screen use" / "Times set by you"), a timeline 20:00→12:00 (screen on in grey, asleep in violet, the estimate as a thin line under a correction), Bedtime / Woke up ("was 23:48" after a correction) / Woke briefly ("1 time · 4 min"), Adjust times, Add nap. Then "How did you sleep?" 1–5 (one tap, undo in the toast; tapping the selected one again removes the rating), Notes (Before bed / After waking, "+ Add a note"), naps, and **This week** (7 nights, average, goal line, the night on screen highlighted). Android without Usage access shows an "Allow" card.
-- **Adjust times** (phone: page with back arrow and full-width Save; desktop: side panel): Bedtime / Woke up with −15 · field · +15 and "Estimate 23:48", "Asleep 7h 30m", the two notes, "Use the estimate instead". Phone: tapping a time field shows the in-app number pad (1–9, ".", 0, ⌫, am, pm, Next/Done); typing 2330 / 23:30 / 11:30pm works. Desktop: type on the keyboard, ↑/↓ ±15 min, Tab next field, Enter/Ctrl+Enter save, Esc close. Leaving with changes asks "Discard your changes?" (Back, Esc, back arrow). **Add nap** uses the same page (Fell asleep / Woke up).
+- **Adjust times** (phone: page with back arrow and full-width Save; desktop: side panel): Bedtime / Woke up with −15 · field · +15 and "Estimate 23:48", "Asleep 7h 30m", the two notes, "Use the estimate instead". Phone: tapping a time opens the [clock dial](#time-picker-clock-dial) in a bottom sheet (Cancel/Done); an empty pair (Add nap, "Enter times" with no estimate) opens it straight away and goes on from the first time to the second. Desktop: the field can still be typed (2330 / 23:30 / 11:30pm), ↑/↓ ±15 min, Alt+↓ or the clock button opens the dial as a small dialog, Tab next field, Enter/Ctrl+Enter save, Esc close. A wake time not after bedtime (typed pair, or typed time + estimate) shows "Wake time must be after bedtime (…)" under the fields, same rule as `log_set`. Leaving with changes asks "Discard your changes?" (Back, Esc, back arrow). **Add nap** uses the same page (Fell asleep / Woke up).
 - **Trends**: 2 weeks / Month / 3 months; average asleep and bars per night (night + nap, goal line; tap a bar to open the night); four stats (average last 7 nights vs the week before, sleep debt over 14 nights, consistency 0–100, bed on time of 7 nights); bed and wake times chart with the bedtime goal; weekly averages (3 months).
 - **Connections** ("Last 3 months. A link doesn't prove a cause."): one card per link with topic, strength badge (No clear / Weak / Moderate / Strong), one plain sentence, two compared bars, and "Details" (4-group breakdown + correlation). Missing data source = muted card ("Hisab isn't on this device").
-- **Settings**: sleep goal (±15 min), bedtime goal, wind-down reminder (off by default) + lead time 15/30/45/60 min, new day starts at (shared setting), appearance, data sources (Android: Usage access status + Allow; desktop: Chrono / Agenda / Hisab found), rate-sleep shortcut (desktop), Health Connect "Coming later".
+- **Settings**: sleep goal (±15 min), bedtime goal (tap → clock dial, saved on Done), wind-down reminder (off by default) + lead time 15/30/45/60 min, new day starts at (shared setting), appearance, data sources (Android: Usage access status + Allow; desktop: Chrono / Agenda / Hisab found), rate-sleep shortcut (desktop), Health Connect "Coming later".
 - **Desktop**: left nav Night / Trends / Connections (Ctrl+1/2/3), Settings (Ctrl+,); Night shows the night on the left and the last 14 nights ("has notes" dots, click a bar to open) + stats on the right. Keys on Night: 1–5 rate, ←/→ other nights, A adjust, N add nap.
 - **Rate-sleep popup** (desktop): global shortcut `rate_sleep` (default Super+Shift+S, shared settings) or `dusk --rate`: "How did you sleep?", 1–5 key or click, saves and closes; Esc/blur closes.
 
-Android Back (Tauri `onBackButtonPress`): closes Adjust (asks first if there are changes), then Settings, then Trends/Connections → Night, then an older night → last night, then exits.
+Android Back (Tauri `onBackButtonPress`): closes an open clock dial (= Cancel), then Adjust (asks first if there are changes), then Settings, then Trends/Connections → Night, then an older night → last night, then exits.
+
+## Time picker (clock dial)
+Every time in Dusk (Adjust: bedtime/fell asleep and woke up; Settings: bedtime goal) is picked on one clock dial (`src/components/TimeDial.svelte`, wrapped by `TimeSheet.svelte`). The keypad is gone (user: "select time from a clock", 2026-11-15).
+- **Readout** on top: big hour and minutes; the one being set is tinted violet; tap either to switch.
+- **Face**: tap or drag the hour first. 24h: 1–12 on the outer ring, 13–23 and 00 on the inner ring. 12h: one ring plus an am/pm toggle next to the readout. Releasing the hour moves on to minutes by itself (260 ms).
+- **Minutes**: 00, 05 … 55 labelled, dots for single minutes. A drag snaps to the 5-minute mark when within ±1 minute of it, otherwise to the exact minute (so 1-minute precision by aiming between marks); the knob shows a dot when off a mark.
+- **Hand** turns the short way round with a 220 ms ease (70 ms while dragging); off with reduced motion.
+- **Keys**: ←↓ / ↑→ −/+1 (Shift: 5 minutes, PageUp/PageDown ±5), digits type minutes, Tab hour → minutes → am/pm → Cancel → Done (focus stays in the dialog), Enter = Done, Esc = Cancel (doesn't close the Adjust panel behind it).
+- **Container**: phone (< 900 px) bottom sheet with handle, title, "Estimate 23:48" hint, Cancel / Done; desktop a 340 px dialog with a key hint line. While open it takes over `app.closeGuard`, so Android Back = Cancel, and hands the previous guard (Adjust's "Discard your changes?") back on close.
+- **12h / 24h**: there is no app or shared setting, so it follows the system locale (`Intl` hour cycle; `uses12h()` in `lib/fmt.ts`). In 12h the time fields and the wind-down line show "11:30 pm"; values are still stored as "HH:MM". Android WebView reports the language's default, not the system 24-hour switch.
+- Starting value: the field's time, else the estimate, else 23:00 / 07:00 (nap: 14:00, and the wake time starts 30 min after "Fell asleep").
+- Tested 2026-11-15 on Linux (Xvfb: drag hour on the inner ring, drag minutes incl. a 1-minute stop, Alt+↓/arrows/Tab/Enter/Esc on desktop) and on the vivo (720×1600, 12h locale, APK 0.1.2): `adb shell input swipe` on the dial, nap added and deleted, bedtime goal changed and restored, Back closes the sheet (Adjust and Settings), wake-before-bed message, dark mode.
 
 ## Data model (`dusk.db`, selfkit-core records)
 
@@ -47,7 +59,7 @@ One record per device per night, id `u-<device>-<night>`; re-imports merge (unio
 ## Reads (read-only)
 - `chrono.db`: `app_sessions` (all platforms, incl. Android sessions synced from Chrono) and `web_sessions` — `{start, end, tz_offset}`.
 - `agenda.db`: `tasks` with `done_at` (tasks done per logical day; days between the first task and today count 0 when nothing was done).
-- `hisab.db` (if the file exists): `transactions` `{kind, amount, amount_main, date, time}` → spent per logical day (expenses only, `amount_main` preferred). Any other shape is skipped (the card says no data).
+- `hisab.db` (if the file exists): `transactions` `{kind, amount, currency, amount_main, date, time}` → spent per logical day (expenses only). `amount_main` if present, else `amount` converted from `currency` into the main currency with Hisab's `rates` record (`hisab-rates`; Hisab never stores `amount_main`); a currency without a rate is left out. Any other shape is skipped (the card says no data).
 - On Android these files are not on the device, so the two next-day connections say "isn't on this device".
 
 ## Build and run
@@ -59,17 +71,24 @@ cargo test -p dusk                                          # model, sources, da
 SELFKIT_DATA_DIR=/tmp/dusk-demo cargo run -p dusk --example dusk_seed     # ~4 months of sample data (+ chrono/agenda/hisab DBs, day start 04:00)
 SELFKIT_DATA_DIR=/tmp/dusk-demo cargo run -p dusk --example dusk_report   # print nights, stats, connections
 ```
-Screenshots without a window: Xvfb on :84, then `DUSK_SHOT_DATA=/tmp/dusk-demo apps/dusk/scripts/shot.sh <name> <system|light|dark> <WxH> "<DUSK_DEMO>" [--rate]` (DUSK_DEMO: `tab=night|trends|connections|settings`, `back=<nights>`, `edit=adjust|nap`, `focus=bed|wake|note_before`). Android: [android.md](android.md).
+Screenshots without a window: Xvfb on :84, then `DUSK_SHOT_DATA=/tmp/dusk-demo apps/dusk/scripts/shot.sh <name> <system|light|dark> <WxH> "<DUSK_DEMO>" [--rate]` (DUSK_DEMO: `tab=night|trends|connections|settings`, `back=<nights>`, `edit=adjust|nap`, `focus=bed|wake|note_before`, `dial=a|b` (Adjust) or `dial=goal` (Settings) opens the clock dial, `clock=12|24` forces the dial format). Android: [android.md](android.md).
 
 ## Code map
 - `src-tauri/src/model.rs`: pure model — spans, night windows, `estimate`, `night_view` (log/external/estimate priority), stats, weekly averages, connections; unit tests.
 - `src-tauri/src/sources.rs`: read chrono.db / agenda.db / hisab.db, `device_use`, Android events → intervals, `save_device_use`; tests.
 - `src-tauri/src/data.rs`: `sleep_log` set/replace/naps, goals, device prefs, `dusk_nights` cache, migrations, user-facing `Error`; tests.
 - `src-tauri/src/health.rs`: Health Connect extension point (empty).
+- `src-tauri/src/recover.rs`: damaged DB → set aside as `<name>.damaged-<ms>`, fresh DB, one-time toast (`startup_notice`).
 - `src-tauri/src/lib.rs`: Tauri commands (`dashboard`, `night`, `connections`, `log_set`, `log_replace`, `nap_*`, `goals_set`, `device_*`, `settings_*`, `android_import`, `sources_status`), `compute`, `reminders` (Android exact alarms / desktop timer), `shortcut` (global shortcut + popup), env hooks `DUSK_DEMO`, `DUSK_WINDOW_SIZE`.
 - `src-tauri/examples/dusk_seed.rs`, `dusk_report.rs`: sample data, debugging report.
 - `src-tauri/gen/android/`: generated Android project, customized: `DuskUsage.kt` (bridge), `MainActivity.kt`, manifest (usage stats, notifications, exact alarms, `adjustResize`), icons, window background, proguard keep rule.
 - `src/main.ts` (App or Capture), `src/app.css` (tokens), `src/App.svelte` (layout, nav, Back, keys, hooks), `src/Capture.svelte` (popup).
 - `src/lib/api.ts` (commands + types), `state.svelte.ts` (state, rate/log/naps with undo, prefs/theme, Android import), `fmt.ts` (time/duration formatting), `icons.ts`.
-- `src/components/`: `NightPage`, `Adjust` (times/notes/nap + number pad), `TrendsPage`, `ConnectionsPage`, `SettingsPage`, `Timeline`, `NightBars`, `RangeChart`, `StatsGrid`, `Rating`, `Seg`, `Icon`, `Toast`, `Confirm`.
+- `src/components/`: `NightPage`, `Adjust` (times/notes/nap), `TimeDial` (clock face + readout), `TimeSheet` (dial in a bottom sheet / desktop dialog, Back/Esc/Enter), `TrendsPage`, `ConnectionsPage`, `SettingsPage`, `Timeline`, `NightBars`, `RangeChart`, `StatsGrid`, `Rating`, `Seg`, `Icon`, `Toast`, `Confirm`.
 - `scripts/shot.sh`: off-screen screenshots.
+
+## QA 2026-11-15
+Tested with the default seed (120 nights; the user asked not to use a year for Dusk) on Linux and the 0.1.0 APK on the vivo.
+- Linux: open ≈ 1.1 s; screen switches 70–190 ms CPU; ~215 MB PSS total, ~380 MB summed RSS.
+- Fixed: changing only one time in Adjust (e.g. bedtime 03:00 while the estimated wake was 02:52) was saved and the night showed "No data" with no way back — `log_set` now checks the bed/wake pair that will show and refuses with "Wake time must be after bedtime" (and "Use the estimate" shows whenever a time was typed); the spending connection summed Hisab amounts in other currencies as if they were the main currency (e.g. ৳3,500 counted as $3,500); damaged `dusk.db`/`settings.db` crash at start; two desktop instances (single-instance plugin, `--rate` goes to the running one).
+- Verified: unreadable `chrono.db` / truncated `agenda.db` → Dusk still opens, the cards degrade; Usage access denied → "Allow" card; rapid rating taps end in a consistent saved state; invalid typed time (9999) refused.

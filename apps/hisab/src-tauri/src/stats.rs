@@ -333,7 +333,9 @@ fn by_category(d: &Data, kind: &str, pred: impl Fn(&str) -> bool) -> Vec<Value> 
             })
         })
         .collect();
-    out.sort_by(|a, b| f(b, "amount").total_cmp(&f(a, "amount")));
+    // Ties are ordered by name, then id: HashMap order made equal amounts swap
+    // between runs (flaky test, list reordering in the UI).
+    out.sort_by(|a, b| f(b, "amount").total_cmp(&f(a, "amount")).then_with(|| s(a, "name").cmp(s(b, "name"))).then_with(|| s(a, "id").cmp(s(b, "id"))));
     out
 }
 
