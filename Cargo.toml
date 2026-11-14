@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["selfkit-core", "selfkit-agent", "apps/*/src-tauri"]
+members = ["selfkit-core", "selfkit-agent", "selfkit-appsync", "apps/*/src-tauri"]
 
 [workspace.package]
 version = "0.1.0"

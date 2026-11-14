@@ -45,6 +45,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
  "time",
 ]
 
@@ -1258,6 +1259,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
+ "tauri-plugin-single-instance",
  "time",
 ]
 
@@ -1980,6 +1982,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
+ "tauri-plugin-single-instance",
  "time",
 ]
 
@@ -3862,6 +3865,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "reflect"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rusqlite",
+ "selfkit-core",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
 name = "regex"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4252,6 +4268,23 @@ dependencies = [
  "tracing-subscriber",
  "windows 0.61.3",
  "x11rb",
+]
+
+[[package]]
+name = "selfkit-appsync"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "jni",
+ "selfkit-core",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-postgres",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -5064,6 +5097,22 @@ dependencies = [
  "thiserror 2.0.21",
  "url",
  "windows 0.62.2",
+ "zbus 5.19.0",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "2.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "726b6da0dd5bd1344f84f4108a622c07d01923baacb5c803a605189672c5352f"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "windows-sys 0.61.2",
  "zbus 5.19.0",
 ]
 

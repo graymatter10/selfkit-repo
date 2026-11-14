@@ -15,6 +15,9 @@ Devices on the same network sync directly, with no Postgres needed. Works alongs
 - LAN-received records stay `dirty`, so they still reach the server. `hist` also travels inside the encrypted server payload, so a server pull of an edit already received over LAN fast-forwards or is adopted instead of conflicting.
 - Who connects: the lower device id starts the session when a peer appears and every `interval` (2 min). `sync_now` (agent `sync` command) triggers immediately. Static peers by address can be added for networks where broadcast doesn't reach (VPN, emulator).
 
+## One-shot passes from apps (selfkit-appsync)
+Apps (Android, or desktop without an agent) don't run the service. One pass: open a TCP listener on a free port, send one beacon (carrying that port) from an ephemeral UDP socket, listen `lan_discovery_ms` (2.5 s) for beacons (direct replies and the shared port 47616) and for inbound sessions (a peer with a lower device id connects to us), then connect to every discovered, remembered (14 days) or configured peer. Same keys, channel and session as the service. Android holds a `MulticastLock` meanwhile (plugin). Errors that mean "found a device but it refused us" (wrong key, other protocol version) are reported in plain words; unreachable remembered peers are silent.
+
 ## Agent settings (env for now, Settings UI later)
 `SELFKIT_LAN=0` disables it · `SELFKIT_LAN_PEERS=ip:port,…` · `SELFKIT_LAN_PORT` · `SELFKIT_LAN_DISCOVERY_PORT` · `SELFKIT_LAN_SECS` · `SELFKIT_DEVICE_NAME`. Status: `selfkit-agent status` → `lan.peers`.
 

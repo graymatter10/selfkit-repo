@@ -1,5 +1,14 @@
 # Decisions (newest first)
 
+## 2026-11-15 — App-side sync (selfkit-appsync)
+- One shared crate behind a small interface (status, sync_now, settings, encryption, conflicts/resolve); Android adds Kotlin only for what Rust can't do (WorkManager, Keystore, multicast lock). Apps stay free of sync code and a future companion app uses the same calls.
+- Apps run a one-shot LAN pass (beacon + 2.5 s listen + connect to known peers), not the always-on LAN service; if no LAN peer answers, Postgres + S3. Same encrypted protocol as the agent, so it works against the existing agent unchanged.
+- Owner switch: `app` | `agent` (desktop default — the agent already syncs every DB; two writers would race) | `companion` (app steps back).
+- Server key check (`sk_meta.keycheck`) so a device with the wrong key can never push unreadable rows.
+- Photos sync only through S3 for now (core LAN protocol has no blobs yet).
+- Test builds use a public built-in test key (feature `test-key`), clearly not private, so testing never asks for a passphrase.
+- Core fixes found by the e2e tests: resolved conflicts now clear on the other device; migrations run in BEGIN IMMEDIATE (two processes opening a fresh DB); line_diff trailing-newline; S3 bundle download fsync.
+
 ## 2026-11-15 — Chrono 0.1
 - Android sessions go into `app_sessions` with platform `android`, so one engine and one timeline serve every device.
 - Screen time is the union across devices (phone use while the PC is on counts once); browser app time is replaced by website time on the same device.

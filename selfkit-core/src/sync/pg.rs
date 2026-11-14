@@ -113,6 +113,18 @@ impl PgRemote {
         Ok(())
     }
 
+    /// Newest schema version this build knows (last entry of [`MIGRATIONS`]).
+    pub fn known_schema_version() -> i32 {
+        MIGRATIONS.last().map(|m| m.0).unwrap_or(0)
+    }
+
+    /// Highest schema version applied on the server. Greater than
+    /// [`Self::known_schema_version`] means a newer Selfkit set it up.
+    pub async fn server_schema_version(&self) -> Result<i32> {
+        let r = self.client.query_one("SELECT COALESCE(MAX(version), 0) FROM sk_schema", &[]).await.map_err(err)?;
+        Ok(r.get(0))
+    }
+
     /// Database size in bytes (health screen warns at 80% of the plan limit).
     pub async fn size_bytes(&self) -> Result<i64> {
         Ok(self.client.query_one("SELECT pg_database_size(current_database())", &[]).await.map_err(err)?.get(0))

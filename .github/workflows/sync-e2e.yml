@@ -1,0 +1,90 @@
+# End-to-end sync scenarios: simulated devices (separate data folders), real
+# selfkit-agent processes, Postgres + S3-compatible storage. Also compile-checks
+# the Android side (Rust for aarch64-linux-android + the Kotlin plugin).
+# Trigger: push to test/sync-* (or run by hand). Docs: docs/components/selfkit-appsync.md.
+name: sync-e2e
+on:
+  push:
+    branches: ["test/sync-*"]
+  workflow_dispatch:
+concurrency:
+  group: sync-e2e-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
+  CARGO_BUILD_JOBS: "4"
+  SELFKIT_TEST_PG: postgres://selfkit:selfkit-dev@127.0.0.1:55432/selfkit
+  SELFKIT_TEST_S3_ENDPOINT: http://127.0.0.1:59000
+  SELFKIT_TEST_S3_BUCKET: selfkit-test
+  SELFKIT_TEST_S3_REGION: us-east-1
+  SELFKIT_TEST_S3_KEY: selfkit
+  SELFKIT_TEST_S3_SECRET: selfkit-dev-secret
+jobs:
+  scenarios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: selfkit, POSTGRES_PASSWORD: selfkit-dev, POSTGRES_DB: selfkit }
+        ports: ["55432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: S3-compatible storage (SeaweedFS, same as dev/docker-compose.yml)
+        run: |
+          docker run -d --name s3 -p 59000:9000 -v "$PWD/dev/s3.json:/etc/s3.json:ro" chrislusf/seaweedfs:latest \
+            server -dir=/data -s3 -s3.port=9000 -s3.config=/etc/s3.json -volume.max=16 -master.volumeSizeLimitMB=64
+          for i in $(seq 60); do curl -s -o /dev/null http://127.0.0.1:59000 && break; sleep 1; done
+      - name: System packages
+        run: sudo apt-get update && sudo apt-get install -y jq faketime postgresql-client libx11-dev libxss-dev libdbus-1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: sync-e2e, cache-on-failure: true }
+      - name: Build
+        run: cargo build -p selfkit-appsync -p selfkit-agent --bins
+      - name: Rust scenarios (selfkit-appsync, incl. Postgres/S3) + core
+        run: cargo test -p selfkit-appsync -p selfkit-core -- --include-ignored
+      - name: Process scenarios (real agents, kill -9, faketime, test key)
+        run: SK_BIN="$CARGO_TARGET_DIR/debug" SK_WORK="$RUNNER_TEMP" bash dev/sync-e2e.sh
+      - uses: oven-sh/setup-bun@v2
+      - name: Year of real app data (app seeds) - full + incremental sync, times and sizes
+        run: |
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+          bun install
+          Y="$RUNNER_TEMP/year"; mkdir -p "$Y"
+          for app in hisab agenda chrono; do
+            [ -f "apps/$app/package.json" ] && (cd "apps/$app" && bun run build) || true
+          done
+          SELFKIT_DATA_DIR="$Y" cargo run -q -p hisab --example seed -- --year
+          SELFKIT_DATA_DIR="$Y" cargo run -q -p agenda --example seed -- --year
+          if [ -f apps/chrono/src-tauri/examples/seed.rs ]; then SELFKIT_DATA_DIR="$Y" cargo run -q -p chrono-app --example seed; fi
+          ls -la "$Y"
+          SELFKIT_YEAR_DIR="$Y" cargo test -p selfkit-appsync --test scenarios year_data -- --include-ignored --nocapture 2>&1 | tee "$RUNNER_TEMP/year.log"
+          grep -q "test result: ok" "$RUNNER_TEMP/year.log"
+          grep "^YEAR" "$RUNNER_TEMP/year.log" >> "$GITHUB_STEP_SUMMARY"
+      - name: Logs on failure
+        if: failure()
+        run: docker logs s3 | tail -n 50
+
+  android-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-linux-android }
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: sync-android, cache-on-failure: true }
+      - name: Rust (JNI entry points) for aarch64-linux-android
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"; TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$TC/aarch64-linux-android24-clang" AR_aarch64_linux_android="$TC/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TC/aarch64-linux-android24-clang"
+          cargo build -p selfkit-appsync --lib --features android --target aarch64-linux-android
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "9.6.1" }
+      - name: Kotlin plugin (android-plugins/selfkit-sync)
+        run: gradle -p android-plugins/selfkit-sync assembleRelease --no-daemon

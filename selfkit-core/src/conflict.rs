@@ -66,7 +66,10 @@ pub struct DiffLine {
 
 /// Line-by-line diff of long text (e.g. task descriptions).
 pub fn line_diff(local: &str, remote: &str) -> Vec<DiffLine> {
-    similar::TextDiff::from_lines(local, remote)
+    // A last line without '\n' must still equal the same line elsewhere.
+    let nl = |s: &str| if s.is_empty() || s.ends_with('\n') { s.to_string() } else { format!("{s}\n") };
+    let (local, remote) = (nl(local), nl(remote));
+    similar::TextDiff::from_lines(&local, &remote)
         .iter_all_changes()
         .map(|c| DiffLine {
             tag: match c.tag() {

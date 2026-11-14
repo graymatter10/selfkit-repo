@@ -127,6 +127,9 @@ impl BlobStore {
         if !(200..300).contains(&code) {
             return Err(Error::Remote(format!("get {path}: HTTP {code}")));
         }
+        // tokio::fs::File buffers the last write; without this the file can end short.
+        tokio::io::AsyncWriteExt::flush(&mut f).await?;
+        f.sync_all().await?;
         Ok(())
     }
 

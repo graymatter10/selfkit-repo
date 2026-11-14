@@ -31,11 +31,31 @@ Ciphertext = XChaCha20-Poly1305 of `{data, tz_offset, deleted, hist}` with AAD `
 1. **Push:** for each dirty row: `UPDATE … WHERE id=$1 AND rev=$base_rev` (or `INSERT … ON CONFLICT DO NOTHING` when `base_rev=0`). Success → `base_rev = new rev`, `dirty = 0`. Zero rows → conflict.
 2. **Pull:** `SELECT … WHERE app=$app AND rev > $cursor ORDER BY rev LIMIT 500`. For each row: clean local → overwrite; dirty local with the same content, or whose history already contains the remote version → adopt the rev; remote history contains our version → fast-forward; otherwise → `conflicts`.
    - Known limitation: sequence values commit out of order under concurrent writers, so a pull can in rare cases skip a row. Mitigation planned: an occasional full re-pull (cheap; apply is idempotent).
-3. Runs every few minutes (agent / Android job) and on app open. Works with no server configured.
+3. Runs every few minutes (agent), every ~15 min on Android (WorkManager), on app open and on "Sync now". Works with no server configured (LAN only).
+
+## App-side sync interface (all apps, companion-ready)
+Every app syncs through one shared module, [selfkit-appsync](components/selfkit-appsync.md) (Rust) + [android-plugins/selfkit-sync](../android-plugins/selfkit-sync/README.md) (Kotlin). The interface is small, so a future Selfkit companion app can take over without app rewrites:
+
+| Call | What it does |
+| --- | --- |
+| `status()` | headline ("Synced locally with Linux PC · 2 min ago" / "Synced via server · …"), owner, lock state, last transport and peers, plain-language error, pending changes, conflicts, seen devices |
+| `sync_now(trigger)` | one pass: LAN to a reachable peer if on the same network, otherwise Postgres + S3; `trigger` = manual / open / background |
+| `settings()` / `set_settings()` | owner (`app` / `companion` / `agent`), transport (`auto` / `lan_only` / `server_only`), auto sync, period, LAN on/off and extra peers, device name |
+| `conflicts()` / `resolve()` | Keep A (this device) / Keep B (other) / Merge field by field with line picks |
+| `due()` / `schedule()` | scheduler hook: run on open (at most once a minute) and every ~15 min (WorkManager on Android) |
+
+- **When:** manual "Sync now", on app open, and a ~15 min background job (Android WorkManager, network constraint). On desktop the agent syncs every app DB; the app's Sync now asks the agent (owner `agent`).
+- **Transport per run:** same network + peer reachable → LAN; otherwise server. Shown in the status.
+- **Sync owner:** a device-level switch. With `companion`, apps stop their own jobs and the companion syncs everything.
+- **Shared place:** secrets in the OS keychain (`com.selfkit`) / Android Keystore-sealed file; non-secret settings in `<data_dir>/sync/settings.json`.
+- **ContentProvider per app:** `content://com.selfkit.<app>.provider` (`/changes?since=`, insert `/records`, `call(status|sync_now|settings|set_settings|schedule|conflicts|resolve)`), protected by the signature permission `com.selfkit.permission.SHARE`, so only Selfkit apps signed with the same key can use it.
+- **Guards:** server key check (`sk_meta.keycheck`) stops a device with the wrong key before it pushes; a server schema newer than the app knows is refused; a killed pass leaves a lock that the next pass takes over; pushes resume where they stopped (the server copy is adopted, no duplicates, no conflicts).
 
 ## Conflicts
 - Two new items on different devices: different UUIDs, both kept.
 - Same item edited on two devices: `conflicts` row; UI offers **Keep A**, **Keep B**, **Merge field by field** (`conflict::merge_fields`), long text gets a line diff (`conflict::line_diff`).
+- Edited on one device, deleted on the other: same screen (`delete_vs_edit`); Keep A over a delete brings the item back everywhere.
+- A conflict that was settled on another device (the incoming version's history contains the other side) is cleared automatically (`Store::clear_superseded_conflict`).
 
 ## LAN sync
 Server-less device-to-device sync over the local network, fully encrypted. See [lan-sync.md](lan-sync.md).

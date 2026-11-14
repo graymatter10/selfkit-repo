@@ -8,9 +8,9 @@ Features: `remote` (Postgres + S3, tokio), `keychain` (OS keychain), `lan` (LAN 
 - `Store::open(path, app, device_id, app_migrations)`: `put / get / delete / restore / list / list_range / search / count / kv_*`; sync helpers `dirty / mark_synced / apply_remote / apply_peer / changes_since / conflicts / resolve_conflict / import_record / reset_sync_state`.
 - `keys::KeyFile::create / unlock_passphrase / unlock_recovery / change_passphrase / rotate_recovery / load / save`.
 - `crypto::seal / open` (records), `StreamWriter / StreamReader / encrypt_stream / decrypt_stream` (files).
-- `sync::sync_once(&mut store, &remote, &key)`, `sync::pg::PgRemote::connect(url)`, `sync::s3::BlobStore::new(cfg)`.
+- `sync::sync_once(&mut store, &remote, &key)`, `sync::pg::PgRemote::connect(url)` (+ `server_schema_version()`, `known_schema_version()`), `sync::s3::BlobStore::new(cfg)`.
 - `bundle::export / import / read_manifest`.
-- `lan::serve(cfg, store_factory, state)`.
+- `lan::serve(cfg, store_factory, state)`. One-shot passes for apps live in [selfkit-appsync](selfkit-appsync.md).
 - `settings::Settings::load / save / effective_theme / set_shortcut`.
 - `conflict::field_diffs / merge_fields / line_diff / apply_line_picks`.
 - `paths::data_dir / app_db / key_file / device_id`.

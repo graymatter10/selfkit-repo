@@ -229,7 +229,16 @@ impl Store {
             if done {
                 continue;
             }
-            let tx = self.conn.transaction()?;
+            // IMMEDIATE takes the write lock first, so two processes opening a fresh DB
+            // at once (agent LAN session + app) don't both run the same migration.
+            let tx = self.conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let done_now = tx
+                .query_row("SELECT 1 FROM schema_migrations WHERE name=?", [m.name], |_| Ok(true))
+                .optional()?
+                .unwrap_or(false);
+            if done_now {
+                continue;
+            }
             tx.execute_batch(m.sql)?;
             tx.execute("INSERT INTO schema_migrations(name, applied_at) VALUES (?, ?)", params![m.name, time::now_ms()])?;
             tx.commit()?;
@@ -417,6 +426,20 @@ impl Store {
         Ok(())
     }
 
+    /// An open conflict whose other version is now part of an incoming record's
+    /// history was settled elsewhere (e.g. the other device resolved it): drop it.
+    fn clear_superseded_conflict(&self, inc: &Record) -> Result<()> {
+        let remote: Option<String> =
+            self.conn.query_row("SELECT remote FROM conflicts WHERE id=?", [&inc.id], |r| r.get(0)).optional()?;
+        if let Some(j) = remote
+            && let Ok(r) = serde_json::from_str::<Record>(&j)
+            && (inc.ver() == r.ver() || inc.hist.contains(&r.ver()))
+        {
+            self.conn.execute("DELETE FROM conflicts WHERE id=?", [&inc.id])?;
+        }
+        Ok(())
+    }
+
     /// Apply a record pulled from the server (rev = its server revision).
     pub fn apply_remote(&self, remote: &Record, rev: i64) -> Result<Applied> {
         match self.local_state(&remote.id)? {
@@ -441,6 +464,7 @@ impl Store {
             Some((l, dirty, _)) if !dirty || remote.hist.contains(&l.ver()) => {
                 // Clean local, or remote descends from our version: fast-forward.
                 self.write_foreign(remote, false, rev)?;
+                self.clear_superseded_conflict(remote)?;
                 Ok(Applied::Updated)
             }
             Some(_) => {
@@ -465,6 +489,7 @@ impl Store {
             }
             Some((l, _, base)) if inc.hist.contains(&l.ver()) => {
                 self.write_foreign(inc, true, base)?;
+                self.clear_superseded_conflict(inc)?;
                 Ok(Applied::Updated)
             }
             Some((_, _, base)) => {
