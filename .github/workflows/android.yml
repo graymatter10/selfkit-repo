@@ -11,6 +11,9 @@ on:
 concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
+env:
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
+  CARGO_BUILD_JOBS: "4"
 jobs:
   apk:
     runs-on: ubuntu-latest

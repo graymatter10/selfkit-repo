@@ -8,6 +8,9 @@ on:
 concurrency:
   group: windows-${{ github.ref }}
   cancel-in-progress: true
+env:
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
+  CARGO_BUILD_JOBS: "4"
 jobs:
   windows:
     runs-on: windows-latest
