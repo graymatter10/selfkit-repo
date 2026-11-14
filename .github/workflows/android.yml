@@ -1,0 +1,44 @@
+# Builds one app's Android APK (aarch64, release, unsigned) in the cloud.
+# Trigger: push to a branch named ci/<app>/<anything> (dev/ci-apk.sh does this),
+# or run it by hand with an app name. The APK is signed locally afterwards.
+name: android
+on:
+  push:
+    branches: ["ci/**"]
+  workflow_dispatch:
+    inputs:
+      app: { description: "App folder under apps/ (e.g. hisab)", required: true }
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pick app
+        id: app
+        run: |
+          if [ -n "${{ inputs.app }}" ]; then app="${{ inputs.app }}"; else app=$(echo "${GITHUB_REF_NAME}" | cut -d/ -f2); fi
+          test -d "apps/$app/src-tauri" || { echo "no app $app"; exit 1; }
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-linux-android }
+      - uses: oven-sh/setup-bun@v2
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: android, cache-on-failure: true }
+      - name: Install JS deps
+        run: bun install
+      - name: Build APK
+        working-directory: apps/${{ steps.app.outputs.app }}
+        env:
+          NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: bun tauri android build --apk --target aarch64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ steps.app.outputs.app }}
+          path: apps/${{ steps.app.outputs.app }}/src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+          retention-days: 7

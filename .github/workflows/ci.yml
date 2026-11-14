@@ -1,0 +1,34 @@
+# Rust tests for every crate and a frontend build for every app.
+name: ci
+on:
+  push:
+    branches: [master, "test/**"]
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: selfkit, POSTGRES_USER: selfkit, POSTGRES_DB: selfkit }
+        ports: ["55432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev libx11-dev libxss-dev xvfb
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: oven-sh/setup-bun@v2
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: linux, cache-on-failure: true }
+      - run: bun install
+      - name: Frontend builds
+        run: for d in apps/*/; do [ -f "$d/package.json" ] && (cd "$d" && bun run build) || true; done
+      - name: Rust tests
+        run: cargo test --workspace -j 4
