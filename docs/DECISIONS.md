@@ -1,5 +1,15 @@
 # Decisions (newest first)
 
+## 2026-11-15 — Chrono 0.1
+- Android sessions go into `app_sessions` with platform `android`, so one engine and one timeline serve every device.
+- Screen time is the union across devices (phone use while the PC is on counts once); browser app time is replaced by website time on the same device.
+- Focus = (Work + Study) ÷ (Work + Study + Social + Entertainment).
+- Per-day aggregates are cached locally (`chrono_daily`), invalidated by the store's change counter.
+- The 15-min WorkManager job calls the same Rust importer through JNI (one importer).
+- App install/uninstall/reinstall is found by diffing the launcher-visible app list on each import (`<queries>`, no QUERY_ALL_PACKAGES); Android no longer delivers package broadcasts. Usage from the last ~15 min before an uninstall can be lost (Android deletes it).
+- Notification counts: opt-in listener plus usage events, taking the larger.
+- Back/Escape in the note editor save instead of asking.
+
 ## 2026-11-15 — Dusk 0.1
 - A night is keyed by its morning date with an 18:00–18:00 window, so windows tile the timeline and the morning date is the "next day" for connections.
 - The phone stores per-night screen-on intervals (`device_use`), not finished estimates, so the desktop can merge them with computer use and recompute when the method improves.
