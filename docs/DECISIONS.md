@@ -1,5 +1,14 @@
 # Decisions (newest first)
 
+## 2026-11-15 — Dusk 0.1
+- A night is keyed by its morning date with an 18:00–18:00 window, so windows tile the timeline and the morning date is the "next day" for connections.
+- The phone stores per-night screen-on intervals (`device_use`), not finished estimates, so the desktop can merge them with computer use and recompute when the method improves.
+- Opening the app counts as use; naps are manual only; "screen time after midnight" counts all devices.
+- The wind-down reminder is 14 one-shot exact alarms, re-planned on every start/change.
+- Reflect reads the local `dusk_nights` cache instead of re-implementing the estimate.
+- Connection strength from correlation: ≥ 0.5 strong, ≥ 0.3 moderate, ≥ 0.15 weak ("may").
+- Android Back uses Tauri's `onBackButtonPress` (browser history is unreliable in the WebView) — now the pattern for all apps.
+
 ## 2026-11-15 — Hisab 0.1
 - Opens to the split-layout add screen; on phones the other sections are top-bar pages instead of a tab bar, leaving room for the number pad.
 - Totals convert at current rates (open.er-api.com, cached offline, hand edits win); no per-transaction rate is stored. Amounts are 2-decimal floats.

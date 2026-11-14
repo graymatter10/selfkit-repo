@@ -1,0 +1,25 @@
+[package]
+name = "dusk"
+version.workspace = true
+edition.workspace = true
+description = "Dusk: Selfkit sleep app"
+
+[lib]
+name = "dusk_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+selfkit-core = { path = "../../../selfkit-core", default-features = false }
+tauri = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+rusqlite = "0.37"
+tauri-plugin-notification = "2"
+time = "0.3"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-global-shortcut = "2"

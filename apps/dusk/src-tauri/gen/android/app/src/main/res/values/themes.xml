@@ -1,0 +1,6 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. Window background = the app's background, so no flash on start. -->
+    <style name="Theme.dusk" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">#f5f4f8</item>
+    </style>
+</resources>
