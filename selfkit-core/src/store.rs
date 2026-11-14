@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::{Error, Result, time};
 
-/// A migration step. `name` must be globally unique, e.g. `"tickd/001_init"`.
+/// A migration step. `name` must be globally unique, e.g. `"agenda/001_init"`.
 pub struct Migration {
     pub name: &'static str,
     pub sql: &'static str,
@@ -570,7 +570,7 @@ mod tests {
     use serde_json::json;
 
     fn store() -> Store {
-        Store::open_in_memory("tickd", "dev-a", &[]).unwrap()
+        Store::open_in_memory("agenda", "dev-a", &[]).unwrap()
     }
 
     #[test]
@@ -666,8 +666,8 @@ mod tests {
 
     #[test]
     fn peer_fast_forward_ahead_and_conflict() {
-        let a = Store::open_in_memory("tickd", "A", &[]).unwrap();
-        let b = Store::open_in_memory("tickd", "B", &[]).unwrap();
+        let a = Store::open_in_memory("agenda", "A", &[]).unwrap();
+        let b = Store::open_in_memory("agenda", "B", &[]).unwrap();
         let r0 = a.put("tasks", None, &json!({"t": "v0"})).unwrap();
         assert_eq!(b.apply_peer(&r0).unwrap(), Applied::Inserted);
         // A edits twice; B fast-forwards (history covers both edits).

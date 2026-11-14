@@ -1,5 +1,7 @@
 # Selfkit — Planning Doc
 
+> Note (2026-11-14): the tasks app "Tickd" was renamed **Agenda** (`com.selfkit.agenda`). This doc keeps the original name.
+
 Nov 14, 2026
 
 ## Overview

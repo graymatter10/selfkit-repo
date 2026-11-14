@@ -205,7 +205,7 @@ mod tests {
         let (_, rep) = import(&b, &key, buf.as_slice(), &dir.path().join("out")).unwrap();
         assert_eq!(rep.written, 0);
         // wrong app / wrong key rejected
-        let c = Store::open_in_memory("tickd", "dev-c", &[]).unwrap();
+        let c = Store::open_in_memory("agenda", "dev-c", &[]).unwrap();
         assert!(import(&c, &key, buf.as_slice(), dir.path()).is_err());
         assert!(import(&b, &SecretKey::generate(), buf.as_slice(), dir.path()).is_err());
     }

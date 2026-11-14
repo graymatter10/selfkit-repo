@@ -252,7 +252,7 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     fn stores(dev: &str) -> HashMap<String, Store> {
-        ["tickd", "hisab"].iter().map(|a| (a.to_string(), Store::open_in_memory(a, dev, &[]).unwrap())).collect()
+        ["agenda", "hisab"].iter().map(|a| (a.to_string(), Store::open_in_memory(a, dev, &[]).unwrap())).collect()
     }
 
     /// Byte pipe that records everything flowing through it (a LAN sniffer).
@@ -306,13 +306,13 @@ mod tests {
         let mut a = stores("A");
         let mut b = stores("B");
         for i in 0..1200 {
-            a["tickd"].put("tasks", None, &json!({"title": format!("SECRET-TASK-{i}")})).unwrap();
+            a["agenda"].put("tasks", None, &json!({"title": format!("SECRET-TASK-{i}")})).unwrap();
         }
         let t = b["hisab"].put("transactions", None, &json!({"note": "SECRET-COFFEE", "amount": 3})).unwrap();
 
         let (ra, rb, wire) = sync_pair(&keys, &mut a, &mut b).await;
         assert_eq!((ra.received, rb.received), (1, 1200), "multi-page pull both ways");
-        assert_eq!(b["tickd"].count("tasks").unwrap(), 1200);
+        assert_eq!(b["agenda"].count("tasks").unwrap(), 1200);
         assert_eq!(a["hisab"].get(&t.id).unwrap().unwrap().data["note"], "SECRET-COFFEE");
         // Nothing readable on the wire.
         let s = String::from_utf8_lossy(&wire);
@@ -320,7 +320,7 @@ mod tests {
         assert!(wire.len() > 100_000);
 
         // Second session only moves what changed (echoes come back as no-ops).
-        b["tickd"].put("tasks", None, &json!({"title": "new"})).unwrap();
+        b["agenda"].put("tasks", None, &json!({"title": "new"})).unwrap();
         let (ra, rb, _) = sync_pair(&keys, &mut a, &mut b).await;
         assert_eq!(ra.received, 1);
         assert_eq!(rb.received, 0);
@@ -342,10 +342,10 @@ mod tests {
         let state_b = Arc::new(LanState::default());
         let path = tempfile::tempdir().unwrap();
         let (pa, pb) = (path.path().join("a.db"), path.path().join("b.db"));
-        Store::open(&pa, "tickd", "dev-a", &[]).unwrap().put("tasks", None, &json!({"t": "from A"})).unwrap();
-        Store::open(&pb, "tickd", "dev-b", &[]).unwrap().put("tasks", None, &json!({"t": "from B"})).unwrap();
-        let fa: StoreFactory = { let p = pa.clone(); Arc::new(move || Ok(HashMap::from([("tickd".into(), Store::open(&p, "tickd", "dev-a", &[])?)]))) };
-        let fb: StoreFactory = { let p = pb.clone(); Arc::new(move || Ok(HashMap::from([("tickd".into(), Store::open(&p, "tickd", "dev-b", &[])?)]))) };
+        Store::open(&pa, "agenda", "dev-a", &[]).unwrap().put("tasks", None, &json!({"t": "from A"})).unwrap();
+        Store::open(&pb, "agenda", "dev-b", &[]).unwrap().put("tasks", None, &json!({"t": "from B"})).unwrap();
+        let fa: StoreFactory = { let p = pa.clone(); Arc::new(move || Ok(HashMap::from([("agenda".into(), Store::open(&p, "agenda", "dev-a", &[])?)]))) };
+        let fb: StoreFactory = { let p = pb.clone(); Arc::new(move || Ok(HashMap::from([("agenda".into(), Store::open(&p, "agenda", "dev-b", &[])?)]))) };
         let free = |_: ()| std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
         let (tcp_b, udp_a, udp_b) = (free(()), free(()), free(()));
         let mk = |id: &str, tcp: u16, udp: u16, peers: Vec<SocketAddr>| LanConfig {
@@ -357,8 +357,8 @@ mod tests {
         tokio::spawn(serve(mk("dev-a", 0, udp_a, vec![SocketAddr::from(([127, 0, 0, 1], tcp_b))]), fa, state_a.clone()));
         for _ in 0..50 {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            if Store::open(&pa, "tickd", "dev-a", &[]).unwrap().count("tasks").unwrap() == 2
-                && Store::open(&pb, "tickd", "dev-b", &[]).unwrap().count("tasks").unwrap() == 2 { return; }
+            if Store::open(&pa, "agenda", "dev-a", &[]).unwrap().count("tasks").unwrap() == 2
+                && Store::open(&pb, "agenda", "dev-b", &[]).unwrap().count("tasks").unwrap() == 2 { return; }
         }
         panic!("services did not sync");
     }

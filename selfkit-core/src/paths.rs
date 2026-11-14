@@ -1,9 +1,19 @@
 //! Shared Selfkit data folder: `<data_dir>/selfkit/` (override with `SELFKIT_DATA_DIR`).
 use std::path::PathBuf;
 
-pub const APPS: [&str; 5] = ["chrono", "hisab", "tickd", "reflect", "dusk"];
+pub const APPS: [&str; 5] = ["chrono", "hisab", "agenda", "reflect", "dusk"];
+
+static DATA_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Override the data folder (Android: the app's private data dir). Call once at startup.
+pub fn set_data_dir(dir: PathBuf) {
+    let _ = DATA_DIR.set(dir);
+}
 
 pub fn data_dir() -> PathBuf {
+    if let Some(d) = DATA_DIR.get() {
+        return d.clone();
+    }
     if let Ok(d) = std::env::var("SELFKIT_DATA_DIR") {
         return PathBuf::from(d);
     }

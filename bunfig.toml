@@ -1,0 +1,3 @@
+[install.cache]
+# Root disk is tight; keep the package cache on /shared.
+dir = "/shared/selfkitextra/bun-cache"

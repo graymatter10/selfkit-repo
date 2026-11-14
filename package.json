@@ -1,0 +1,9 @@
+{
+  "name": "selfkit",
+  "private": true,
+  "workspaces": ["ui", "apps/*"],
+  "scripts": {
+    "agenda:dev": "bun --cwd apps/agenda tauri dev",
+    "agenda:build": "bun --cwd apps/agenda tauri build"
+  }
+}

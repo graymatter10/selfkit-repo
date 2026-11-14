@@ -7,7 +7,7 @@ Five separate Tauri apps share one Rust core (`selfkit-core`) and one design sys
 | --- | --- |
 | `selfkit-core/` | Shared Rust library: crypto, keys, SQLite storage, migrations, sync, blobs, bundles, settings |
 | `selfkit-agent/` | Desktop background service (no UI): activity tracking, sync, backups, reminders |
-| `apps/{chrono,hisab,tickd,reflect,dusk}` | Tauri 2 apps |
+| `apps/{chrono,hisab,agenda,reflect,dusk}` | Tauri 2 apps |
 | `ui/` | Shared Svelte components and design tokens |
 | `extension/` | Chrome + Firefox WebExtension (native messaging → agent) |
 | `android-plugins/` | Kotlin Tauri plugins (usage stats, jobs, ContentProvider) |

@@ -13,3 +13,6 @@ dist-web/
 /docs/STATUS.md
 /docs/templates/
 /.claude/
+apps/*/dist/
+apps/*/src-tauri/gen/schemas/
+/out/

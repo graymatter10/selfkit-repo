@@ -1,5 +1,21 @@
 # Decisions (newest first)
 
+## 2026-11-15 — Agenda v0.3: clean iOS-style, minimal colour
+User: colour distracts; make it like premium iOS apps, distraction-free; phone and desktop may differ. Neutral greys/white (black in dark), one blue accent, red only for overdue and destructive actions; severity shown as "!!"/"!!!" text, not colours. Phone: large title, segmented filter, inset grouped list, bottom "New Task". Desktop: sidebar + list + inspector. Form-based adding stays (user prefers it to plain-language parsing, which was removed). Unsaved input is never discarded silently: Cancel/Escape/Back ask first.
+
+## 2026-11-15 — No predefined design system; each app is designed for its own job
+User decision after testing Agenda on a real phone ("hard to add"). The split layout and themes A/B/D are no longer rules. Every app gets its own design (any style, must not be distracting), mocked up and approved before coding. Agenda is being redesigned from the user's reference: stat cards, filter chips, severity 1–5 task cards, a full "New task" form with start/stop and "remind before start". `ui/` stays as plumbing (IPC, icons, toast), not as a visual rulebook.
+
+## 2026-11-15 — Frontend stack details
+- Vite 8 (rolldown/oxc) has no esbuild: no `vitePreprocess`, no `minify: "esbuild"`. Svelte 5 compiles TypeScript itself.
+- Svelte 5 runes, Tailwind 4 with theme tokens in `@selfkit/ui`; no component library dependency (bits-ui not needed yet: the few controls are native elements styled with tokens). Revisit if menus/date pickers get complex.
+- Native `<input type=date/time>` pickers (via `showPicker`) instead of custom pickers: small, accessible, work on Android and WebKitGTK.
+- Env-only test hooks (`AGENDA_DEMO`, `AGENDA_WINDOW_SIZE`) let the real app be driven into states for screenshots under Xvfb; inert unless set.
+- Phone layout height follows `visualViewport` (keyboard) plus `adjustResize`.
+
+## 2026-11-14 — The tasks app is named Agenda (was Tickd)
+User choice. Identifier `com.selfkit.agenda`, data file `agenda.db`, docs in `docs/apps/agenda/`. PLANNING.md keeps the original name as history.
+
 ## 2026-11-14 — Identifiers are com.selfkit.{appname}; extra storage is /shared/selfkitextra
 User choice. Applies to Tauri/Android/Windows ids, keychain service (`com.selfkit`), native-messaging host (`com.selfkit.agent`). Build output and dev-server data live in `/shared/selfkitextra/` (root disk is tight).
 

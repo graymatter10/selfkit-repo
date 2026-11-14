@@ -167,8 +167,8 @@ mod tests {
     async fn two_devices_sync_and_conflict() {
         let key = SecretKey::generate();
         let remote = MemoryRemote::default();
-        let mut a = Store::open_in_memory("tickd", "A", &[]).unwrap();
-        let mut b = Store::open_in_memory("tickd", "B", &[]).unwrap();
+        let mut a = Store::open_in_memory("agenda", "A", &[]).unwrap();
+        let mut b = Store::open_in_memory("agenda", "B", &[]).unwrap();
 
         let t = a.put("tasks", None, &json!({"title": "one"})).unwrap();
         b.put("tasks", None, &json!({"title": "two"})).unwrap();

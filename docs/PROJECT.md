@@ -6,7 +6,7 @@ Five personal apps for one user on one Android phone, one Windows PC and one Lin
 | --- | --- |
 | Chrono | Activity on phone, PCs and browsers: apps, sites, time, peaks, trends |
 | Hisab | Money: income, spending, budgets, loans |
-| Tickd | Tasks with descriptions, photos, reminders, CalDAV sync |
+| Agenda | Tasks with descriptions, photos, reminders, CalDAV sync |
 | Reflect | Read-only stats dashboard from Chrono, Hisab, Dusk |
 | Dusk | Sleep: estimated from device use + manual log |
 
@@ -19,4 +19,4 @@ Five personal apps for one user on one Android phone, one Windows PC and one Lin
 - English only, default currency USD. Timestamps in UTC + local offset.
 
 ## Build order
-1. selfkit-core · 2. agent + Chrono tracker, extension, Android usage reader · 3. Tickd · 4. Hisab · 5. Chrono dashboard · 6. Reflect, Dusk.
+1. selfkit-core · 2. agent + Chrono tracker, extension, Android usage reader · 3. Agenda · 4. Hisab · 5. Chrono dashboard · 6. Reflect, Dusk.

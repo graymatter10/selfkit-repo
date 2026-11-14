@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main and capture windows",
+  "windows": ["main", "capture"],
+  "permissions": ["core:default", "notification:default"]
+}

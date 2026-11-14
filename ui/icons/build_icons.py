@@ -26,7 +26,7 @@ SVG_DIR = ROOT / "ui/icons/svg"
 APPS = {
     "chrono": ("#4b9a96", "#2d6865"),
     "hisab": ("#67a06b", "#3f6d45"),
-    "tickd": ("#5d7fbd", "#384f86"),
+    "agenda": ("#5d7fbd", "#384f86"),
     "reflect": ("#cf9a4e", "#9a6827"),
     "dusk": ("#7a69ad", "#463a73"),
     "agent": ("#5c636c", "#30353b"),
@@ -52,7 +52,7 @@ def glyph(app: str, fg: str, bg_deep: str) -> str:
   <rect x="290" y="364" width="444" height="330" rx="64" fill="none" stroke="{fg}" stroke-width="50"/>
   <rect x="566" y="468" width="190" height="122" rx="61" fill="{fg}"/>
   <circle cx="627" cy="529" r="24" fill="{bg_deep}"/>"""
-    if app == "tickd":
+    if app == "agenda":
         # Checkbox with a confident tick that breaks out of the frame.
         return f"""
   <rect x="300" y="300" width="424" height="424" rx="104" fill="none" stroke="{fg}" stroke-opacity=".32" stroke-width="50"/>
