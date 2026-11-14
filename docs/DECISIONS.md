@@ -1,5 +1,13 @@
 # Decisions (newest first)
 
+## 2026-11-15 — Hisab 0.1
+- Opens to the split-layout add screen; on phones the other sections are top-bar pages instead of a tab bar, leaving room for the number pad.
+- Totals convert at current rates (open.er-api.com, cached offline, hand edits win); no per-transaction rate is stored. Amounts are 2-decimal floats.
+- Delete is a tombstone with undo; deleting a category or account archives it so history stays correct.
+- Loan reminders are off by default and switch on with the first loan that has one. SMS import is opt-in and only queues messages for review, never saves automatically.
+- Photos are WebP from the webview canvas (no Rust image library), stored as files; the half-typed entry is kept in SQLite kv so Back/kill never lose it.
+- Exports go to Downloads.
+
 ## 2026-11-15 — Agenda 0.4
 - CalDAV dropped for now (user request); `.ics` export/import kept, subscribable feed skipped.
 - Photos are stored as files (`<data_dir>/agenda-photos/`), not in SQLite, so the DB stays small; photo files don't sync until the S3 blob store is wired into the apps.
