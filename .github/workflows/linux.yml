@@ -1,0 +1,44 @@
+# Linux installers (.deb + AppImage) for every app and the agent, built in the
+# cloud. Run by hand or from test/** branches.
+name: linux
+on:
+  push:
+    branches: ["test/**"]
+  workflow_dispatch:
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
+  CARGO_BUILD_JOBS: "4"
+jobs:
+  bundles:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev libx11-dev libxss-dev patchelf file
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: oven-sh/setup-bun@v2
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: linux-bundle, cache-on-failure: true }
+      - run: bun install
+      - name: Agent release build
+        run: cargo build --release -p selfkit-agent
+      - name: App bundles
+        run: |
+          for d in apps/*/; do
+            [ -f "$d/src-tauri/tauri.conf.json" ] || continue
+            (cd "$d" && bun tauri build --bundles deb,appimage) || echo "::warning::bundle failed for $d"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-installers
+          path: |
+            target/release/selfkit-agent
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
+          retention-days: 7
