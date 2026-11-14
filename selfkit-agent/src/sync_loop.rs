@@ -33,7 +33,7 @@ fn pg_url() -> Option<String> {
     std::env::var("SELFKIT_PG_URL").ok().or_else(|| keychain::get(keychain::PG_URL).ok().flatten())
 }
 
-async fn sync_all(key: &SecretKey, url: &str) -> Result<SyncReport> {
+async fn sync_all(key: &SecretKey, url: &str) -> Result<(SyncReport, Option<i64>)> {
     let remote = PgRemote::connect(url).await?;
     let device = paths::device_id()?;
     let mut total = SyncReport::default();
@@ -50,7 +50,9 @@ async fn sync_all(key: &SecretKey, url: &str) -> Result<SyncReport> {
         total.conflicts += r.conflicts;
         total.undecryptable += r.undecryptable;
     }
-    Ok(total)
+    // Server size for the health screen's 80 % warning (best effort).
+    let size = remote.size_bytes().await.ok();
+    Ok((total, size))
 }
 
 pub async fn run(shared: Arc<Shared>) {
@@ -63,10 +65,14 @@ pub async fn run(shared: Arc<Shared>) {
                 let mut g = shared.inner.lock().unwrap();
                 g.last_sync_at = Some(time::now_ms());
                 match res {
-                    Ok(r) => {
+                    Ok((r, size)) => {
                         tracing::info!(?r, "sync done");
                         g.last_sync = serde_json::to_value(r).ok();
                         g.last_sync_error = None;
+                        g.last_sync_ok_at = g.last_sync_at;
+                        if size.is_some() {
+                            g.server_db_bytes = size;
+                        }
                     }
                     Err(e) => {
                         tracing::warn!("sync failed: {e:#}");

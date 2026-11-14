@@ -11,6 +11,9 @@ use crate::ipc::Request;
 pub struct Shared {
     pub inner: Mutex<Inner>,
     pub sync_now: Notify,
+    pub backup_now: Notify,
+    /// Set by `backup_now {full: true}`.
+    pub backup_full: std::sync::atomic::AtomicBool,
     pub lan: std::sync::Arc<selfkit_core::lan::LanState>,
 }
 
@@ -19,26 +22,22 @@ pub struct Inner {
     pub started_at: i64,
     pub tracking: bool,
     pub tracking_error: Option<String>,
+    /// Paused through the agent (`pause` command / IPC); in memory only.
     pub paused: bool,
+    /// Chrono's `chrono_settings.paused_until` (UTC ms), as last read by the tracker.
+    pub paused_until: Option<i64>,
+    pub excluded_apps: usize,
     pub current_app: Option<String>,
     pub sync_configured: bool,
     pub last_sync_at: Option<i64>,
     pub last_sync: Option<Value>,
     pub last_sync_error: Option<String>,
+    pub last_sync_ok_at: Option<i64>,
+    pub server_db_bytes: Option<i64>,
+    pub reminders_fired: u64,
+    pub reminders_last_fired_at: Option<i64>,
     pub lan_enabled: bool,
     pub lan_error: Option<String>,
-}
-
-/// Resident memory of this process in KiB (diagnostics).
-pub fn rss_kib() -> Option<u64> {
-    #[cfg(target_os = "linux")]
-    {
-        let s = std::fs::read_to_string("/proc/self/statm").ok()?;
-        let pages: u64 = s.split_whitespace().nth(1)?.parse().ok()?;
-        return Some(pages * 4);
-    }
-    #[allow(unreachable_code)]
-    None
 }
 
 impl Shared {
@@ -47,7 +46,7 @@ impl Shared {
             Request::Status => {
                 let s = self.inner.lock().unwrap().clone();
                 let lan = json!({"port": *self.lan.port.lock().unwrap(), "peers": self.lan.snapshot()});
-                json!({"ok": true, "status": s, "lan": lan, "rss_kib": rss_kib(), "version": env!("CARGO_PKG_VERSION")})
+                json!({"ok": true, "status": s, "lan": lan, "rss_kib": crate::health::rss_kib(), "version": env!("CARGO_PKG_VERSION")})
             }
             Request::Pause | Request::Resume => {
                 let mut g = self.inner.lock().unwrap();
@@ -58,6 +57,15 @@ impl Shared {
                 self.sync_now.notify_one();
                 self.lan.sync_now.notify_one();
                 json!({"ok": true})
+            }
+            Request::Health => {
+                // Touches the disk briefly (DB sizes, log tail); a few ms.
+                json!({"ok": true, "health": crate::health::snapshot(self)})
+            }
+            Request::BackupNow { full } => {
+                self.backup_full.store(full, std::sync::atomic::Ordering::Relaxed);
+                self.backup_now.notify_one();
+                json!({"ok": true, "started": true})
             }
             Request::Today => match crate::today() {
                 Ok(v) => json!({"ok": true, "today": v}),

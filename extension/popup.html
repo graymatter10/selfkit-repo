@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chrono</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <img src="icons/icon-32.png" alt="" width="20" height="20">
+      <h1>Chrono</h1>
+      <span id="dot" class="dot" aria-hidden="true"></span>
+    </header>
+
+    <section class="now">
+      <p id="status" class="status">…</p>
+      <p id="detail" class="detail"></p>
+    </section>
+
+    <section class="pause" id="pause-row">
+      <span class="label">Pause</span>
+      <div class="buttons">
+        <button data-min="15">15 min</button>
+        <button data-min="60">1 hour</button>
+        <button data-min="0">Until resumed</button>
+      </div>
+    </section>
+    <section class="pause" id="resume-row" hidden>
+      <button id="resume" class="primary">Resume tracking</button>
+    </section>
+
+    <section class="today">
+      <h2>Today in this browser</h2>
+      <ol id="top"></ol>
+      <p id="empty" class="muted" hidden>Nothing yet.</p>
+    </section>
+
+    <footer>
+      <span id="agent" class="muted"></span>
+    </footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -130,6 +130,18 @@ impl BlobStore {
         Ok(())
     }
 
+    /// Delete an uploaded bundle (only `bundles/...` paths; used by backup retention).
+    pub async fn delete_bundle(&self, path: &str) -> Result<()> {
+        if !path.starts_with("bundles/") || path.contains("..") {
+            return Err(Error::Format(format!("not a bundle path: {path}")));
+        }
+        let r = self.bucket.delete_object(path).await.map_err(err)?;
+        if !(200..300).contains(&r.status_code()) {
+            return Err(Error::Remote(format!("delete {path}: HTTP {}", r.status_code())));
+        }
+        Ok(())
+    }
+
     pub async fn list(&self, prefix: &str) -> Result<Vec<(String, u64)>> {
         let pages = self.bucket.list(prefix.to_string(), None).await.map_err(err)?;
         Ok(pages.into_iter().flat_map(|p| p.contents).map(|o| (o.key, o.size)).collect())

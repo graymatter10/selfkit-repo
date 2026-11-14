@@ -1,7 +1,11 @@
-# Install: cp selfkit-agent.service ~/.config/systemd/user/ && systemctl --user enable --now selfkit-agent
-# (or in i3 config: exec --no-startup-id ~/.local/bin/selfkit-agent)
+# Selfkit agent — systemd user unit. Easiest: `selfkit-agent install-service [--enable]`
+# writes this with the right path. Manual: copy to ~/.config/systemd/user/, then
+#   systemctl --user daemon-reload && systemctl --user enable --now selfkit-agent
+# i3 (~/.config/i3/config) — hand the X display to user services, then (re)start:
+#   exec --no-startup-id systemctl --user import-environment DISPLAY XAUTHORITY && systemctl --user restart selfkit-agent
+# Docs: docs/platforms/linux.md
 [Unit]
-Description=Selfkit agent (activity tracking + sync)
+Description=Selfkit agent (activity tracking, sync, backups, reminders)
 After=graphical-session.target
 
 [Service]
@@ -9,6 +13,7 @@ ExecStart=%h/.local/bin/selfkit-agent run
 Restart=on-failure
 RestartSec=10
 MemoryMax=64M
+Nice=5
 
 [Install]
 WantedBy=default.target

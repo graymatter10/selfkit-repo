@@ -17,6 +17,13 @@ pub enum Request {
     Resume,
     SyncNow,
     Today,
+    /// Diagnostics for the Reflect health screen (same document as health.json).
+    Health,
+    /// Run due backups now; `full: true` also forces a full export.
+    BackupNow {
+        #[serde(default)]
+        full: bool,
+    },
 }
 
 #[cfg(unix)]

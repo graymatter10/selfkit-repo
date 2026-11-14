@@ -1,5 +1,18 @@
 # Decisions (newest first)
 
+## 2026-11-15 — Browser tracking and agent backups
+- The extension sends to the native host once a minute (the browser starts the host per message) instead of keeping a port open: nothing resident, and it works even when the agent isn't running because the host writes SQLite directly.
+- The extension's own pause is local to that browser; Chrono's `paused_until` and the agent's pause apply on top. Only domains are stored; incognito is never tracked.
+- Monthly backup bundles use UTC month boundaries with the device id in the name (deterministic, two PCs never overwrite each other). Monthly kept forever; weekly full exports keep 4 on S3 and 2 locally. `keys.json` (wrapped key file) is uploaded with the weekly export so a fresh device restores with only the recovery key.
+- Agent reminders stay silent while the Agenda app runs, to avoid double notifications.
+- The Chrome extension id is fixed by a public `key` in the manifest; no private key is kept.
+
+## 2026-11-15 — Parallel build agents share the machine through locks
+Several agents build apps at once. `dev/heavy.sh` serializes heavy jobs (Gradle, bundles, Docker) behind a RAM/disk gate, `dev/emu-lease.sh` gives one agent the emulator at a time, and `dev/notify-gate.sh` lets the user be warned 90 s before heavy steps (cooling). Cargo shares one target dir, which serializes compiles by itself.
+
+## 2026-11-15 — Own clean minimal design, inspired by Apple apps but not copying them
+User accepted Agenda v0.3 and wants Agenda to keep that style. For the other apps: clean, minimal, no bloat, easy to use, few colours, with Apple apps as inspiration only. The user doesn't use iOS or macOS, so a close copy of their look feels odd. Each app gets its own original design.
+
 ## 2026-11-15 — Agenda v0.3: clean iOS-style, minimal colour
 User: colour distracts; make it like premium iOS apps, distraction-free; phone and desktop may differ. Neutral greys/white (black in dark), one blue accent, red only for overdue and destructive actions; severity shown as "!!"/"!!!" text, not colours. Phone: large title, segmented filter, inset grouped list, bottom "New Task". Desktop: sidebar + list + inspector. Form-based adding stays (user prefers it to plain-language parsing, which was removed). Unsaved input is never discarded silently: Cancel/Escape/Back ask first.
 

@@ -39,6 +39,10 @@ impl Sessions {
         Self { store, platform, idle_threshold_secs: 120, exclude: HashSet::new(), paused: false, cur: None }
     }
 
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+
     pub fn current_app(&self) -> Option<&str> {
         self.cur.as_ref().map(|o| o.app.as_str())
     }
