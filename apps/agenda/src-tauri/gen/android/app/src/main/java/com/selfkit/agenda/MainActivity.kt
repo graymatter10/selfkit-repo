@@ -1,6 +1,10 @@
 package com.selfkit.agenda
 
+import android.content.ContentValues
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
@@ -24,6 +28,42 @@ class MainActivity : TauriActivity() {
           c.isAppearanceLightNavigationBars = !dark
         }
       }
+
+      // Back with nothing open: leave the app like the system would (the page
+      // handles Back itself through Tauri's back-button event).
+      @JavascriptInterface
+      fun toBackground() {
+        runOnUiThread { moveTaskToBack(true) }
+      }
     }, "AgendaBars")
+
+    // .ics export: save a text file into the public Downloads folder.
+    // Returns a readable location, or "" on failure.
+    webView.addJavascriptInterface(object {
+      @JavascriptInterface
+      fun saveDownload(name: String, mime: String, text: String): String {
+        return try {
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+              put(MediaStore.Downloads.DISPLAY_NAME, name)
+              put(MediaStore.Downloads.MIME_TYPE, mime)
+              put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return ""
+            contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            contentResolver.update(uri, values, null, null)
+          } else {
+            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            dir.mkdirs()
+            java.io.File(dir, name).writeText(text)
+          }
+          "Downloads/$name"
+        } catch (e: Exception) {
+          ""
+        }
+      }
+    }, "AgendaFiles")
   }
 }

@@ -6,23 +6,31 @@
   import type { Step, Task } from "../lib/api";
   import { api } from "../lib/api";
   import { SEVERITY, fmtMin, fmtWhen, parseWhen, reminderHint, dayLabel, hm, shortDay } from "../lib/time";
-  import { app, createTask, defaultReminder, defaultSeverity, saveEdit } from "../lib/state.svelte";
+  import { allTags, app, createTask, defaultReminder, defaultSeverity, saveEdit } from "../lib/state.svelte";
+  import { attachPhoto } from "../lib/photos";
+  import Photo from "./Photo.svelte";
   import Confirm from "./Confirm.svelte";
   import Seg from "./Seg.svelte";
   import WhenSheet from "./WhenSheet.svelte";
 
-  let { task, layout = "sheet", onclose, ondone }: { task?: Task; layout?: "sheet" | "panel"; onclose: () => void; ondone?: (t: Task) => void } = $props();
+  let { task, layout = "sheet", onclose, ondone, initialStart }: { task?: Task; layout?: "sheet" | "panel"; onclose: () => void; ondone?: (t: Task) => void; initialStart?: string } = $props();
 
   const editing = !!task;
   let title = $state(task?.title ?? "");
   let notes = $state(task?.notes ?? "");
   let severity = $state(task?.severity ?? defaultSeverity());
-  let start = $state<string | undefined>(task?.start);
+  let start = $state<string | undefined>(task ? task.start : initialStart);
   let stop = $state<string | undefined>(task?.stop);
   let reminder = $state<number | null>(task ? (task.reminder_min ?? null) : defaultReminder());
   let repeat = $state(task?.repeat ?? "");
   let list = $state(task?.list ?? "inbox");
   let steps = $state<Step[]>(task?.steps ? task.steps.map((s) => ({ ...s })) : []);
+  let tags = $state<string[]>(task?.tags ? [...task.tags] : app.tag ? [app.tag] : []);
+  let photos = $state<string[]>(task?.photos ? [...task.photos] : []);
+  let newTag = $state("");
+  let photoBusy = $state(false);
+  let galleryEl: HTMLInputElement | undefined = $state();
+  let cameraEl: HTMLInputElement | undefined = $state();
   let picker = $state<"start" | "stop" | null>(null);
   let open = $state<"" | "reminder" | "repeat" | "list">("");
   let newStep = $state("");
@@ -32,13 +40,13 @@
   let confirm = $state(false);
   let titleEl: HTMLInputElement | undefined = $state();
 
-  const snapshot = () => JSON.stringify([title.trim(), notes.trim(), severity, start, stop, reminder, repeat, list, steps]);
+  const snapshot = () => JSON.stringify([title.trim(), notes.trim(), severity, start, stop, reminder, repeat, list, steps, tags, photos, newTag.trim()]);
   const initial = snapshot();
   const dirty = $derived(snapshot() !== initial);
   const timed = $derived(!!start && !parseWhen(start)?.allDay);
 
   $effect(() => {
-    if (!editing && layout === "sheet" && !app.demo.title) setTimeout(() => titleEl?.focus(), 250);
+    if (!editing && !app.demo.title) setTimeout(() => titleEl?.focus(), layout === "sheet" ? 250 : 50);
     if (app.demo.title && !editing) {
       title = app.demo.title;
       start = app.demo.start;
@@ -100,6 +108,30 @@
     steps = [...steps, { id: crypto.randomUUID(), title: t, done: false }];
     newStep = "";
   }
+  const cleanTag = (t: string) => t.trim().replace(/^#+/, "").toLowerCase().split(/\s+/).filter(Boolean).join("-").slice(0, 32);
+  function addTag(raw = newTag) {
+    const parts = raw.split(/[,\s]+/).map(cleanTag).filter(Boolean);
+    for (const t of parts) if (!tags.includes(t)) tags = [...tags, t];
+    newTag = "";
+  }
+  const suggestions = $derived(allTags().filter((t) => !tags.includes(t) && (!newTag.trim() || t.startsWith(cleanTag(newTag)))).slice(0, 8));
+
+  async function onPhotos(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const files = [...(input.files ?? [])];
+    input.value = "";
+    if (!files.length) return;
+    photoBusy = true;
+    error = "";
+    try {
+      for (const f of files) photos = [...photos, await attachPhoto(f)];
+    } catch (err) {
+      error = `Could not add the photo: ${String(err).replace(/^Error:\s*/, "")}`;
+    } finally {
+      photoBusy = false;
+    }
+  }
+
   async function addList() {
     const name = prompt("New list name");
     if (!name?.trim()) return;
@@ -121,6 +153,7 @@
       const data = {
         title: t, notes: notes.trim() || undefined, severity, start, stop: start ? stop : undefined,
         reminder_min: start ? (reminder ?? undefined) : undefined, repeat: repeat || undefined, list, steps,
+        tags: (addTag(), tags), photos,
       };
       const done = editing && task
         ? await saveEdit(task.id, { ...data, notes: data.notes ?? null, start: start ?? null, stop: data.stop ?? null, reminder_min: data.reminder_min ?? null, repeat: data.repeat ?? null })
@@ -162,9 +195,56 @@
           class="h-12 w-full bg-transparent px-4 text-[17px] outline-none" />
         <div class="ml-4 border-t border-sep"></div>
         <label for="f-notes" class="sr">Notes</label>
-        <textarea id="f-notes" bind:value={notes} placeholder="Notes" rows="3" class="block w-full resize-none bg-transparent px-4 py-3 text-[17px] outline-none"></textarea>
+        <textarea id="f-notes" bind:value={notes} placeholder="Notes · Markdown works" rows="3" class="block w-full resize-none bg-transparent px-4 py-3 text-[17px] outline-none"></textarea>
       </div>
       {#if error}<p role="alert" class="m-0 px-4 pt-2 text-[13px] text-danger">{error}</p>{/if}
+    </div>
+
+    <div class="flex flex-col gap-2">
+      <span class="px-4 text-[13px] text-muted uppercase">Photos</span>
+      <div class="overflow-hidden rounded-xl bg-card">
+        {#if photos.length}
+          <div class="grid grid-cols-4 gap-1 p-1">
+            {#each photos as id, i (id)}
+              <div class="relative aspect-square overflow-hidden rounded-lg bg-fill">
+                <Photo {id} />
+                <button type="button" aria-label="Remove photo {i + 1}" class="absolute top-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white"
+                  onclick={() => ((photos = photos.filter((p) => p !== id)), (notes = notes.replace(new RegExp(`!\\[[^\\]]*\\]\\(photo:${id}\\)\\n?`, "g"), "")))}><Icon name="close" size={14} stroke={2.4} /></button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        <div class="flex {photos.length ? 'border-t border-sep' : ''}">
+          <button type="button" disabled={photoBusy} class="hl flex min-h-11 flex-1 items-center justify-center gap-2 text-[17px] text-accent disabled:opacity-50" onclick={() => galleryEl?.click()}>
+            <Icon name="clip" size={18} stroke={2} />{photoBusy ? "Adding…" : layout === "sheet" ? "Choose Photo" : "Add Photo…"}</button>
+          {#if layout === "sheet"}
+            <button type="button" disabled={photoBusy} class="hl flex min-h-11 flex-1 items-center justify-center gap-2 border-l border-sep text-[17px] text-accent disabled:opacity-50" onclick={() => cameraEl?.click()}>
+              <Icon name="camera" size={18} stroke={2} />Take Photo</button>
+          {/if}
+        </div>
+      </div>
+      <input bind:this={galleryEl} type="file" accept="image/*" multiple class="sr" tabindex="-1" aria-hidden="true" onchange={onPhotos} />
+      <input bind:this={cameraEl} type="file" accept="image/*" capture="environment" class="sr" tabindex="-1" aria-hidden="true" onchange={onPhotos} />
+    </div>
+
+    <div class="flex flex-col gap-2">
+      <span class="px-4 text-[13px] text-muted uppercase">Tags</span>
+      <div class="flex flex-wrap items-center gap-1.5 rounded-xl bg-card px-3 py-2">
+        {#each tags as g, i (g)}
+          <span class="flex h-8 items-center gap-0.5 rounded-full bg-accent-soft pr-1 pl-3 text-[15px] text-accent">#{g}
+            <button type="button" aria-label="Remove tag {g}" class="flex h-7 w-7 items-center justify-center" onclick={() => (tags = tags.filter((_, j) => j !== i))}><Icon name="close" size={13} stroke={2.4} /></button></span>
+        {/each}
+        <label class="min-w-[120px] flex-1"><span class="sr">Add tag</span>
+          <input bind:value={newTag} placeholder={tags.length ? "Add tag" : "Add tag, e.g. home"} enterkeyhint="enter" autocomplete="off" autocapitalize="off"
+            class="h-8 w-full bg-transparent px-1 text-[17px] outline-none"
+            oninput={() => /[,\s]$/.test(newTag) && addTag()}
+            onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } else if (e.key === "Backspace" && !newTag && tags.length) tags = tags.slice(0, -1); }} onblur={() => addTag()} /></label>
+      </div>
+      {#if suggestions.length}
+        <div class="flex flex-wrap gap-1.5 px-1">
+          {#each suggestions as g}<button type="button" class="press h-7 rounded-full bg-fill px-3 text-[14px] text-ink2" onmousedown={(e) => e.preventDefault()} onclick={() => (tags = [...tags, g])}>#{g}</button>{/each}
+        </div>
+      {/if}
     </div>
 
     <div class="flex flex-col gap-2">

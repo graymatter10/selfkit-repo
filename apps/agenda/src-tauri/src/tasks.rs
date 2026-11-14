@@ -5,7 +5,11 @@
 //!  start ("YYYY-MM-DDTHH:MM" local, or "YYYY-MM-DD" = all day), stop (same format),
 //!  reminder_min (minutes before start; absent = off), repeat
 //!  ("daily"|"weekdays"|"weekly"|"monthly"|"yearly"), list, steps [{id,title,done}],
-//!  photos [ids], done_at (UTC ms), created_at, last_done_at`.
+//!  tags [lowercase words], stage ("doing" = Board column Doing; absent = To do),
+//!  photos [photo record ids], done_at (UTC ms), created_at, last_done_at,
+//!  last_completion (id of the `completions` record written when it was last completed)`.
+//! Collection `completions` (history/stats): `task, title, done_at (UTC ms), tz_offset_min,
+//!  due ("YYYY-MM-DDTHH:MM" local end it was due, absent if undated), on_time (bool, absent if undated)`.
 //! v1 records (due_date/due_time/priority/subtasks) are converted on read and on write.
 //! Grouping/sorting/status labels happen in the UI (local time); this module stores,
 //! validates and computes reminder times. Docs: docs/apps/agenda/README.md.
@@ -17,6 +21,7 @@ use serde_json::{Map, Value, json};
 
 pub const TASKS: &str = "tasks";
 pub const LISTS: &str = "lists";
+pub const COMPLETIONS: &str = "completions";
 pub const INBOX: &str = "inbox";
 pub const DEFAULT_SEVERITY: u8 = 3;
 
@@ -60,8 +65,26 @@ pub fn normalize(mut d: Map<String, Value>) -> Map<String, Value> {
     {
         d.insert("steps".into(), subs);
     }
+    if d.get("status").and_then(Value::as_str) == Some("doing") && !d.contains_key("stage") {
+        d.insert("stage".into(), json!("doing"));
+    }
     d.remove("status");
     d
+}
+
+/// Clean tag list: lowercase, no '#', no spaces, unique, max 32 chars each.
+pub fn clean_tags(v: &Value) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Some(a) = v.as_array() {
+        for t in a.iter().filter_map(Value::as_str) {
+            let t: String = t.trim().trim_start_matches('#').to_lowercase().split_whitespace().collect::<Vec<_>>().join("-");
+            let t: String = t.chars().take(32).collect();
+            if !t.is_empty() && !out.contains(&t) {
+                out.push(t);
+            }
+        }
+    }
+    out
 }
 
 fn view(r: &selfkit_core::Record) -> TaskView {
@@ -126,6 +149,26 @@ fn validate(mut d: Map<String, Value>) -> Result<Map<String, Value>> {
     if matches!(d.get("repeat"), Some(Value::Null)) || str_of(&d, "repeat") == Some("") {
         d.remove("repeat");
     }
+    match d.get("tags").map(clean_tags) {
+        Some(t) if !t.is_empty() => {
+            d.insert("tags".into(), json!(t));
+        }
+        _ => {
+            d.remove("tags");
+        }
+    }
+    if str_of(&d, "stage") != Some("doing") {
+        d.remove("stage");
+    }
+    match d.get("photos") {
+        Some(Value::Array(a)) if !a.is_empty() => {
+            let ids: Vec<Value> = a.iter().filter(|v| v.is_string()).cloned().collect();
+            d.insert("photos".into(), Value::Array(ids));
+        }
+        _ => {
+            d.remove("photos");
+        }
+    }
     Ok(d)
 }
 
@@ -161,6 +204,9 @@ pub struct NewTask {
     pub repeat: Option<String>,
     pub list: Option<String>,
     pub steps: Option<Vec<Value>>,
+    pub tags: Option<Vec<String>>,
+    pub stage: Option<String>,
+    pub photos: Option<Vec<String>>,
 }
 
 pub fn create(store: &Store, t: NewTask) -> Result<TaskView> {
@@ -169,7 +215,13 @@ pub fn create(store: &Store, t: NewTask) -> Result<TaskView> {
     d.insert("severity".into(), json!(t.severity.unwrap_or(DEFAULT_SEVERITY)));
     d.insert("list".into(), json!(t.list.unwrap_or_else(|| INBOX.into())));
     d.insert("created_at".into(), json!(time::now_ms()));
-    for (k, v) in [("notes", t.notes), ("start", t.start), ("stop", t.stop), ("repeat", t.repeat)] {
+    if let Some(v) = t.tags {
+        d.insert("tags".into(), json!(v));
+    }
+    if let Some(v) = t.photos {
+        d.insert("photos".into(), json!(v));
+    }
+    for (k, v) in [("notes", t.notes), ("start", t.start), ("stop", t.stop), ("repeat", t.repeat), ("stage", t.stage)] {
         if let Some(v) = v {
             d.insert(k.into(), json!(v));
         }
@@ -199,10 +251,74 @@ pub fn update(store: &Store, id: &str, patch: &Map<String, Value>) -> Result<Tas
     Ok(view(&store.put(TASKS, Some(id), &Value::Object(d))?))
 }
 
-/// Replace a task's whole data (undo).
+/// Validate and store a full task document under `id` (import).
+pub fn put_raw(store: &Store, id: &str, d: Map<String, Value>) -> Result<()> {
+    let d = validate(normalize(d))?;
+    store.put(TASKS, Some(id), &Value::Object(d))?;
+    Ok(())
+}
+
+/// Replace a task's whole data (undo). Undoing a completion also removes its
+/// history entry (the completion id differs between the two versions).
 pub fn replace(store: &Store, id: &str, data: &Value) -> Result<TaskView> {
     let d = normalize(data.as_object().cloned().unwrap_or_default());
+    if let Some(cur) = store.get(id)?.filter(|r| !r.deleted)
+        && let Some(c) = cur.data.get("last_completion").and_then(Value::as_str)
+        && str_of(&d, "last_completion") != Some(c)
+    {
+        let _ = store.delete(c);
+    }
+    // Undoing a "reopen" brings its history entry back.
+    if let Some(c) = str_of(&d, "last_completion")
+        && store.get(c)?.is_some_and(|r| r.deleted)
+    {
+        let _ = store.restore(c);
+    }
     Ok(view(&store.put(TASKS, Some(id), &Value::Object(d))?))
+}
+
+/// Local end the task is due by: stop, else timed start, else end of the all-day start.
+pub fn due_at(d: &Map<String, Value>) -> Option<NaiveDateTime> {
+    if let Some((stop, _)) = str_of(d, "stop").and_then(parse_when) {
+        return Some(stop);
+    }
+    let (start, all_day) = str_of(d, "start").and_then(parse_when)?;
+    Some(if all_day { start + Duration::days(1) } else { start })
+}
+
+/// Write a history entry for completing `d` now; returns its id.
+fn log_completion(store: &Store, task_id: &str, d: &Map<String, Value>, now: NaiveDateTime) -> Result<String> {
+    let mut c = Map::new();
+    c.insert("task".into(), json!(task_id));
+    c.insert("title".into(), d.get("title").cloned().unwrap_or(json!("")));
+    c.insert("done_at".into(), json!(time::now_ms()));
+    c.insert("tz_offset_min".into(), json!(time::local_offset_min()));
+    if let Some(due) = due_at(d) {
+        c.insert("due".into(), json!(due.format("%Y-%m-%dT%H:%M").to_string()));
+        c.insert("on_time".into(), json!(now <= due));
+    }
+    if let Some(t) = d.get("tags") {
+        c.insert("tags".into(), t.clone());
+    }
+    Ok(store.put(COMPLETIONS, None, &Value::Object(c))?.id)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Completion {
+    pub id: String,
+    #[serde(flatten)]
+    pub data: Map<String, Value>,
+}
+
+/// Completed-task history, newest first.
+pub fn history(store: &Store) -> Result<Vec<Completion>> {
+    let mut v: Vec<Completion> = store
+        .list(COMPLETIONS, u32::MAX, 0)?
+        .into_iter()
+        .map(|r| Completion { id: r.id, data: r.data.as_object().cloned().unwrap_or_default() })
+        .collect();
+    v.sort_by_key(|c| std::cmp::Reverse(c.data.get("done_at").and_then(Value::as_i64).unwrap_or(0)));
+    Ok(v)
 }
 
 fn next_occurrence(repeat: &str, from: NaiveDate) -> Option<NaiveDate> {
@@ -224,14 +340,23 @@ fn next_occurrence(repeat: &str, from: NaiveDate) -> Option<NaiveDate> {
 
 /// Complete / un-complete. A repeating task with a start moves to its next
 /// future occurrence (stop moves by the same amount; steps reset) instead.
-pub fn toggle(store: &Store, id: &str, today: NaiveDate) -> Result<TaskView> {
+pub fn toggle(store: &Store, id: &str, now: NaiveDateTime) -> Result<TaskView> {
+    let today = now.date();
     let r = store.get(id)?.ok_or_else(|| Error::NotFound(id.into()))?;
     let mut d = normalize(r.data.as_object().cloned().unwrap_or_default());
     let repeat = str_of(&d, "repeat").map(str::to_owned);
     let start = str_of(&d, "start").and_then(parse_when);
     if is_done(&d) {
         d.remove("done_at");
-    } else if let (Some(rep), Some((start, all_day))) = (repeat, start) {
+        if let Some(c) = d.remove("last_completion").and_then(|v| v.as_str().map(str::to_owned)) {
+            let _ = store.delete(&c);
+        }
+        return Ok(view(&store.put(TASKS, Some(id), &Value::Object(d))?));
+    }
+    let cid = log_completion(store, id, &d, now)?;
+    d.insert("last_completion".into(), json!(cid));
+    d.remove("stage");
+    if let (Some(rep), Some((start, all_day))) = (repeat, start) {
         let mut next = start.date();
         while let Some(n) = next_occurrence(&rep, next) {
             next = n;
@@ -351,7 +476,7 @@ mod tests {
         p.insert("start".into(), json!("2026-12-25T08:00"));
         update(&s, &t.id, &p).unwrap();
         assert_eq!(list(&s, Filter::Active).unwrap().len(), 3, "editing the date keeps it listed");
-        toggle(&s, &t.id, NaiveDate::from_ymd_opt(2026, 11, 15).unwrap()).unwrap();
+        toggle(&s, &t.id, NaiveDate::from_ymd_opt(2026, 11, 15).unwrap().and_hms_opt(12, 0, 0).unwrap()).unwrap();
         assert_eq!((list(&s, Filter::Active).unwrap().len(), list(&s, Filter::Done).unwrap().len()), (2, 1));
         assert_eq!(list(&s, Filter::All).unwrap().len(), 3);
     }
@@ -373,7 +498,7 @@ mod tests {
     #[test]
     fn repeat_moves_start_and_stop() {
         let s = store();
-        let today = NaiveDate::from_ymd_opt(2026, 11, 14).unwrap(); // Saturday
+        let today = NaiveDate::from_ymd_opt(2026, 11, 14).unwrap().and_hms_opt(12, 0, 0).unwrap(); // Saturday
         let t = create(&s, NewTask { start: Some("2026-11-13T09:00".into()), stop: Some("2026-11-13T09:30".into()), repeat: Some("weekdays".into()), ..nt("standup") }).unwrap();
         let t = toggle(&s, &t.id, today).unwrap();
         assert_eq!((t.data["start"].as_str(), t.data["stop"].as_str()), (Some("2026-11-16T09:00"), Some("2026-11-16T09:30")));
@@ -395,5 +520,57 @@ mod tests {
         assert_eq!(search(&s, "\"(").unwrap().len(), 0);
         assert_ne!(notification_id("a"), notification_id("b"));
         assert!(notification_id("x") >= 0);
+    }
+
+    #[test]
+    fn tags_stage_photos_clean() {
+        let s = store();
+        let t = create(&s, NewTask { tags: Some(vec!["#Home".into(), "home".into(), " deep work ".into(), "".into()]), stage: Some("doing".into()), photos: Some(vec!["p1".into()]), ..nt("x") }).unwrap();
+        assert_eq!(t.data["tags"], json!(["home", "deep-work"]));
+        assert_eq!(t.data["stage"], "doing");
+        assert_eq!(t.data["photos"], json!(["p1"]));
+        let mut p = Map::new();
+        p.insert("stage".into(), json!("todo"));
+        p.insert("tags".into(), json!([]));
+        let t = update(&s, &t.id, &p).unwrap();
+        assert!(!t.data.contains_key("stage") && !t.data.contains_key("tags"));
+        // v1 status "doing" becomes the Board's Doing column.
+        let r = s.put(TASKS, None, &json!({"title": "old", "status": "doing"})).unwrap();
+        assert_eq!(get(&s, &r.id).unwrap().unwrap().data["stage"], "doing");
+    }
+
+    #[test]
+    fn completions_history_and_undo() {
+        let s = store();
+        let now = NaiveDate::from_ymd_opt(2026, 11, 15).unwrap().and_hms_opt(12, 0, 0).unwrap();
+        let late = create(&s, NewTask { start: Some("2026-11-14T09:00".into()), stage: Some("doing".into()), ..nt("late") }).unwrap();
+        let ok = create(&s, NewTask { start: Some("2026-11-15".into()), ..nt("on time") }).unwrap();
+        let undated = create(&s, nt("undated")).unwrap();
+        let before = late.data.clone();
+        let done = toggle(&s, &late.id, now).unwrap();
+        assert!(!done.data.contains_key("stage"), "completing leaves the Doing column");
+        toggle(&s, &ok.id, now).unwrap();
+        toggle(&s, &undated.id, now).unwrap();
+        let h = history(&s).unwrap();
+        assert_eq!(h.len(), 3);
+        let by = |title: &str| h.iter().find(|c| c.data["title"] == title).unwrap().data.clone();
+        assert_eq!(by("late")["on_time"], false);
+        assert_eq!(by("on time")["on_time"], true);
+        assert!(!by("undated").contains_key("on_time"));
+        // Undo (replace with the version before) removes the history entry.
+        replace(&s, &late.id, &Value::Object(before)).unwrap();
+        assert_eq!(history(&s).unwrap().len(), 2);
+        // Un-completing removes it too; undoing that brings it back.
+        let done_ok = get(&s, &ok.id).unwrap().unwrap().data;
+        toggle(&s, &ok.id, now).unwrap();
+        assert_eq!(history(&s).unwrap().len(), 1);
+        replace(&s, &ok.id, &Value::Object(done_ok)).unwrap();
+        assert_eq!(history(&s).unwrap().len(), 2);
+        toggle(&s, &ok.id, now).unwrap();
+        // Repeating tasks log every completion although they stay active.
+        let r = create(&s, NewTask { start: Some("2026-11-15T08:00".into()), repeat: Some("daily".into()), ..nt("daily") }).unwrap();
+        let r = toggle(&s, &r.id, now).unwrap();
+        assert!(!r.data.contains_key("done_at"));
+        assert_eq!(history(&s).unwrap().len(), 2);
     }
 }

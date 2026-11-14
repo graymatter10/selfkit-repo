@@ -1,12 +1,51 @@
 <script lang="ts">
   // Settings (iOS grouped sheet): appearance, defaults for new tasks, desktop shortcut.
   import { SEVERITY, fmtMin } from "../lib/time";
-  import { app, defaultReminder, defaultSeverity, savePrefs, saveSettings } from "../lib/state.svelte";
+  import { app, breakMin, defaultReminder, defaultSeverity, focusMin, refresh, savePrefs, saveSettings } from "../lib/state.svelte";
+  import { api } from "../lib/api";
   import Seg from "./Seg.svelte";
   let { desktop = false }: { desktop?: boolean } = $props();
   let recording = $state(false);
   let shortcutError = $state("");
-  const set = (k: "theme" | "reminder" | "severity", v: unknown) => savePrefs({ ...app.prefs, [k]: v });
+  const set = (k: "theme" | "reminder" | "severity" | "focus_min" | "break_min", v: unknown) => savePrefs({ ...app.prefs, [k]: v });
+
+  // .ics export / import
+  let icsMsg = $state("");
+  let icsErr = $state(false);
+  let includeDone = $state(true);
+  let importEl: HTMLInputElement | undefined = $state();
+  type Files = { saveDownload(name: string, mime: string, text: string): string };
+  async function exportIcs() {
+    icsErr = false;
+    try {
+      const text = await api.icsExport(includeDone);
+      const d = new Date();
+      const name = `agenda-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.ics`;
+      const files = (window as unknown as { AgendaFiles?: Files }).AgendaFiles;
+      const path = files ? files.saveDownload(name, "text/calendar", text) : await api.saveExport(name, text);
+      if (!path) throw new Error("Could not save the file.");
+      const n = (text.match(/BEGIN:VTODO/g) ?? []).length;
+      icsMsg = `Exported ${n} task${n === 1 ? "" : "s"} to ${path}`;
+    } catch (e) {
+      icsErr = true;
+      icsMsg = String(e).replace(/^Error:\s*/, "");
+    }
+  }
+  async function importIcs(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const f = input.files?.[0];
+    input.value = "";
+    if (!f) return;
+    icsErr = false;
+    try {
+      const r = await api.icsImport(await f.text());
+      icsMsg = `Imported ${f.name}: ${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.kept ? `, ${r.kept} kept (newer here)` : ""}${r.skipped ? `, ${r.skipped} skipped` : ""}.`;
+      await refresh();
+    } catch (err) {
+      icsErr = true;
+      icsMsg = String(err).replace(/^Error:\s*/, "").replace(/^invalid format:\s*/i, "");
+    }
+  }
   const REMINDERS: (number | null)[] = [null, 0, 5, 10, 15, 30, 60, 120];
   const remName = (m: number | null) => (m == null ? "None" : m === 0 ? "At start" : `${fmtMin(m)} before`);
 
@@ -69,6 +108,31 @@
           <Seg label="Default severity" small items={[1, 2, 3, 4, 5].map((n) => ({ id: n, name: SEVERITY[n] }))} value={defaultSeverity()} onchange={(v) => set("severity", v)} />
         </div>
 
+        <div class="flex flex-col gap-2">
+          <span class="px-4 text-[13px] text-muted uppercase">Focus timer</span>
+          <div class="flex flex-col gap-3 rounded-xl bg-card px-4 py-3">
+            <div class="flex items-center gap-3"><span class="w-14 text-[15px] text-muted">Focus</span>
+              <div class="flex-1"><Seg label="Focus length" small items={[15, 25, 45, 50].map((n) => ({ id: n, name: `${n} min` }))} value={focusMin()} onchange={(v) => set("focus_min", v)} /></div></div>
+            <div class="flex items-center gap-3"><span class="w-14 text-[15px] text-muted">Break</span>
+              <div class="flex-1"><Seg label="Break length" small items={[5, 10, 15].map((n) => ({ id: n, name: `${n} min` }))} value={breakMin()} onchange={(v) => set("break_min", v)} /></div></div>
+          </div>
+          <span class="px-4 text-[13px] text-muted">Start Focus from a task. You get a notification when it ends.</span>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <span class="px-4 text-[13px] text-muted uppercase">Calendar file (.ics)</span>
+          <div class="overflow-hidden rounded-xl bg-card">
+            <label class="flex min-h-11 items-center justify-between border-b border-sep pr-4 pl-4 text-[17px]">Include completed
+              <input type="checkbox" bind:checked={includeDone} class="sr" />
+              <span aria-hidden="true" class="relative h-[31px] w-[51px] rounded-full transition-colors {includeDone ? 'bg-accent' : 'bg-fill'}"><span class="absolute top-[2px] h-[27px] w-[27px] rounded-full bg-white shadow transition-transform {includeDone ? 'translate-x-[22px]' : 'translate-x-[2px]'}"></span></span>
+            </label>
+            <button type="button" class="hl w-full border-b border-sep py-[11px] pl-4 text-left text-[17px] text-accent" onclick={exportIcs}>Export Tasks…</button>
+            <button type="button" class="hl w-full py-[11px] pl-4 text-left text-[17px] text-accent" onclick={() => importEl?.click()}>Import .ics File…</button>
+          </div>
+          <input bind:this={importEl} type="file" accept="text/calendar,.ics,application/ics" class="sr" tabindex="-1" aria-hidden="true" onchange={importIcs} />
+          <span class="px-4 text-[13px] break-words {icsErr ? 'text-danger' : 'text-muted'}" role={icsMsg ? "status" : undefined}>{icsMsg || "Tasks as VTODO for other calendar and task apps. Importing the same file again updates instead of duplicating."}</span>
+        </div>
+
         {#if desktop && app.settings}
           <div class="flex flex-col gap-2">
             <span class="px-4 text-[13px] text-muted uppercase">Quick capture</span>
@@ -81,7 +145,7 @@
             <span class="px-4 text-[13px] {shortcutError ? 'text-danger' : 'text-muted'}" role={shortcutError ? "alert" : undefined}>{shortcutError || "Opens a small New Task window from anywhere."}</span>
           </div>
         {/if}
-        <p class="m-0 text-center text-[13px] text-muted">Agenda 0.3 · your data stays on this device and is encrypted when it syncs.</p>
+        <p class="m-0 text-center text-[13px] text-muted">Agenda 0.4 · your data stays on this device and is encrypted when it syncs.</p>
       </div>
     </div>
   </div>

@@ -2,11 +2,13 @@
 // task can never "disappear" because of the view (the v1 bug).
 import { on, showToast } from "@selfkit/ui";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
-import { api, dataOf, type ListInfo, type NewTask, type Prefs, type Settings, type Task } from "./api";
+import { api, dataOf, type FocusSession, type ListInfo, type NewTask, type Prefs, type Settings, type Task } from "./api";
 import { groupOf, parseWhen, shortDay, hm, sortTasks, type GroupKey, type Sort, dayLabel, GROUP_LABEL } from "./time";
 
 export type Filter = "active" | "all" | "done" | "overdue";
-export type Panel = { kind: "none" } | { kind: "detail"; id: string } | { kind: "new" } | { kind: "edit"; id: string };
+export type Panel = { kind: "none" } | { kind: "detail"; id: string } | { kind: "new"; start?: string } | { kind: "edit"; id: string };
+/** Main views. "list" is the grouped Today list; history and stats are their own screens. */
+export type View = "list" | "upcoming" | "calendar" | "board" | "history" | "stats";
 
 export const app = $state({
   tasks: [] as Task[],
@@ -20,6 +22,15 @@ export const app = $state({
   prefs: {} as Prefs,
   settings: null as Settings | null,
   settingsOpen: false,
+  view: "list" as View,
+  /** Tag filter for every view (null = all). */
+  tag: null as string | null,
+  /** Running focus (Pomodoro) session, and the one that just finished. */
+  focus: null as FocusSession | null,
+  focusDone: null as FocusSession | null,
+  focusOpen: false,
+  /** Full-screen photo viewer. */
+  photo: null as string | null,
   now: new Date(),
   error: "",
   loaded: false,
@@ -35,7 +46,7 @@ export const defaultSeverity = () => app.prefs.severity ?? 3;
 export function counts() {
   const now = app.now;
   let active = 0, overdue = 0, doneToday = 0;
-  for (const t of app.tasks) {
+  for (const t of tagged()) {
     if (t.done_at) {
       if (new Date(t.done_at).toDateString() === now.toDateString()) doneToday++;
     } else {
@@ -46,9 +57,19 @@ export function counts() {
   return { active, overdue, doneToday };
 }
 
+/** All tags in use, most used first. */
+export function allTags(): string[] {
+  const n = new Map<string, number>();
+  for (const t of app.tasks) for (const g of t.tags ?? []) n.set(g, (n.get(g) ?? 0) + (t.done_at ? 0.01 : 1));
+  return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([g]) => g);
+}
+
+/** Tasks passing the tag filter. */
+export const tagged = () => (app.tag ? app.tasks.filter((t) => t.tags?.includes(app.tag!)) : app.tasks);
+
 export function groups(): { key: GroupKey; label: string; tasks: Task[] }[] {
   const now = app.now;
-  const shown = app.tasks.filter((t) =>
+  const shown = tagged().filter((t) =>
     app.filter === "all" ? true : app.filter === "done" ? !!t.done_at : app.filter === "overdue" ? groupOf(t, now) === "overdue" : !t.done_at,
   );
   const order: GroupKey[] = ["overdue", "today", "tomorrow", "later", "nodate", "done"];
@@ -144,6 +165,55 @@ export async function remove(t: Task) {
   await refresh();
 }
 
+export type Stage = "todo" | "doing" | "done";
+export const stageOf = (t: Task): Stage => (t.done_at ? "done" : t.stage === "doing" ? "doing" : "todo");
+export const STAGE_LABEL: Record<Stage, string> = { todo: "To Do", doing: "Doing", done: "Done" };
+
+/** Board move. Into/out of Done completes/reopens (repeating tasks move to their next date). */
+export async function moveStage(t: Task, to: Stage) {
+  const from = stageOf(t);
+  if (from === to) return;
+  const before = dataOf(t);
+  let after: Task | undefined;
+  if (to === "done" || from === "done") {
+    after = await guard(api.toggle(t.id));
+    if (after && to === "doing" && !after.done_at) after = await guard(api.update(t.id, { stage: "doing" }));
+  } else {
+    after = await guard(api.update(t.id, { stage: to === "doing" ? "doing" : null }));
+  }
+  if (!after) return;
+  const moved = to === "done" && !after.done_at;
+  showToast(moved ? `Done · next ${whereLabel(after)}` : `Moved to ${STAGE_LABEL[to]} · ${t.title}`, async () => void (await api.replace(t.id, before)));
+  await refresh();
+}
+
+// ---- Focus (Pomodoro) ----
+export const focusMin = () => app.prefs.focus_min ?? 25;
+export const breakMin = () => app.prefs.break_min ?? 5;
+
+export async function startFocus(task: Task | null, kind: "focus" | "break" = "focus", minutes?: number) {
+  ensureNotifyPermission({ start: "x", reminder_min: 0 });
+  const title = kind === "break" ? "Break" : (task?.title ?? "Focus");
+  const s = await guard(api.focusStart(task?.id ?? null, title, kind, minutes ?? (kind === "break" ? breakMin() : focusMin())));
+  if (s) {
+    app.focus = s;
+    app.focusDone = null;
+  }
+}
+
+export async function stopFocus() {
+  await guard(api.focusStop());
+  app.focus = null;
+}
+
+/** Ask Rust for the session state; it logs a session that reached its end. */
+export async function pollFocus() {
+  const st = await guard(api.focusState());
+  if (!st) return;
+  app.focus = st.current;
+  if (st.finished) app.focusDone = st.finished;
+}
+
 export async function patchSteps(t: Task, steps: Task["steps"]) {
   await guard(api.update(t.id, { steps }));
   await refresh();
@@ -179,12 +249,19 @@ export function init() {
   guard(api.settings()).then((s) => s && (app.settings = s));
   refresh();
   on("tasks-changed", () => refresh());
+  on("focus-changed", () => pollFocus());
+  pollFocus();
+  // While a session runs, check every second so the end is noticed on time.
+  setInterval(() => {
+    if (app.focus && Date.now() >= app.focus.end_ms) pollFocus();
+  }, 1000);
   on<Prefs>("prefs-changed", (p) => ((app.prefs = p), applyTheme()));
   setInterval(() => (app.now = new Date()), 30_000);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       app.now = new Date();
       refresh();
+      pollFocus();
     }
   });
 }

@@ -62,3 +62,21 @@
 @keyframes fade { from { opacity: 0; } }
 @keyframes pop { from { opacity: 0; transform: scale(0.96); } }
 @media (prefers-reduced-motion: reduce) { .rise, .fade, .pop { animation: none; } }
+
+/* Rendered Markdown in task notes (lib/markdown.ts). */
+.md > * + * { margin-top: 0.55em; }
+.md p, .md ul, .md ol, .md blockquote, .md pre, .md h3, .md h4, .md h5 { margin-bottom: 0; }
+.md p:first-child, .md ul:first-child, .md ol:first-child, .md h3:first-child, .md h4:first-child, .md h5:first-child { margin-top: 0; }
+.md h3 { font-size: 1.15em; font-weight: 700; } .md h4 { font-size: 1.05em; font-weight: 700; } .md h5 { font-size: 1em; font-weight: 600; }
+.md h3, .md h4, .md h5 { margin: 0.8em 0 0; letter-spacing: -0.01em; }
+.md ul, .md ol { padding-left: 1.3em; margin-top: 0.4em; } .md ul { list-style: disc; } .md ol { list-style: decimal; }
+.md li.task { list-style: none; margin-left: -1.3em; }
+.md li.task input { accent-color: var(--accent); width: 1em; height: 1em; vertical-align: -0.1em; margin-right: 0.25em; }
+.md a { color: var(--accent); text-decoration: none; }
+.md code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.88em; background: var(--fill); border-radius: 5px; padding: 0.1em 0.3em; }
+.md pre { background: var(--fill2); border-radius: 8px; padding: 0.6em 0.8em; overflow-x: auto; white-space: pre; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { margin-left: 0; margin-right: 0; padding-left: 0.8em; border-left: 3px solid var(--sep); color: var(--ink2); }
+.md hr { border: 0; border-top: 1px solid var(--sep); }
+.md img { display: block; max-width: 100%; max-height: 360px; border-radius: 8px; background: var(--fill); }
+.md strong { font-weight: 650; } .md del { color: var(--muted); }

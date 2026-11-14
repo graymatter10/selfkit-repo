@@ -6,10 +6,12 @@
   import { status, whenLabel, sevMark } from "../lib/time";
   import { app, toggle } from "../lib/state.svelte";
 
-  let { task, last = false, desktop = false, onopen }: { task: Task; last?: boolean; desktop?: boolean; onopen: (t: Task) => void } = $props();
+  let { task, last = false, desktop = false, onopen, when: whenOverride }: { task: Task; last?: boolean; desktop?: boolean; onopen: (t: Task) => void; when?: string } = $props();
   const done = $derived(!!task.done_at);
+  /** First line of the notes without Markdown marks. */
+  const plain = (n: string) => n.split("\n").find((l) => l.trim() && !/^!\[/.test(l.trim()))?.replace(/!\[[^\]]*\]\([^)]*\)|[#*_`>~]|\[( |x)\]/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").trim() ?? "";
   const st = $derived(status(task, app.now));
-  const when = $derived(whenLabel(task, app.now));
+  const when = $derived(whenOverride ?? whenLabel(task, app.now));
   const steps = $derived(task.steps ?? []);
   const selected = $derived(desktop && "id" in app.panel && app.panel.id === task.id);
   const mark = $derived(done ? "" : sevMark(task.severity));
@@ -35,9 +37,11 @@
     <span class="flex items-baseline gap-1.5 text-[17px] leading-snug {done ? 'text-muted' : ''}">
       {#if mark}<span class="font-bold text-ink2">{mark}</span>{/if}
       <span class={desktop ? "truncate" : "line-clamp-2"}>{task.title}</span>
-      {#if task.reminder_min != null && task.start && !done}<span class="ml-auto shrink-0 self-center text-muted"><Icon name="bell" size={14} stroke={2} /></span>{/if}
+      {#if (task.photos?.length || (task.reminder_min != null && task.start)) && !done}<span class="ml-auto flex shrink-0 gap-1.5 self-center text-muted">
+        {#if task.photos?.length}<Icon name="camera" size={14} stroke={2} />{/if}
+        {#if task.reminder_min != null && task.start}<Icon name="bell" size={14} stroke={2} />{/if}</span>{/if}
     </span>
-    {#if task.notes && !done && !desktop}<span class="truncate text-[15px] text-muted">{task.notes}</span>{/if}
-    {#if detail}<span class="text-[15px] {st.kind === 'overdue' && !done ? 'text-danger' : 'text-muted'}">{detail}</span>{/if}
+    {#if task.notes && !done && !desktop}<span class="truncate text-[15px] text-muted">{plain(task.notes)}</span>{/if}
+    {#if detail || task.tags?.length}<span class="text-[15px] {st.kind === 'overdue' && !done ? 'text-danger' : 'text-muted'}">{detail}{#if task.tags?.length}<span class="text-muted">{detail ? " · " : ""}{task.tags.map((g) => "#" + g).join(" ")}</span>{/if}</span>{/if}
   </button>
 </div>

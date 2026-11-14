@@ -4,7 +4,8 @@
   import { Icon } from "@selfkit/ui";
   import type { Task } from "../lib/api";
   import { SEVERITY, whenLabel, fmtMin, parseWhen, shortDay, status, dayLabel, hm, dayDiff } from "../lib/time";
-  import { app, patchSteps, remove, toggle } from "../lib/state.svelte";
+  import { app, focusMin, patchSteps, remove, startFocus, stageOf, STAGE_LABEL, toggle } from "../lib/state.svelte";
+  import Notes from "./Notes.svelte";
 
   let { task, layout = "page", onclose, onedit }: { task: Task; layout?: "page" | "panel"; onclose: () => void; onedit: () => void } = $props();
   const st = $derived(status(task, app.now));
@@ -45,7 +46,13 @@
       <span class="text-[15px] {st.kind === 'overdue' && !done ? 'text-danger' : 'text-muted'}">{st.text || (done ? "Completed" : s ? whenLabel(task, app.now) : "No date")}</span>
     </div>
 
-    {#if task.notes}<div class="rounded-xl bg-card px-4 py-3 text-[17px] leading-normal whitespace-pre-wrap">{task.notes}</div>{/if}
+    <Notes notes={task.notes} photos={task.photos} />
+
+    {#if task.tags?.length}
+      <div class="flex flex-wrap gap-1.5 px-1">
+        {#each task.tags as g}<button type="button" class="press h-7 rounded-full bg-fill px-3 text-[14px] text-ink2" onclick={() => ((app.tag = g), onclose())}>#{g}</button>{/each}
+      </div>
+    {/if}
 
     <div class="overflow-hidden rounded-xl bg-card">
       {@render row("Starts", startText, !e)}
@@ -56,7 +63,8 @@
       {@render row("Severity", SEVERITY[task.severity] ?? "Medium")}
       {#if s}{@render row("Reminder", reminderText)}{/if}
       {@render row("Repeat", task.repeat ? (REP[task.repeat] ?? task.repeat) : "Never")}
-      {@render row("List", app.lists.find((l) => l.id === (task.list ?? "inbox"))?.name ?? "Personal", true)}
+      {@render row("List", app.lists.find((l) => l.id === (task.list ?? "inbox"))?.name ?? "Personal")}
+      {@render row("Board", STAGE_LABEL[stageOf(task)], true)}
     </div>
 
     {#if steps.length}
@@ -72,6 +80,16 @@
             </button>
           {/each}
         </div>
+      </div>
+    {/if}
+
+    {#if !done}
+      <div class="overflow-hidden rounded-xl bg-card">
+        {#if app.focus && app.focus.task === task.id}
+          <button type="button" class="hl min-h-11 w-full py-[11px] text-[17px] text-accent" onclick={() => (app.focusOpen = true)}>Focus Running…</button>
+        {:else}
+          <button type="button" class="hl min-h-11 w-full py-[11px] text-[17px] text-accent" onclick={() => (startFocus(task), (app.focusOpen = true))}>Start Focus · {focusMin()} min</button>
+        {/if}
       </div>
     {/if}
 

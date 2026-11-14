@@ -1,5 +1,14 @@
 # Decisions (newest first)
 
+## 2026-11-15 — Agenda 0.4
+- CalDAV dropped for now (user request); `.ics` export/import kept, subscribable feed skipped.
+- Photos are stored as files (`<data_dir>/agenda-photos/`), not in SQLite, so the DB stays small; photo files don't sync until the S3 blob store is wired into the apps.
+- The running focus (Pomodoro) state lives in local kv so two devices never fight over a timer.
+- Android Back uses Tauri's native back-button event instead of history entries (the WebView skipped re-added entries).
+- The Board uses pointer events, not HTML5 drag and drop, so it behaves the same on WebKitGTK.
+- On `.ics` import the newer version wins, so an old export can't undo later edits.
+- The user kept the as-built screens (no redesign of the new views).
+
 ## 2026-11-15 — Browser tracking and agent backups
 - The extension sends to the native host once a minute (the browser starts the host per message) instead of keeping a port open: nothing resident, and it works even when the agent isn't running because the host writes SQLite directly.
 - The extension's own pause is local to that browser; Chrono's `paused_until` and the agent's pause apply on top. Only domains are stored; incognito is never tracked.

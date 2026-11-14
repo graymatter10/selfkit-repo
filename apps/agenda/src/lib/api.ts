@@ -13,13 +13,21 @@ export interface Task {
   repeat?: string;
   list?: string;
   steps?: Step[];
+  tags?: string[];
+  stage?: "doing";
+  photos?: string[];
+  last_completion?: string;
   done_at?: number | null;
   created_at?: number;
   updated_at: number;
 }
 export type NewTask = Omit<Task, "id" | "updated_at" | "done_at" | "created_at" | "severity"> & { severity?: number };
 export interface ListInfo { id: string; name: string }
-export interface Prefs { theme?: "system" | "light" | "dark"; reminder?: number | null; severity?: number }
+export interface Prefs { theme?: "system" | "light" | "dark"; reminder?: number | null; severity?: number; focus_min?: number; break_min?: number }
+export interface Completion { id: string; task: string; title: string; done_at: number; tz_offset_min?: number; due?: string; on_time?: boolean; tags?: string[] }
+export interface FocusSession { task?: string | null; title: string; kind: "focus" | "break"; start_ms: number; end_ms: number; planned_min: number }
+export interface FocusLog { id: string; task?: string; title: string; kind: "focus" | "break"; start: number; end: number; minutes: number; planned_min: number; completed: boolean }
+export interface ImportResult { added: number; updated: number; unchanged: number; skipped: number; kept: number }
 export interface Settings { day_start_min: number; main_currency: string; theme: unknown; shortcuts: Record<string, string> }
 
 export function dataOf(t: Task): Record<string, unknown> {
@@ -45,4 +53,14 @@ export const api = {
   saveSettings: (settings: Settings) => call<void>("settings_set", { settings }),
   closeCapture: () => call<void>("close_capture"),
   devHooks: () => call<string | null>("dev_hooks"),
+  history: () => call<Completion[]>("history"),
+  focusState: () => call<{ current: FocusSession | null; finished: FocusSession | null }>("focus_state"),
+  focusStart: (task: string | null, title: string, kind: "focus" | "break", minutes: number) => call<FocusSession>("focus_start", { task, title, kind, minutes }),
+  focusStop: () => call<void>("focus_stop"),
+  focusSessions: () => call<FocusLog[]>("focus_sessions"),
+  photoSave: (data: string, mime: string, w: number, h: number) => call<string>("photo_save", { data, mime, w, h }),
+  photoGet: (id: string) => call<string>("photo_get", { id }),
+  icsExport: (includeDone: boolean) => call<string>("ics_export", { includeDone }),
+  icsImport: (text: string) => call<ImportResult>("ics_import", { text }),
+  saveExport: (name: string, text: string) => call<string>("save_export", { name, text }),
 };

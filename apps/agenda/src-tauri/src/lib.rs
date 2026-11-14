@@ -1,11 +1,15 @@
 //! Agenda (com.selfkit.agenda): Tauri commands over selfkit-core.
 //! Docs: docs/apps/agenda/README.md (code map).
 
+pub mod focus;
+pub mod ics;
+pub mod photos;
 pub mod tasks;
 
 use std::sync::Mutex;
 
-use chrono::{Local, NaiveDate, TimeZone};
+use base64::Engine;
+use chrono::{Local, TimeZone};
 use selfkit_core::settings::Settings;
 use selfkit_core::{Store, paths};
 use serde_json::{Map, Value};
@@ -23,9 +27,6 @@ fn e(err: impl std::fmt::Display) -> String {
     err.to_string()
 }
 
-fn today() -> NaiveDate {
-    Local::now().date_naive()
-}
 
 /// Notify windows and (re)schedule the task's reminder.
 fn changed(app: &AppHandle, task: Option<&tasks::TaskView>, removed_id: Option<&str>) {
@@ -66,7 +67,7 @@ fn replace_task(app: AppHandle, state: State<AppState>, id: String, data: Value)
 
 #[tauri::command]
 fn toggle_task(app: AppHandle, state: State<AppState>, id: String) -> Res<tasks::TaskView> {
-    let t = tasks::toggle(&state.store.lock().unwrap(), &id, today()).map_err(e)?;
+    let t = tasks::toggle(&state.store.lock().unwrap(), &id, Local::now().naive_local()).map_err(e)?;
     changed(&app, Some(&t), None);
     Ok(t)
 }
@@ -109,6 +110,107 @@ fn add_list(app: AppHandle, state: State<AppState>, name: String) -> Res<String>
     let id = tasks::add_list(&state.store.lock().unwrap(), &name).map_err(e)?;
     let _ = app.emit("tasks-changed", ());
     Ok(id)
+}
+
+/// Completed-task history (newest first).
+#[tauri::command]
+fn history(state: State<AppState>) -> Res<Vec<tasks::Completion>> {
+    tasks::history(&state.store.lock().unwrap()).map_err(e)
+}
+
+// ---- Focus (Pomodoro) ----
+
+/// Current session; a session that reached its end is logged and returned as `finished`.
+#[derive(serde::Serialize)]
+struct FocusState {
+    current: Option<focus::Session>,
+    finished: Option<focus::Session>,
+}
+
+#[tauri::command]
+fn focus_state(app: AppHandle, state: State<AppState>) -> Res<FocusState> {
+    let store = state.store.lock().unwrap();
+    let finished = focus::finish_if_due(&store, selfkit_core::time::now_ms()).map_err(e)?;
+    if finished.is_some() {
+        let _ = app.emit("focus-changed", ());
+    }
+    Ok(FocusState { current: focus::current(&store).map_err(e)?, finished })
+}
+
+#[tauri::command]
+fn focus_start(app: AppHandle, state: State<AppState>, task: Option<String>, title: String, kind: String, minutes: i64) -> Res<focus::Session> {
+    let s = focus::start(&state.store.lock().unwrap(), task, &title, &kind, minutes, selfkit_core::time::now_ms()).map_err(e)?;
+    reminders::schedule_focus(&app, &s);
+    let _ = app.emit("focus-changed", ());
+    Ok(s)
+}
+
+#[tauri::command]
+fn focus_stop(app: AppHandle, state: State<AppState>) -> Res<()> {
+    focus::stop(&state.store.lock().unwrap(), selfkit_core::time::now_ms()).map_err(e)?;
+    reminders::cancel_focus(&app);
+    let _ = app.emit("focus-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn focus_sessions(state: State<AppState>) -> Res<Vec<focus::Logged>> {
+    focus::sessions(&state.store.lock().unwrap()).map_err(e)
+}
+
+// ---- Photos ----
+
+/// Save a photo (base64 of the already scaled image); returns its id.
+#[tauri::command]
+fn photo_save(state: State<AppState>, data: String, mime: String, w: u32, h: u32) -> Res<String> {
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(e)?;
+    photos::save(&state.store.lock().unwrap(), &bytes, &mime, w, h).map_err(e)
+}
+
+/// A photo as a data: URL.
+#[tauri::command]
+fn photo_get(state: State<AppState>, id: String) -> Res<String> {
+    let (mime, bytes) = photos::load(&state.store.lock().unwrap(), &id).map_err(e)?;
+    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
+// ---- .ics ----
+
+#[tauri::command]
+fn ics_export(state: State<AppState>, include_done: bool) -> Res<String> {
+    let store = state.store.lock().unwrap();
+    let filter = if include_done { tasks::Filter::All } else { tasks::Filter::Active };
+    let list = tasks::list(&store, filter).map_err(e)?;
+    Ok(ics::export(&list, &tasks::lists(&store).map_err(e)?))
+}
+
+#[tauri::command]
+fn ics_import(app: AppHandle, state: State<AppState>, text: String) -> Res<ics::ImportResult> {
+    let r = ics::import(&state.store.lock().unwrap(), &text).map_err(e)?;
+    let _ = app.emit("tasks-changed", ());
+    #[cfg(mobile)]
+    {
+        let h = app.clone();
+        std::thread::spawn(move || reminders::reschedule_all(&h));
+    }
+    Ok(r)
+}
+
+/// Desktop: write an export into the Downloads folder; returns the path.
+/// (Android saves through the `AgendaFiles` bridge in MainActivity.kt.)
+#[tauri::command]
+fn save_export(name: String, text: String) -> Res<String> {
+    let safe: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect();
+    let dir = std::env::var("AGENDA_EXPORT_DIR")
+        .map(std::path::PathBuf::from)
+        .ok()
+        .or_else(dirs::download_dir)
+        .or_else(dirs::home_dir)
+        .ok_or("No Downloads folder")?;
+    std::fs::create_dir_all(&dir).map_err(e)?;
+    let path = dir.join(safe);
+    std::fs::write(&path, text).map_err(e)?;
+    Ok(path.display().to_string())
 }
 
 /// App preferences (theme, default reminder, default severity) in agenda.db kv.
@@ -216,29 +318,81 @@ mod reminders {
         }
     }
 
+    #[cfg_attr(desktop, allow(dead_code))]
+    pub const FOCUS_NOTIFICATION: i32 = 1_999_000_001;
+
+    pub fn focus_text(s: &focus::Session) -> (String, String) {
+        if s.kind == "break" {
+            ("Break is over".into(), "Ready for the next focus session?".into())
+        } else {
+            let t = if s.title.is_empty() { "Focus session".to_string() } else { s.title.clone() };
+            (format!("Focus done · {t}"), format!("{} min of focus. Time for a break.", s.planned_min))
+        }
+    }
+
+    #[cfg(mobile)]
+    pub fn schedule_focus(app: &AppHandle, s: &focus::Session) {
+        use tauri_plugin_notification::Schedule;
+        let _ = app.notification().cancel(vec![FOCUS_NOTIFICATION]);
+        let Ok(date) = time::OffsetDateTime::from_unix_timestamp(s.end_ms / 1000) else { return };
+        let (title, body) = focus_text(s);
+        let r = app
+            .notification()
+            .builder()
+            .id(FOCUS_NOTIFICATION)
+            .title(title)
+            .body(body)
+            .schedule(Schedule::At { date, repeating: false, allow_while_idle: true })
+            .show();
+        if let Err(err) = r {
+            eprintln!("schedule focus: {err}");
+        }
+    }
+
+    #[cfg(mobile)]
+    pub fn cancel_focus(app: &AppHandle) {
+        let _ = app.notification().cancel(vec![FOCUS_NOTIFICATION]);
+    }
+
+    /// Desktop: the timer thread shows the notification when the session ends.
+    #[cfg(desktop)]
+    pub fn schedule_focus(_app: &AppHandle, _s: &focus::Session) {}
+
+    #[cfg(desktop)]
+    pub fn cancel_focus(_app: &AppHandle) {}
+
     #[cfg(desktop)]
     pub fn schedule(_app: &AppHandle, _t: &tasks::TaskView) {}
 
     #[cfg(desktop)]
     pub fn cancel(_app: &AppHandle, _task_id: &str) {}
 
-    /// Desktop: every 20 s, show reminders whose time passed since the last tick.
+    /// Desktop: every 5 s, show reminders whose time passed since the last tick,
+    /// and finish (log + notify) a focus session that reached its end.
     #[cfg(desktop)]
     pub fn start_desktop_timer(app: AppHandle) {
         std::thread::spawn(move || {
             let mut last = chrono::Utc::now();
             loop {
-                std::thread::sleep(std::time::Duration::from_secs(20));
+                std::thread::sleep(std::time::Duration::from_secs(5));
                 let now = chrono::Utc::now();
-                let due: Vec<tasks::TaskView> = {
+                let (due, finished): (Vec<tasks::TaskView>, _) = {
                     let state = app.state::<AppState>();
                     let store = state.store.lock().unwrap();
+                    let finished = focus::finish_if_due(&store, now.timestamp_millis()).ok().flatten();
+                    (
                     tasks::list(&store, tasks::Filter::Active)
                         .unwrap_or_default()
                         .into_iter()
                         .filter(|t| fire_at_utc(t).is_some_and(|at| at > last && at <= now))
-                        .collect()
+                        .collect(),
+                    finished)
                 };
+                if let Some(s) = finished {
+                    let (title, body) = focus_text(&s);
+                    let _ = app.notification().builder().title(title).body(body).show();
+                    let _ = app.emit("focus-changed", ());
+                }
                 for t in due {
                     let _ = app.notification().builder().title(title(&t)).body(body(&t)).show();
                 }
@@ -298,7 +452,7 @@ mod shortcut {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
+    let builder = tauri::Builder::default().plugin(tauri_plugin_notification::init()).plugin(tauri_plugin_opener::init());
     #[cfg(desktop)]
     let builder = builder.plugin(shortcut::plugin());
     builder
@@ -333,7 +487,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_tasks, create_task, update_task, replace_task, toggle_task, get_task, delete_task, restore_task, search,
-            lists, add_list, prefs_get, prefs_set, settings_get, settings_set, close_capture, dev_hooks
+            lists, add_list, prefs_get, prefs_set, settings_get, settings_set, close_capture, dev_hooks, history,
+            focus_state, focus_start, focus_stop, focus_sessions, photo_save, photo_get, ics_export, ics_import, save_export
         ])
         .run(tauri::generate_context!())
         .expect("error while running Agenda");

@@ -131,3 +131,39 @@ export function reminderHint(start: string | undefined, mins: number | null | un
   const day = dayLabel(at, now);
   return `You'll get a reminder at ${hm(at)} ${day === "Today" || day === "Tomorrow" ? day.toLowerCase() : `on ${day}`}.`;
 }
+
+/** Next date of a repeat rule (same as Rust's next_occurrence). */
+export function nextOcc(repeat: string, d: Date): Date | null {
+  switch (repeat) {
+    case "daily": return addDays(d, 1);
+    case "weekly": return addDays(d, 7);
+    case "weekdays": {
+      let n = addDays(d, 1);
+      while (n.getDay() === 0 || n.getDay() === 6) n = addDays(n, 1);
+      return n;
+    }
+    case "monthly": case "yearly": {
+      const k = repeat === "monthly" ? 1 : 12;
+      const y = d.getFullYear(), m = d.getMonth() + k;
+      const last = new Date(y, m + 1, 0).getDate();
+      return new Date(y, m, Math.min(d.getDate(), last), d.getHours(), d.getMinutes());
+    }
+  }
+  return null;
+}
+
+/** Start days of a task in [from, to): its start, plus later repeats. `first` marks the real one. */
+export function occurrences(t: Task, from: Date, to: Date): { day: Date; first: boolean }[] {
+  const s = parseWhen(t.start);
+  if (!s) return [];
+  const out: { day: Date; first: boolean }[] = [];
+  let d: Date | null = s.date;
+  for (let i = 0; d && d < to && i < 800; i++) {
+    if (d >= from || startOfDay(d).getTime() >= from.getTime()) out.push({ day: startOfDay(d), first: i === 0 });
+    if (!t.repeat || t.done_at) break;
+    d = nextOcc(t.repeat, d);
+  }
+  return out;
+}
+
+export const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
