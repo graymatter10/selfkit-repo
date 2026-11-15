@@ -285,6 +285,10 @@ pub fn run() {
             let store = Store::open(paths::app_db("reflect"), "reflect", &device, &[])?;
             let settings = Store::open(paths::app_db(selfkit_core::settings::APP), selfkit_core::settings::APP, &device, &[])?;
             app.manage(AppState { store: Mutex::new(store), settings: Mutex::new(settings), cache: Mutex::new(Cache::default()) });
+            // Selfkit sync (selfkit-appsync): status, Sync now, settings, conflicts; desktop syncs on open.
+            let sync = selfkit_appsync::tauri_cmds::default_handle("reflect", paths::data_dir())?;
+            selfkit_appsync::tauri_cmds::spawn_on_open(app.handle(), &sync);
+            app.manage(sync);
             #[cfg(desktop)]
             if let (Ok(sz), Some(w)) = (std::env::var("REFLECT_WINDOW_SIZE"), app.get_webview_window("main"))
                 && let Some((a, b)) = sz.split_once('x')
@@ -307,7 +311,13 @@ pub fn run() {
             shared_get,
             prefs_get,
             prefs_set,
-            dev_hooks
+            dev_hooks,
+            selfkit_appsync::tauri_cmds::sync_status, selfkit_appsync::tauri_cmds::sync_now,
+            selfkit_appsync::tauri_cmds::sync_settings_set, selfkit_appsync::tauri_cmds::sync_server_get,
+            selfkit_appsync::tauri_cmds::sync_server_set, selfkit_appsync::tauri_cmds::sync_server_test,
+            selfkit_appsync::tauri_cmds::sync_encryption_setup, selfkit_appsync::tauri_cmds::sync_unlock,
+            selfkit_appsync::tauri_cmds::sync_change_passphrase, selfkit_appsync::tauri_cmds::sync_conflicts,
+            selfkit_appsync::tauri_cmds::sync_resolve, selfkit_appsync::tauri_cmds::sync_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running Reflect");

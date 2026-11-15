@@ -167,3 +167,6 @@ select.chip { appearance: none; border: 0; padding-right: 30px; background-image
 .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--track); color: var(--ink2); font-size: 12px; font-weight: 550; white-space: nowrap; flex: none; }
 .appicon { width: 40px; height: 40px; border-radius: 10px; flex: none; background: var(--track); display: grid; place-items: center; overflow: hidden; }
 .appicon img { width: 100%; height: 100%; display: block; }
+
+/* Shared Sync screens (ui/src/sync): Chrono's tokens. */
+.sks, .skc { --sync-accent-soft: var(--accent-soft); --sync-on-accent: var(--on-accent); --sync-sunk: var(--track); --sync-ok: var(--accent-ink); }

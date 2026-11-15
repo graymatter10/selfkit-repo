@@ -19,6 +19,8 @@ pub mod lan;
 pub mod model;
 pub mod secrets;
 pub mod server;
+#[cfg(feature = "tauri")]
+pub mod tauri_cmds;
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -214,8 +216,22 @@ impl AppSync {
         Ok(id)
     }
 
+    /// Settings name, else the name the platform reported (Android: "<maker> <model>",
+    /// written by the Kotlin plugin), else the config default.
     pub fn device_name(&self) -> String {
-        self.settings().device_name.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| self.cfg.device_name.clone())
+        self.settings()
+            .device_name
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| std::fs::read_to_string(model::sync_dir(&self.cfg.data_dir).join("device-name")).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()))
+            .unwrap_or_else(|| self.cfg.device_name.clone())
+    }
+
+    /// Remember the platform's device name (used when the user hasn't set one).
+    pub fn set_platform_device_name(&self, name: &str) {
+        let p = model::sync_dir(&self.cfg.data_dir).join("device-name");
+        if !name.trim().is_empty() && std::fs::read_to_string(&p).ok().as_deref() != Some(name) {
+            let _ = std::fs::write(p, name);
+        }
     }
 
     fn store_names(&self) -> Vec<String> {
@@ -256,11 +272,16 @@ impl AppSync {
 
     /// The data key: secure storage first, then the built-in test key (test builds).
     pub fn data_key(&self) -> Result<Option<(SecretKey, bool)>> {
-        if let Some(b) = self.cfg.secrets.get(secrets::DATA_KEY)? {
-            let raw = B64.decode(b.trim()).map_err(|_| Error::Format("data key base64".into()))?;
-            return Ok(Some((SecretKey::from_slice(&raw)?, false)));
+        match self.cfg.secrets.get(secrets::DATA_KEY) {
+            Ok(Some(b)) => {
+                let raw = B64.decode(b.trim()).map_err(|_| Error::Format("data key base64".into()))?;
+                Ok(Some((SecretKey::from_slice(&raw)?, false)))
+            }
+            // Test builds keep working when secure storage isn't available.
+            Ok(None) | Err(_) if self.cfg.test_key => Ok(Some((test_data_key(), true))),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
         }
-        Ok(self.cfg.test_key.then(|| (test_data_key(), true)))
     }
 
     pub fn encryption_set_up(&self) -> bool {
@@ -629,7 +650,7 @@ impl AppSync {
                     && settings.transport != TransportMode::LanOnly
                 {
                     // Photos only travel through S3; try it, but a LAN pass is a success either way.
-                    if let Err(e) = self.photos(&key, &stores, pc, s3, &mut out.report).await {
+                    if let Err(e) = self.photos(&key, &mut stores, pc, s3, &mut out.report).await {
                         out.note = Some(format!("Photos wait for the server: {}", explain(&e)));
                     }
                 }
@@ -645,7 +666,7 @@ impl AppSync {
             out.transport = Some(Transport::Server);
             out.ok = true;
             if let (Some(pc), Some(s3)) = (&self.cfg.photos, &cfg.s3)
-                && let Err(e) = self.photos(&key, &stores, pc, s3, &mut out.report).await
+                && let Err(e) = self.photos(&key, &mut stores, pc, s3, &mut out.report).await
             {
                 out.note = Some(format!("Photos didn't sync: {}", explain(&e)));
             }
@@ -674,9 +695,9 @@ impl AppSync {
         ))
     }
 
-    async fn photos(&self, key: &SecretKey, stores: &HashMap<String, Store>, pc: &PhotoConfig, s3: &S3Config, rep: &mut PassReport) -> Result<()> {
+    async fn photos(&self, key: &SecretKey, stores: &mut HashMap<String, Store>, pc: &PhotoConfig, s3: &S3Config, rep: &mut PassReport) -> Result<()> {
         let bs = BlobStore::new(s3.clone())?;
-        if let Some(store) = stores.get(&self.cfg.app) {
+        if let Some(store) = stores.get_mut(&self.cfg.app) {
             server::sync_photos(&bs, key, store, &self.cfg.data_dir, pc, rep).await?;
         }
         Ok(())

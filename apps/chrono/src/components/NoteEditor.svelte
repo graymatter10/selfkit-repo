@@ -5,6 +5,7 @@
   import { api } from "../lib/api";
   import { longDay } from "../lib/fmt";
   import { attachPhoto } from "../lib/photos";
+  import { askPhotoSource, cleanCaptures } from "../lib/photo-source";
   import { app, bump, guard } from "../lib/state.svelte";
   import Icon from "./Icon.svelte";
   import Photo from "./Photo.svelte";
@@ -13,6 +14,7 @@
   let loaded = $state(false), busy = $state(false), hadNote = $state(false), err = $state("");
   let ta: HTMLTextAreaElement | undefined = $state();
   let file: HTMLInputElement | undefined = $state();
+  let camera: HTMLInputElement | undefined = $state();
 
   $effect(() => {
     api.note(day).then((n) => {
@@ -65,6 +67,7 @@
         busy = false;
       }
     }
+    cleanCaptures(); // drop the temporary camera file (photo is stored by now)
   }
   function keys(e: KeyboardEvent) {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
@@ -88,10 +91,11 @@
           style="position:absolute;top:4px;right:4px;width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:grid;place-items:center"><Icon name="close" size={14} stroke={2.4} /></button>
       </span>
     {/each}
-    <button type="button" disabled={busy} onclick={() => file?.click()}
+    <button type="button" disabled={busy} onclick={() => askPhotoSource({ gallery: () => file?.click(), camera: () => camera?.click() })}
       style="width:{ts}px;height:{ts}px;border-radius:10px;box-shadow:inset 0 0 0 1.5px var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--accent-ink);font-size:13.5px;font-weight:600">
       <Icon name={phone ? "camera" : "plus"} size={22} />{busy ? "Adding…" : "Add photo"}</button>
     <input bind:this={file} type="file" accept="image/*" multiple class="sr" onchange={picked} />
+    <input bind:this={camera} type="file" accept="image/*" capture="environment" class="sr" tabindex="-1" aria-hidden="true" onchange={picked} oncancel={cleanCaptures} />
   </div>
   {#if err}<p role="alert" style="color:var(--danger);font-size:13.5px;margin:10px 0 0">{err}</p>{/if}
   <div style="display:flex;gap:10px;margin-top:14px"><span class="muted" style="display:flex;margin-top:1px"><Icon name="lock" size={16} /></span><span class="hint">Photos keep their full quality and are stored on this device. {phone ? "Tap" : "Click"} a photo to see it full size.</span></div>

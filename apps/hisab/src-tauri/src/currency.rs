@@ -53,42 +53,79 @@ fn uses(store: &Store, id: &str) -> R<usize> {
     Ok(n)
 }
 
+/// The currency every install starts with when nothing was ever chosen.
+fn first_default() -> String {
+    Settings::default().main_currency
+}
+
+/// Was this account's currency chosen by the user? New accounts store
+/// `explicit_currency` (set when the currency is picked in the account sheet,
+/// or "Keep" on the relabel offer). Older accounts without the flag count as
+/// chosen unless their currency is one of the `defaults` they could have got
+/// without asking (the first-start USD, or the main currency of the time).
+pub fn explicit(a: &Value, defaults: &[&str]) -> bool {
+    match a.get("explicit_currency").and_then(Value::as_bool) {
+        Some(x) => x,
+        None => !defaults.contains(&s(a, "currency")),
+    }
+}
+
+/// Currency new entries on this account start in: the account's own when the
+/// user chose it, otherwise the main currency ("main everywhere unless told
+/// otherwise"). Entries in another currency still convert for the balance.
+pub fn entry_currency(a: &Value, main: &str) -> String {
+    if explicit(a, &[&first_default(), main]) { s(a, "currency").to_string() } else { main.to_string() }
+}
+
+/// Accounts in another currency than `main` that the user never chose
+/// (e.g. "Cash" seeded in USD before the main currency was set). Unused ones
+/// are switched to `main` (returned in `.0`); used ones are returned in `.1`
+/// as `{id, name, currency, entries}` for a relabel offer.
+fn not_following(store: &Store, main: &str, defaults: &[&str], switch_unused: bool) -> R<(Vec<String>, Vec<Value>)> {
+    let (mut switched, mut used) = (vec![], vec![]);
+    for a in model::all(store, ACCOUNTS)? {
+        let cur = s(&a, "currency").to_string();
+        if cur == main || model::b(&a, "archived") || explicit(&a, defaults) {
+            continue;
+        }
+        let id = s(&a, "id").to_string();
+        let n = uses(store, &id)?;
+        if switch_unused && n == 0 && f(&a, "opening") == 0.0 {
+            put_currency(store, ACCOUNTS, &a, main)?;
+            switched.push(id);
+        } else {
+            used.push(json!({"id": id, "name": s(&a, "name"), "currency": cur, "entries": n}));
+        }
+    }
+    Ok((switched, used))
+}
+
+/// At startup: unused default accounts follow the main currency.
+pub fn follow_main(store: &Store, main: &str) -> R<Vec<String>> {
+    Ok(not_following(store, main, &[&first_default()], true)?.0)
+}
+
+/// Used accounts still in a currency the user never chose, for the gentle
+/// "Cash is in USD — switch to BDT?" offer (Settings, Accounts, Home).
+pub fn stale_accounts(store: &Store, main: &str) -> R<Vec<Value>> {
+    Ok(not_following(store, main, &[&first_default()], false)?.1)
+}
+
 /// Set the main currency to `code`. `fallback_old` is the last known main
-/// (used when nothing is stored yet). Accounts in the old main currency with
-/// no entries and no opening balance followed the default (e.g. the "Cash"
-/// account made at first start) and switch to the new main currency.
+/// (used when nothing is stored yet). Accounts whose currency the user never
+/// chose (the first-start default or the old main) follow it: unused ones
+/// switch, used ones are offered (also when the same currency is re-picked,
+/// e.g. BDT was set before this fix but "Cash" was seeded in USD and used).
 pub fn set_main(settings: &Store, store: &Store, code: &str, fallback_old: &str) -> R<MainChange> {
     let new = valid(code).ok_or_else(|| format!("Unknown currency “{code}”"))?;
     let old = read_main(settings).unwrap_or_else(|| fallback_old.to_string());
     // Change only main_currency; keep every other field exactly as stored.
     Settings::update(settings, |x| x.main_currency = new.clone()).map_err(|e| e.to_string())?;
-
-    let mut out = MainChange { old: old.clone(), new: new.clone(), switched: vec![], used: vec![] };
-    // Picking the currency it already is (e.g. BDT was set before this fix,
-    // but "Cash" was seeded in USD): offer the accounts still in the shared
-    // first-start default; switch nothing on its own.
-    let same = old == new;
-    if !same {
+    if old != new {
         convert_budgets(store, &old, &new)?;
     }
-    let from = if same { Settings::default().main_currency } else { old };
-    if from == new {
-        return Ok(out);
-    }
-    for a in model::all(store, ACCOUNTS)? {
-        if s(&a, "currency") != from {
-            continue;
-        }
-        let id = s(&a, "id").to_string();
-        let n = uses(store, &id)?;
-        if !same && n == 0 && f(&a, "opening") == 0.0 {
-            put_currency(store, ACCOUNTS, &a, &new)?;
-            out.switched.push(id);
-        } else if !model::b(&a, "archived") {
-            out.used.push(json!({"id": id, "name": s(&a, "name"), "currency": from, "entries": n}));
-        }
-    }
-    Ok(out)
+    let (switched, used) = not_following(store, &new, &[&first_default(), &old], true)?;
+    Ok(MainChange { old, new, switched, used })
 }
 
 /// Category budgets are stored in the main currency: convert them with the
@@ -144,6 +181,19 @@ pub fn relabel_account(store: &Store, id: &str, to: &str) -> R<usize> {
         }
     }
     Ok(n)
+}
+
+/// "Keep USD" on the relabel offer: the account's currency now counts as
+/// chosen by the user (never offered again; new entries start in it).
+pub fn keep_currency(store: &Store, id: &str) -> R<()> {
+    let a = model::get(store, id)?.ok_or("Account not found")?;
+    let mut d = a.clone();
+    if let Some(m) = d.as_object_mut() {
+        m.remove("id");
+        m.insert("explicit_currency".into(), json!(true));
+    }
+    store.put(ACCOUNTS, Some(id), &d).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -208,7 +258,7 @@ mod tests {
     }
 
     /// Main was already BDT before this fix, but Cash was seeded in USD and
-    /// used: picking BDT again offers it (nothing changes by itself).
+    /// used: picking BDT again offers it; an unused USD default follows main.
     #[test]
     fn repick_same_offers_default_currency_accounts() {
         let (set, st) = stores();
@@ -218,10 +268,63 @@ mod tests {
         let empty = st.put(ACCOUNTS, None, &json!({"name":"Empty","currency":"USD","opening":0})).unwrap().id;
         st.put(TRANSACTIONS, None, &json!({"kind":"expense","amount":5,"currency":"USD","account":usd,"date":"2026-11-15"})).unwrap();
         let ch = set_main(&set, &st, "BDT", "USD").unwrap();
-        assert!(ch.switched.is_empty());
+        assert_eq!(ch.switched, vec![empty.clone()]);
         let ids: Vec<&str> = ch.used.iter().map(|u| s(u, "id")).collect();
-        assert!(ids.contains(&usd.as_str()) && ids.contains(&empty.as_str()));
-        assert_eq!(s(&model::get(&st, &empty).unwrap().unwrap(), "currency"), "USD", "not changed without asking");
+        assert_eq!(ids, vec![usd.as_str()]);
+        assert_eq!(s(&model::get(&st, &usd).unwrap().unwrap(), "currency"), "USD", "used: not changed without asking");
+    }
+
+    /// The phone case: main has been BDT for a while, "Cash" is USD with
+    /// entries. The offer is there without re-picking anything (snapshot),
+    /// new entries default to BDT, and "Keep USD" makes it a chosen currency.
+    #[test]
+    fn stale_default_account_is_offered_and_entries_use_main() {
+        let (set, st) = stores();
+        seed_defaults(&st, "USD").unwrap();
+        let id = s(&cash(&st), "id").to_string();
+        st.put(TRANSACTIONS, None, &json!({"kind":"expense","amount":2,"currency":"USD","account":id,"date":"2026-11-15"})).unwrap();
+        set.put(COLLECTION, Some(SETTINGS_ID), &json!({"main_currency":"BDT"})).unwrap();
+        let main = read_main(&set).unwrap();
+        assert!(follow_main(&st, &main).unwrap().is_empty(), "used: never switched by itself");
+        let stale = stale_accounts(&st, &main).unwrap();
+        assert_eq!((stale.len(), s(&stale[0], "id"), stale[0]["entries"].as_u64()), (1, id.as_str(), Some(1)));
+        assert_eq!(entry_currency(&cash(&st), &main), "BDT", "add screen starts in the main currency");
+        // An explicitly chosen EUR account is neither offered nor overridden.
+        let eur = st.put(ACCOUNTS, None, &json!({"name":"Euro","currency":"EUR","explicit_currency":true})).unwrap().id;
+        st.put(TRANSACTIONS, None, &json!({"kind":"expense","amount":1,"currency":"EUR","account":eur,"date":"2026-11-15"})).unwrap();
+        let e = model::get(&st, &eur).unwrap().unwrap();
+        assert_eq!(entry_currency(&e, &main), "EUR");
+        assert_eq!(stale_accounts(&st, &main).unwrap().len(), 1);
+        // Even a USD account picked on purpose keeps USD for new entries.
+        keep_currency(&st, &id).unwrap();
+        assert!(stale_accounts(&st, &main).unwrap().is_empty(), "Keep USD: not offered again");
+        assert_eq!(entry_currency(&cash(&st), &main), "USD");
+    }
+
+    /// An entry in BDT on a USD account still converts for the balance.
+    #[test]
+    fn main_currency_entry_on_usd_account_converts() {
+        let (_set, st) = stores();
+        crate::fx::save_fetched(&st, "USD", &json!({"BDT": 120.0})).unwrap();
+        let a = st.put(ACCOUNTS, None, &json!({"name":"Cash","currency":"USD","opening":0})).unwrap().id;
+        st.put(TRANSACTIONS, None, &json!({"kind":"expense","amount":240,"currency":"BDT","account":a,"date":"2026-11-15"})).unwrap();
+        let d = crate::stats::Data::load(&st, "BDT").unwrap();
+        let v = crate::stats::accounts_view(&d);
+        assert_eq!((f(&v[0], "balance"), f(&v[0], "balance_main")), (-2.0, -240.0));
+        assert_eq!(s(&v[0], "entry_currency"), "BDT");
+    }
+
+    /// Unused default accounts follow the main currency at startup; legacy
+    /// accounts in a non-default currency count as chosen.
+    #[test]
+    fn follow_main_switches_only_unused_unchosen() {
+        let (_set, st) = stores();
+        seed_defaults(&st, "USD").unwrap();
+        let jpy = st.put(ACCOUNTS, None, &json!({"name":"Yen","currency":"JPY","opening":0})).unwrap().id;
+        let sw = follow_main(&st, "BDT").unwrap();
+        assert_eq!(sw.len(), 1);
+        assert_eq!(s(&cash(&st), "currency"), "BDT");
+        assert_eq!(s(&model::get(&st, &jpy).unwrap().unwrap(), "currency"), "JPY");
     }
 
     /// A settings record core can't fully parse used to read as "USD".

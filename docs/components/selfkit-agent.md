@@ -1,6 +1,6 @@
 # selfkit-agent
 
-Desktop background service, no UI. Status: **usable on Linux**: tracking, Chrono settings, browser native host, sync, LAN sync, backups and restore, Agenda reminders, health, IPC, installers. The Windows code is written but has never been compiled (no mingw on the dev machine). Measured (debug build, in use): about 25 MB RSS and ~0.2 % CPU. Release build: see STATUS.
+Desktop background service, no UI. Status: **usable on Linux**: tracking, Chrono settings, browser native host, sync, LAN sync, backups and restore, Agenda reminders, health, IPC, installers. On Windows it is built and tested on GitHub Actions (unit tests, installer, autostart, native host, IPC `status`); installers: [../platforms/windows.md](../platforms/windows.md), Linux packages: [../platforms/linux.md](../platforms/linux.md). Measured (debug build, in use): about 25 MB RSS and ~0.2 % CPU. Release build: see STATUS.
 
 ## What it does
 - **Activity tracking** (X11 / Win32): samples the foreground app and idle time every 1 s and writes `app_sessions` to `chrono.db` (`{app, platform, start, end, tz_offset}`), flushed every 60 s. Idle (≥120 s) back-dates the end. Gaps over 15 s (suspend) close the session. Only app names are read, never window titles. If X isn't there yet (service started before X), it retries every 10 s.
@@ -74,7 +74,7 @@ Every 20 s the agent reads `agenda.db` (read-only) for `tasks` that have `remind
 All times are UTC ms. `cpu_percent` is the share of one core since the previous snapshot (null on the first one). **Error log:** every WARN/ERROR from every agent mode, the native host included, is appended to `<data_dir>/logs/agent-errors.log` as JSON lines `{at, level, source, message, pid}`. It rotates to `.log.1` at 512 KiB.
 
 ## Not yet
-Tray icon. Windows build and test (cross-compile needs mingw). A settings UI for agent.json (Reflect/Settings). Hisab/Dusk reminders.
+Tray icon. Windows activity tracking checked by hand on a real PC (CI only checks that the agent starts). On Windows the installer uses an HKCU Run key + hidden launcher instead of `install-service`'s logon task (that needs admin); `install-service` could switch to the Run key too. A settings UI for agent.json (Reflect/Settings). Hisab/Dusk reminders.
 
 ## Code map
 - `src/main.rs`: CLI, run loop, tracker thread (Chrono settings every 10 s, probe retry), backup loop, key init/unlock.

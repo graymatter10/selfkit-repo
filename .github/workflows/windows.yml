@@ -1,12 +1,21 @@
-# Windows: build and test the agent and every app on a real Windows runner,
-# and produce NSIS installers. Run by hand or from test/** branches.
+# Windows: build the agent and every app on a real Windows runner, produce the NSIS
+# installers (one per app, the agent, the combined "Selfkit Setup"), test them end to end
+# (silent install, launch, uninstall keeping data, uninstall deleting data) and upload them.
+# Run by hand, from test/** or ci/installers/** branches, or from release.yml.
+# Docs: docs/platforms/windows.md, docs/release.md.
 name: windows
 on:
   push:
-    branches: ["test/**"]
+    branches: ["test/**", "ci/installers/**"]
   workflow_dispatch:
+    inputs:
+      test: { description: "Run the installer tests", type: boolean, default: true }
+  workflow_call:
+    inputs:
+      test: { type: boolean, default: true }
+      version: { type: string, default: "" }
 concurrency:
-  group: windows-${{ github.ref }}
+  group: windows-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 env:
   CARGO_TARGET_DIR: ${{ github.workspace }}/target
@@ -14,7 +23,7 @@ env:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -22,21 +31,75 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with: { shared-key: windows, cache-on-failure: true }
       - run: bun install
+      - name: Versions
+        id: ver
+        shell: bash
+        run: |
+          agent=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml)
+          suite="${{ inputs.version }}"
+          [ -z "$suite" ] && [ "${GITHUB_REF_TYPE}" = tag ] && suite="${GITHUB_REF_NAME#v}"
+          [ -z "$suite" ] && suite="$agent"
+          echo "agent=$agent" >> "$GITHUB_OUTPUT"; echo "suite=$suite" >> "$GITHUB_OUTPUT"
+          echo "agent $agent, suite $suite"
       - name: Rust tests (agent + core)
         run: cargo test -p selfkit-core -p selfkit-agent
       - name: Agent release build
         run: cargo build --release -p selfkit-agent
-      - name: App installers
+      - name: App installers (Tauri NSIS)
         shell: bash
         run: |
+          mkdir -p dist; failed=""
           for d in apps/*/; do
             [ -f "$d/src-tauri/tauri.conf.json" ] || continue
-            (cd "$d" && bun tauri build --bundles nsis) || echo "::warning::bundle failed for $d"
+            if (cd "$d" && bun tauri build --bundles nsis); then
+              # Copy right away: the next build may clear the bundle folder.
+              cp target/release/bundle/nsis/*-setup.exe dist/
+            else
+              failed="$failed $d"
+            fi
           done
+          ls -la dist
+          [ -z "$failed" ] || { echo "::error::bundle failed for:$failed"; exit 1; }
+      - name: NSIS
+        shell: pwsh
+        run: |
+          $m = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (-not (Test-Path $m)) { choco install nsis -y --no-progress; }
+          if (-not (Test-Path $m)) { throw "makensis not found" }
+          & $m /VERSION
+          "MAKENSIS=$m" >> $env:GITHUB_ENV
+      - name: Agent installer + combined Selfkit Setup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $agentV = '${{ steps.ver.outputs.agent }}'; $suiteV = '${{ steps.ver.outputs.suite }}'
+          $w = "$env:GITHUB_WORKSPACE"; $dist = "$w\dist"; $stage = "$w\target\setup-stage"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          & $env:MAKENSIS /V2 "/DOUTFILE=$stage\selfkit-agent-start.exe" "/DICON=$w\selfkit-agent\icons\icon.ico" "$w\installer\windows\agent-launcher.nsi"
+          if ($LASTEXITCODE) { throw "launcher build failed" }
+          & $env:MAKENSIS /V2 "/DVERSION=$agentV" "/DAGENT_EXE=$w\target\release\selfkit-agent.exe" "/DLAUNCHER_EXE=$stage\selfkit-agent-start.exe" "/DOUTFILE=$dist\SelfkitAgent_${agentV}_x64-setup.exe" "$w\installer\windows\agent.nsi"
+          if ($LASTEXITCODE) { throw "agent installer build failed" }
+          # Stage the component installers under fixed names for setup.nsi.
+          foreach ($p in 'Agenda','Chrono','Dusk','Hisab','Reflect') {
+            $f = Get-ChildItem $dist -Filter "${p}_*_x64-setup.exe" | Select-Object -First 1
+            if (-not $f) { throw "missing $p installer" }
+            Copy-Item $f.FullName "$stage\$p-setup.exe" -Force
+          }
+          Copy-Item "$dist\SelfkitAgent_${agentV}_x64-setup.exe" "$stage\SelfkitAgent-setup.exe" -Force
+          # WebView2 runtime, offline (standalone) installer, embedded once in Selfkit Setup.
+          $wv = "$stage\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://go.microsoft.com/fwlink/?linkid=2124701' -OutFile $wv
+          $sig = Get-AuthenticodeSignature $wv
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Microsoft') { throw "WebView2 installer signature check failed: $($sig.Status)" }
+          & $env:MAKENSIS /V2 "/DVERSION=$suiteV" "/DSTAGE=$stage" "/DWEBVIEW2=$wv" "/DOUTFILE=$dist\SelfkitSetup_${suiteV}_x64.exe" "$w\installer\windows\setup.nsi"
+          if ($LASTEXITCODE) { throw "Selfkit Setup build failed" }
+          Get-ChildItem $dist | Format-Table Name, Length
+      - name: Test installers (install, launch, uninstall, data kept / deleted)
+        if: ${{ github.event_name == 'push' || inputs.test }}
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File installer\windows\test-installers.ps1 -Dist "$env:GITHUB_WORKSPACE\dist"
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installers
-          path: |
-            target/release/selfkit-agent.exe
-            target/release/bundle/nsis/*.exe
-          retention-days: 7
+          path: dist/*.exe
+          retention-days: 14

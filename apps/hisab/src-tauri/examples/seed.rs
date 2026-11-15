@@ -1,13 +1,13 @@
 //! Sample data for Hisab (testing, screenshots): ~7 months of entries,
-//! four accounts (one in BDT), budgets, loans, goals, subscriptions, SMS.
+//! four accounts (one in BDT), budgets, loans, goals, subscriptions.
 //! `SELFKIT_DATA_DIR=/tmp/x cargo run -p hisab --example seed`
 //! `--theme light|dark|system` only sets the theme preference.
-//! `--fresh` wipes hisab.db first.
+//! `--fresh` wipes hisab.db first. `--main BDT` only sets the shared main currency.
 //! `--year`: a full year of everyday use (QA, performance): ~2,000 entries, 3 currencies
 //! (USD, BDT, EUR), ~20 categories, more loans with repayments, goals and subscriptions.
 
 use chrono::{Datelike, Duration, Local, NaiveDate};
-use hisab_lib::model::{self, ACCOUNTS, CATEGORIES, GOALS, LOANS, RECURRING, SMS, TRANSACTIONS};
+use hisab_lib::model::{self, ACCOUNTS, CATEGORIES, GOALS, LOANS, RECURRING, TRANSACTIONS};
 use hisab_lib::{fx, recur};
 use selfkit_core::{Store, paths};
 use serde_json::{Value, json};
@@ -22,6 +22,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let device = paths::device_id()?;
     let s = Store::open(&db, "hisab", &device, model::MIGRATIONS)?;
+    // `--main BDT`: set the shared main currency (screenshots of the "switch to main?" offer).
+    if let Some(i) = args.iter().position(|a| a == "--main") {
+        let set = Store::open(&paths::app_db(selfkit_core::settings::APP), selfkit_core::settings::APP, &device, &[])?;
+        let code = args[i + 1].clone();
+        selfkit_core::settings::Settings::update(&set, |x| x.main_currency = code)?;
+        return Ok(());
+    }
     if let Some(i) = args.iter().position(|a| a == "--theme") {
         let mut p: Value = s.kv_get("hisab.prefs")?.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_else(|| json!({}));
         p["theme"] = json!(args[i + 1]);
@@ -197,18 +204,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Goals.
     put(GOALS, "goal-phone", json!({"name":"New phone","target":800,"deadline":day(120),"contributions":[{"date":day(-60),"amount":150},{"date":day(-30),"amount":200},{"date":day(-3),"amount":120}]}));
     put(GOALS, "goal-emergency", json!({"name":"Emergency fund","target":3000,"contributions":[{"date":day(-150),"amount":500},{"date":day(-90),"amount":700},{"date":day(-20),"amount":400}]}));
-    // SMS waiting for review.
-    let now = selfkit_core::time::now_ms();
-    for (i, (from, body)) in [
-        ("bKash", "Payment of Tk 850.00 to Foodpanda is successful. Balance Tk 12,410.50. TrxID 9KX2ABC1"),
-        ("CityBank", "Your A/C XXXX4821 has been debited by BDT 3,200.00 on 14-Nov at AGORA GULSHAN. Available balance BDT 98,120.00"),
-    ]
-    .iter()
-    .enumerate()
-    {
-        let p = hisab_lib::sms::parse(from, body).unwrap();
-        s.put(SMS, None, &json!({"key": format!("seed{i}"), "sender": from, "body": body, "at": now - (i as i64 + 1) * 3_600_000, "status":"pending", "parsed": p}))?;
-    }
     s.kv_set("hisab.prefs", &json!({"theme":"system","rank":"manual","notify":true}).to_string())?;
     println!("seeded {} transactions in {}", s.count(TRANSACTIONS)?, paths::data_dir().display());
     Ok(())

@@ -1,6 +1,6 @@
 # selfkit-appsync
 
-App-side sync, shared by every app (and by a future companion app). Status: **built and tested** (no app uses it yet; wave 2 integrates it). Android glue: [android-plugins/selfkit-sync](../../android-plugins/selfkit-sync/README.md). UI: Sync settings section + conflict screen, mockups in the wave-2 design sheets.
+App-side sync, shared by every app (and by a future companion app). Status: **built and tested; integrated in Chrono, Dusk, Agenda, Hisab, Reflect** (2026-11-15). Android glue: [android-plugins/selfkit-sync](../../android-plugins/selfkit-sync/README.md). UI: Sync settings section + conflict screen, mockups in the wave-2 design sheets.
 
 ## What one sync pass does
 1. Gets the data key: secure storage → in test builds, the built-in **test key** (no passphrase prompts). Without a key → "Sync is locked".
@@ -27,6 +27,16 @@ sync.resolve(store, id, &Choice::KeepA | KeepB | Merge { fields: {k: "a"|"b"}, l
 sync.due(trigger) / sync.schedule()       // scheduler hook: Open at most once a minute, Background every ~15 min; schedule().enabled=false → cancel the job
 ```
 Headlines: "Synced locally with Linux PC · 2 min ago", "Synced via server · 5 min ago", "Waiting to sync · 12 changes saved here", "Not synced · <plain error>", "Locked · unlock to sync", "Synced by the Selfkit companion", "Syncing…".
+
+## In the apps (feature `tauri`)
+- `tauri_cmds::default_handle(app, data_dir)`: platform secret store (Android: Keystore-sealed file, wrap key looked up lazily; desktop: keychain) + `AppSync`. `spawn_on_open` runs one pass at start on desktop (asks the agent when it owns sync).
+- Commands added to each app's handler list (no plugin permissions needed): `sync_status` (status + settings + platform), `sync_now`, `sync_settings_set`, `sync_server_get` (no secrets) / `sync_server_set` / `sync_server_test` (empty password = keep the stored one), `sync_encryption_setup`, `sync_unlock` (passphrase or recovery key), `sync_change_passphrase`, `sync_conflicts`, `sync_resolve`, `sync_log`. After a pass that pulled data, `data-changed` is emitted.
+- Shared UI `ui/src/sync/`: `SyncSettings.svelte` (Sync page), `Conflicts.svelte` (conflict screen), `api.ts`. Neutral styles with `k-` prefixed classes; each app maps its tokens with `.sks, .skc { --sync-accent-soft, --sync-on-accent, --sync-surface, --sync-sunk, --sync-line, --sync-ink, --sync-muted, --sync-danger, --sync-ok, --sync-radius }` (defaults fall back to `--accent`, `--surface`, `--line`, `--ink`, `--muted`, `--danger`).
+- Each app has a Cargo feature `sync-test-key` (default on in test builds) → `selfkit-appsync/test-key`.
+- Desktop: the test key is used when the keychain has no data key or cannot be read.
+
+## Read-only mirrors (Reflect on Android)
+`SelfkitMirror` (Kotlin) pulls `content://com.selfkit.<app>.provider/changes` page by page and the JNI methods `mirror_cursor` / `mirror_apply` store the records in `<data_dir>/<app>.db` with `apply_peer` (cursor in kv `mirror.cursor`). Enabled per app with manifest meta-data `com.selfkit.sync.MIRROR` (Reflect: `chrono,hisab,agenda,dusk`); runs on init, in the background job, and from the page via `window.SelfkitSync.mirror(apps)`. Never touches the app's own DB.
 
 ## Sync owner
 `SyncOwner::App` (Android default) runs passes itself. `Agent` (desktop default): `sync_now` asks the running selfkit-agent over its IPC socket and `status` merges the agent's state; with no agent running, the app syncs by itself (with a note). `Companion`: the app steps back (`sync_now` does nothing, `schedule().enabled = false`); a future companion syncs every app through the ContentProviders.
@@ -74,5 +84,7 @@ Server table for all three: 16.3 MB (encrypted). The first push is slow because 
 - `src/conflicts.rs`: `ConflictView`, `Choice`, resolve.
 - `src/secrets.rs`: `SecretStore`, `FileSecrets`, `MemorySecrets`, `KeychainSecrets`.
 - `src/agent.rs`: desktop agent IPC client. `src/explain.rs`: plain errors.
-- `src/android.rs` (feature `android`): JNI `SelfkitSyncNative.call` / `setWrapKey`, `android::secrets()`.
+- `src/android.rs` (feature `android`): JNI `SelfkitSyncNative.call` / `setWrapKey`, `android::secrets()` (lazy wrap key), mirror methods.
+- `src/tauri_cmds.rs` (feature `tauri`): shared app commands, `default_handle`, `spawn_on_open`.
+- `ui/src/sync/`: shared Svelte Sync page + conflict screen.
 - `src/bin/sksync.rs`: headless test device for scripts.

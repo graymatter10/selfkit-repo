@@ -10,5 +10,5 @@
   });
 </script>
 
-{#if src}<img {src} alt="" draggable="false" class="h-full w-full {fit === 'cover' ? 'object-cover' : 'object-contain'}" />
+{#if src}<img {src} alt="" draggable="false" class="block h-full w-full {fit === 'cover' ? 'object-cover' : 'object-contain'}" />
 {:else if failed}<span class="flex h-full w-full items-center justify-center text-[13px] text-muted">Missing</span>{/if}

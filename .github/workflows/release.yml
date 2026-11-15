@@ -1,0 +1,122 @@
+# Release: build every installer (5 Android APKs, Windows installers, Linux packages),
+# then create a DRAFT GitHub Release with all files attached. Nothing is published until
+# you press "Publish" on the draft. Trigger: push a tag v* (e.g. v0.2.0), or run by hand.
+# Dry run: push any commit to a branch ci/installers-release/<name> (installer/ci-installers.sh
+# release): everything is built and tested, the files are uploaded as the "release-files"
+# artifact, and no release is created.
+# APK signing: if the repository secrets ANDROID_KEYSTORE_B64 (base64 of the keystore),
+# ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS exist, the APKs are signed here;
+# otherwise the draft carries the unsigned APKs (sign them with dev/ci-apk.sh's steps).
+# Docs: docs/release.md.
+name: release
+on:
+  push:
+    tags: ["v*"]
+    branches: ["ci/installers-release/**"]
+  workflow_dispatch:
+    inputs:
+      version: { description: "Suite version for names/notes (default: tag, else workspace version)", required: false, default: "" }
+      test: { description: "Run the installer/package tests", type: boolean, default: true }
+      draft: { description: "Create the draft release (off = build only)", type: boolean, default: true }
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  android:
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [agenda, chrono, dusk, hisab, reflect]
+    uses: ./.github/workflows/android.yml
+    with:
+      app: ${{ matrix.app }}
+  windows:
+    uses: ./.github/workflows/windows.yml
+    with:
+      test: ${{ github.event_name == 'push' || inputs.test }}
+      version: ${{ inputs.version }}
+  linux:
+    uses: ./.github/workflows/linux.yml
+    with:
+      test: ${{ github.event_name == 'push' || inputs.test }}
+  publish:
+    needs: [android, windows, linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        id: ver
+        run: |
+          v="${{ inputs.version }}"
+          [ -z "$v" ] && [ "${GITHUB_REF_TYPE}" = tag ] && v="${GITHUB_REF_NAME#v}"
+          [ -z "$v" ] && v=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+      - name: Collect files
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp artifacts/windows-installers/*.exe release/
+          cp artifacts/linux-installers/* release/
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          for d in artifacts/apk-*; do
+            app=${d#artifacts/apk-}
+            ver=$(python3 -c "import json;print(json.load(open('apps/$app/src-tauri/tauri.conf.json'))['version'])")
+            apk=$(ls "$d"/*.apk | head -1)
+            if [ -n "$KS_B64" ]; then
+              echo "$KS_B64" | base64 -d > ks.jks
+              "$bt/zipalign" -p -f 4 "$apk" aligned.apk
+              "$bt/apksigner" sign --ks ks.jks --ks-pass "pass:$KS_PASS" --ks-key-alias "$KS_ALIAS" --out "release/$app-$ver-arm64.apk" aligned.apk
+              "$bt/apksigner" verify "release/$app-$ver-arm64.apk"
+              rm -f aligned.apk ks.jks
+            else
+              cp "$apk" "release/$app-$ver-arm64-unsigned.apk"
+            fi
+          done
+          rm -f release/*.idsig
+          (cd release && sha256sum * > SHA256SUMS.txt)
+          ls -la release
+      - name: Release notes
+        run: |
+          v=${{ steps.ver.outputs.version }}
+          {
+            echo "Selfkit $v"
+            echo
+            echo "| App | Version |"; echo "| --- | --- |"
+            for a in agenda chrono dusk hisab reflect; do
+              printf '| %s | %s |\n' "$a" "$(python3 -c "import json;print(json.load(open('apps/$a/src-tauri/tauri.conf.json'))['version'])")"
+            done
+            echo
+            echo "**Windows:** \`SelfkitSetup_${v}_x64.exe\` installs any of the apps and the agent (works offline). Per-app installers: \`<App>_<version>_x64-setup.exe\`; agent: \`SelfkitAgent_*_x64-setup.exe\`. Uninstalling keeps your data unless you tick the delete box."
+            echo
+            echo "**Linux:** \`.deb\` or \`.AppImage\` per app; agent: \`selfkit-agent_*_amd64.deb\` or the tarball. Removing a package keeps \`~/.local/share/selfkit\`."
+            echo
+            echo "**Android:** \`<app>-<version>-arm64*.apk\` (64-bit ARM)."
+            echo
+            echo "Checksums: \`SHA256SUMS.txt\`."
+          } > notes.md
+          cat notes.md
+      - name: Create draft release
+        if: ${{ github.ref_type == 'tag' || inputs.draft }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${{ steps.ver.outputs.version }}
+          tag="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_REF_TYPE}" != tag ]; then tag="v$v"; fi
+          # --target pins an untagged run to this commit; the tag itself is only created on publish.
+          gh release create "$tag" release/* --draft --title "Selfkit $v" --notes-file notes.md --target "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !(github.ref_type == 'tag' || inputs.draft) }}
+        with:
+          name: release-files
+          path: release/*
+          retention-days: 7

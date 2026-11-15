@@ -19,6 +19,10 @@ export function hm(ms: number | null | undefined, tz: number): string {
   const d = local(ms, tz);
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
+/** A time as shown to the user: "16:15" or "4:15 pm" (same rule as the pickers, tdisp/uses12h). */
+export function hmd(ms: number | null | undefined, tz: number): string {
+  return ms == null ? "–" : tdisp(hm(ms, tz));
+}
 /** Minutes after midnight (possibly negative/over 1440) → "HH:MM". */
 export function clock(min: number | null | undefined): string {
   if (min == null) return "–";

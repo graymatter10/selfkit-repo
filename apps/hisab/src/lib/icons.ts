@@ -36,11 +36,12 @@ export const CAT_ICONS: Record<string, string> = {
   target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".8"/>',
   tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/>',
   export: '<path d="M12 3v12M7 8l5-5 5 5M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
+  import: '<path d="M12 3v12M7 10l5 5 5-5M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
   sms: '<path d="M4 5h16v11H9l-5 4z"/>',
   people: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4.5a3.2 3.2 0 0 1 0 6.3M18 14.3c1.8.8 3 2.7 3 5.7"/>',
 };
 
-export const CAT_ICON_NAMES = Object.keys(CAT_ICONS).filter((k) => !["cash", "bank", "wallet", "card", "repeat", "people", "target", "tag", "export", "sms"].includes(k)).concat(["cash", "people"]);
+export const CAT_ICON_NAMES = Object.keys(CAT_ICONS).filter((k) => !["cash", "bank", "wallet", "card", "repeat", "people", "target", "tag", "export", "import", "sms"].includes(k)).concat(["cash", "people"]);
 
 export const COLORS = ["#d9822b", "#c4a43b", "#5a9e5f", "#2e7a4d", "#3b9e9e", "#3b82c4", "#5b6cd1", "#a05ac4", "#e0719c", "#d1495b", "#8c6a4f", "#8a8a8e"];
 

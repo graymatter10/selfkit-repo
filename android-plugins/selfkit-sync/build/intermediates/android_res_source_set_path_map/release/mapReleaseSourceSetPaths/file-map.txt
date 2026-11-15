@@ -1,0 +1,9 @@
+com.selfkit.sync.selfkit-sync-pngs-0 /home/rick/selfkit/android-plugins/selfkit-sync/build/generated/res/pngs/release
+com.selfkit.sync.selfkit-sync-updated_navigation_xml-1 /home/rick/selfkit/android-plugins/selfkit-sync/build/generated/updated_navigation_xml/release
+com.selfkit.sync.selfkit-sync-mergeReleaseResources-2 /home/rick/selfkit/android-plugins/selfkit-sync/build/intermediates/incremental/release/mergeReleaseResources/merged.dir
+com.selfkit.sync.selfkit-sync-mergeReleaseResources-3 /home/rick/selfkit/android-plugins/selfkit-sync/build/intermediates/incremental/release/mergeReleaseResources/stripped.dir
+com.selfkit.sync.selfkit-sync-release-4 /home/rick/selfkit/android-plugins/selfkit-sync/build/intermediates/merged_res/release/mergeReleaseResources
+com.selfkit.sync.selfkit-sync-release-5 /home/rick/selfkit/android-plugins/selfkit-sync/build/intermediates/packaged_res/release/packageReleaseResources
+com.selfkit.sync.selfkit-sync-main-6 /home/rick/selfkit/android-plugins/selfkit-sync/src/main/res
+com.selfkit.sync.selfkit-sync-release-7 /home/rick/selfkit/android-plugins/selfkit-sync/src/release/res
+gradleHome-0 /shared/linuxelf/config/gradle

@@ -7,6 +7,7 @@
   import { onBackButtonPress } from "@tauri-apps/api/app";
   import Seg from "./components/Seg.svelte";
   import SettingsSheet from "./components/SettingsSheet.svelte";
+  import SyncPage from "./components/SyncPage.svelte";
   import Sidebar from "./components/Sidebar.svelte";
   import TaskDetail from "./components/TaskDetail.svelte";
   import TaskForm from "./components/TaskForm.svelte";
@@ -63,7 +64,7 @@
   // a tap is skipped by the WebView, so two quick Backs used to leave the app).
   // Elsewhere (narrow desktop window): one history entry while anything is open.
   const isAndroid = /Android/i.test(navigator.userAgent);
-  const layered = $derived(!desktop && (app.panel.kind !== "none" || app.settingsOpen || app.searching || menu || app.focusOpen || !!app.photo || app.view === "history" || app.view === "stats"));
+  const layered = $derived(!desktop && (app.panel.kind !== "none" || app.settingsOpen || app.searching || menu || app.focusOpen || app.syncOpen || !!app.photo || app.view === "history" || app.view === "stats"));
   /** Close the top layer; false when nothing was open. */
   function backAction(): boolean {
     if (closePhotoSource()) return true; // "Add photo" camera/gallery sheet
@@ -145,6 +146,7 @@
       if (t) app.panel = p.edit ? { kind: "edit", id: t.id } : { kind: "detail", id: t.id };
     }
     if (p.settings) app.settingsOpen = true;
+    if (p.sync || p.conflicts) { app.syncOpen = true; app.conflictsOpen = !!p.conflicts; }
     if (p.menu) menu = true;
     if (p.toast) {
       const t = groups().flatMap((g) => g.tasks)[0];
@@ -326,6 +328,7 @@
   <div class="pointer-events-none fixed inset-x-3 bottom-[max(76px,calc(env(safe-area-inset-bottom)+64px))] z-[85]"><Toast /></div>
 {/if}
 <SettingsSheet {desktop} />
+<SyncPage {desktop} />
 <Focus {desktop} part="sheet" />
 <PhotoViewer />
 <PhotoSourceSheet privateNote="Stays private in Agenda, not in your gallery" />

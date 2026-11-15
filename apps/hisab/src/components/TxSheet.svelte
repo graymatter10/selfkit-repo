@@ -153,7 +153,7 @@
       </div>
 
       <p class="m-0 px-1 text-[12px] text-muted">
-        {t.source === "sms" ? "Imported from SMS" : t.source === "recurring" ? "Made by a recurring item" : "Added by hand"}{t.created_at ? " · " + new Date(t.created_at).toLocaleString() : ""}
+        {t.source === "sms" ? "Imported from SMS" : t.source === "import" ? "Imported from CSV" : t.source === "recurring" ? "Made by a recurring item" : "Added by hand"}{t.created_at ? " · " + new Date(t.created_at).toLocaleString() : ""}
         {#if t.kind !== "transfer" && catById(t.category)?.archived} · category archived{/if}
       </p>
       <button type="button" class="press card h-12 w-full text-[16px] font-medium text-danger" onclick={del}>Delete</button>

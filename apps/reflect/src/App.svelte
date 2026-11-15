@@ -8,6 +8,8 @@
   import Icon from "./components/Icon.svelte";
   import ReviewPage from "./components/ReviewPage.svelte";
   import SettingsPage from "./components/SettingsPage.svelte";
+  import SyncSettings from "../../../ui/src/sync/SyncSettings.svelte";
+  import Conflicts from "../../../ui/src/sync/Conflicts.svelte";
   import StreaksPage from "./components/StreaksPage.svelte";
   import Toast from "./components/Toast.svelte";
   import TodayPage from "./components/TodayPage.svelte";
@@ -42,13 +44,15 @@
     { id: "week", icon: "review", name: "Weekly review", key: "Ctrl 4" },
     { id: "month", icon: "month", name: "Monthly review", key: "Ctrl 5" },
   ];
-  const TITLES: Record<Tab, string> = { today: "Today", streaks: "Streaks", connections: "Connections", week: "Review", month: "Review", health: "Health", settings: "Settings" };
+  const TITLES: Record<Tab, string> = { today: "Today", streaks: "Streaks", connections: "Connections", week: "Review", month: "Review", health: "Health", settings: "Settings", sync: "Sync", conflicts: "Changed on two devices" };
   const isTab = (t: Tab) => (t === "week" ? app.tab === "week" || app.tab === "month" : app.tab === t);
-  const sub = $derived(app.tab === "health" || app.tab === "settings");
+  const sub = $derived(app.tab === "health" || app.tab === "settings" || app.tab === "sync" || app.tab === "conflicts");
 
   // Android Back: Health/Settings → where you came from → Today → leave.
   function back(): boolean {
     if (app.adding) app.adding = false;
+    else if (app.tab === "conflicts") openTab("sync");
+    else if (app.tab === "sync") openTab("settings");
     else if (sub) openTab(app.prevTab);
     else if (app.tab !== "today") openTab("today");
     else return false;
@@ -94,6 +98,10 @@
   {:else if app.tab === "connections"}<ConnectionsPage {desktop} />
   {:else if app.tab === "week" || app.tab === "month"}<ReviewPage {desktop} kind={app.tab} />
   {:else if app.tab === "health"}<HealthPage {desktop} />
+  {:else if app.tab === "sync"}
+    {#if desktop}<div class="mb-5 flex items-center gap-2"><button type="button" class="iconbtn press" aria-label="Back" onclick={() => openTab("settings")}><Icon name="back" size={20} /></button><h1 class="dtitle !m-0">Sync</h1></div>{/if}
+    <SyncSettings phone={!desktop} onconflicts={() => openTab("conflicts")} />
+  {:else if app.tab === "conflicts"}<div class={desktop ? "card flex h-[calc(100vh-110px)] flex-col overflow-hidden !p-0" : "-mx-4 flex h-full min-h-0 flex-col"}><Conflicts phone={!desktop} onclose={() => openTab("sync")} names={{ streaks: "Reflect streak", reflect_settings: "Reflect settings" }} /></div>
   {:else}<SettingsPage {desktop} />{/if}
 {/snippet}
 

@@ -12,11 +12,19 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 name = "chrono"
 path = "src/main.rs"
 
+[features]
+# Test builds: built-in public sync key, so no passphrase prompts while testing.
+# Turn off (cargo --no-default-features) for builds that hold real data.
+default = ["sync-test-key"]
+sync-test-key = ["selfkit-appsync/test-key"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 selfkit-core = { path = "../../../selfkit-core", default-features = false }
+# Shared app-side sync (LAN to the PC agent, else Postgres/S3); commands for ui/src/sync.
+selfkit-appsync = { path = "../../../selfkit-appsync", features = ["tauri"] }
 tauri = { version = "2", features = [] }
 serde.workspace = true
 serde_json.workspace = true
@@ -28,3 +36,4 @@ sha2 = "0.10"
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
+selfkit-appsync = { path = "../../../selfkit-appsync", features = ["tauri", "android"] }

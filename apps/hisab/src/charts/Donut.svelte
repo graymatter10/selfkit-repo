@@ -27,8 +27,8 @@
 </script>
 
 {#if total > 0}
-  <div class="flex items-center gap-4">
-    <svg width="150" height="150" viewBox="0 0 160 160" class="shrink-0" role="img" aria-label="{label} by category">
+  <div class="flex items-center gap-3 min-[400px]:gap-4">
+    <svg viewBox="0 0 160 160" class="h-[118px] w-[118px] shrink-0 min-[400px]:h-[150px] min-[400px]:w-[150px]" role="img" aria-label="{label} by category">
       {#each arcs as a}<path d={a.path} stroke={a.d.color} stroke-width="22" fill="none" />{/each}
       <text x="80" y="74" text-anchor="middle" font-size="12" fill="var(--muted)">{label}</text>
       <text x="80" y="95" text-anchor="middle" font-size="19" font-weight="650" fill="var(--ink)">{short(total)}</text>
@@ -38,7 +38,7 @@
         <button type="button" class="press flex items-center gap-2 text-left" onclick={() => d.id && onpick?.(d.id)}>
           <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{d.color}"></span>
           <span class="min-w-0 flex-1 truncate {d.archived ? 'text-muted' : ''}">{d.name}</span>
-          <span class="num font-semibold">{money(d.amount, cur)}</span>
+          <span class="num shrink-0 font-semibold">{money(d.amount, cur)}</span>
         </button>
       {/each}
     </div>

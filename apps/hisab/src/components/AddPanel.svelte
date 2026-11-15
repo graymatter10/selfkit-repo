@@ -21,7 +21,8 @@
 
   const acct = $derived(accountById(app.draft.account) ?? accountById(defaultAccount()));
   const toAcct = $derived(accountById(app.draft.to_account));
-  const cur = $derived(app.draft.currency || acct?.currency || main());
+  // Main currency unless the account's own was chosen by the user (Rust: currency::entry_currency).
+  const cur = $derived(app.draft.currency || acct?.entry_currency || main());
   const cats = $derived(app.draft.kind === "transfer" ? [] : rankedCats(app.draft.kind));
   const amountNum = $derived(parseFloat(app.draft.amount || "0") || 0);
   const splitIds = $derived(app.draft.splits.map((s) => s.category));
@@ -131,7 +132,7 @@
       showToast(`${label} · ${money(t.amount, t.currency)}${dr.kind !== "transfer" ? " · " + (catById(t.category)?.name ?? "") : ""}`, async () => {
         await api.remove(t.id);
         await refresh();
-        app.draft = { ...app.draft, ...{ amount: String(t.amount), category: dr.category, splits: dr.splits, note: dr.note, photos: dr.photos, date: dr.date, kind: dr.kind, to_account: dr.to_account } };
+        app.draft = { ...app.draft, ...{ amount: String(t.amount), category: dr.category, splits: dr.splits, note: dr.note, photos: dr.photos, date: dr.date, kind: dr.kind, to_account: dr.to_account, currency: dr.currency } };
       });
       onsaved?.(t);
     } catch (e) {
@@ -166,7 +167,7 @@
     <div class="flex shrink-0 flex-col items-end gap-1 pb-0.5">
       <div class="flex items-center gap-1">
         <button type="button" class="press h-7 rounded-full bg-fill px-2.5 text-[13px] font-semibold" aria-label="Currency {cur}"
-          onclick={() => openSheet({ kind: "currency", value: cur, onpick: (c) => (app.draft.currency = c === acct?.currency ? "" : c) })}>{cur}</button>
+          onclick={() => openSheet({ kind: "currency", value: cur, onpick: (c) => (app.draft.currency = c === (acct?.entry_currency || main()) ? "" : c) })}>{cur}</button>
         <button type="button" class="press flex h-7 max-w-[150px] items-center gap-1 rounded-full bg-fill px-2.5 text-[13px] font-medium" aria-haspopup="menu" onclick={() => (menu = menu === "account" ? "" : "account")}>
           <span class="truncate">{acct?.name ?? "Account"}</span><Ic name="down" size={13} stroke={2.2} />
         </button>

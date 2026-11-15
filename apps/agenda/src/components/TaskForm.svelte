@@ -207,10 +207,11 @@
       <span class="px-4 text-[13px] text-muted uppercase">Photos</span>
       <div class="overflow-hidden rounded-xl bg-card">
         {#if photos.length}
-          <div class="grid grid-cols-4 gap-1 p-1">
+          <!-- Same 6px inset on every side (the left inset used to look wider than the top). -->
+          <div class="grid grid-cols-4 gap-1.5 p-1.5">
             {#each photos as id, i (id)}
               <div class="relative aspect-square overflow-hidden rounded-lg bg-fill">
-                <Photo {id} />
+                <button type="button" aria-label="View photo {i + 1}" class="press block h-full w-full" onclick={() => (app.photo = id)}><Photo {id} /></button>
                 <button type="button" aria-label="Remove photo {i + 1}" class="absolute top-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white"
                   onclick={() => ((photos = photos.filter((p) => p !== id)), (notes = notes.replace(new RegExp(`!\\[[^\\]]*\\]\\(photo:${id}\\)\\n?`, "g"), "")))}><Icon name="close" size={14} stroke={2.4} /></button>
               </div>

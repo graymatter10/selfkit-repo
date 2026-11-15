@@ -8,7 +8,7 @@
 #   origin as wip/power-<time>; stops build tools cleanly; then powers off.
 # - Charger back before that: logs it and carries on.
 # usage: dev/power-guard.sh    (runs until killed; log: /shared/selfkitextra/locks/power.log)
-LOW=${LOW:-60}
+LOW=${LOW:-30}
 AC=/sys/class/power_supply/ADP1/online
 BAT=/sys/class/power_supply/BAT1/capacity
 LOG=/shared/selfkitextra/locks/power.log

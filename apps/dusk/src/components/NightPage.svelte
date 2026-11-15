@@ -3,7 +3,7 @@
   // 1–5 rating, notes and naps, and "This week". Desktop adds the last 14
   // nights and the four stats on the right.
   import type { Night } from "../lib/api";
-  import { dayShort, dur, hm, hmParts, nightRange, nightTitle, plural } from "../lib/fmt";
+  import { dayShort, dur, hmd, hmParts, nightRange, nightTitle, plural } from "../lib/fmt";
   import { app, bridge, currentKey, deleteNap, rate, show, shownKey, shownNight, step } from "../lib/state.svelte";
   import Icon from "./Icon.svelte";
   import NightBars from "./NightBars.svelte";
@@ -64,7 +64,7 @@
         {:else if n.source === "estimate" && n.estimate.source !== "devices"}<Icon name="check" size={14} stroke={2.2} />From {n.estimate.source.replace("_", " ")}
         {:else if n.source === "estimate"}<Icon name="phone" size={14} stroke={2.2} />Estimated from screen use
         {:else if n.source === "allnighter"}<Icon name="phone" size={14} stroke={2.2} />Screens were on all night
-        {:else if n.source === "ongoing"}<Icon name="moon" size={14} stroke={2.2} />{lastUse(n) == null ? "Sleep well" : dash.now - lastUse(n)! < 3 * 60_000 ? "You're still up" : `Last screen use ${hm(lastUse(n), n.tz_offset)}`}
+        {:else if n.source === "ongoing"}<Icon name="moon" size={14} stroke={2.2} />{lastUse(n) == null ? "Sleep well" : dash.now - lastUse(n)! < 3 * 60_000 ? "You're still up" : `Last screen use ${hmd(lastUse(n), n.tz_offset)}`}
         {:else}<Icon name="phone" size={14} stroke={2.2} />No screen use recorded{/if}
       </span>
     </div>
@@ -74,8 +74,8 @@
 {#snippet timeCell(label: string, v: number | null, est: number | null, tz: number)}
   <div class="flex min-w-0 flex-1 flex-col gap-1">
     <span class="text-[12.5px] text-muted">{label}</span>
-    <span class="num text-[19px] font-[650] tracking-[-0.01em]">{hm(v, tz)}</span>
-    {#if est != null && v != null && est !== v}<span class="num text-[12px] text-muted">was {hm(est, tz)}</span>{/if}
+    <span class="num text-[19px] font-[650] tracking-[-0.01em]">{hmd(v, tz)}</span>
+    {#if est != null && v != null && est !== v}<span class="num text-[12px] text-muted">was {hmd(est, tz)}</span>{/if}
   </div>
 {/snippet}
 
@@ -134,7 +134,7 @@
     <div class="flex min-h-[52px] items-center gap-3 px-4 py-1.5">
       <span class="flex w-5 shrink-0 text-ink2"><Icon name="nap" size={18} /></span>
       <span class="{desktop ? 'w-[92px]' : 'w-10'} shrink-0 text-[13.5px] font-[550] text-muted">Nap</span>
-      <span class="num min-w-0 flex-1 truncate text-[15px]">{hm(nap.bed, nap.tz_offset)}–{hm(nap.wake, nap.tz_offset)} <span class="text-muted">· {dur(((nap.wake ?? 0) - (nap.bed ?? 0)) / 60000)}</span></span>
+      <span class="num min-w-0 flex-1 truncate text-[15px]">{hmd(nap.bed, nap.tz_offset)}–{hmd(nap.wake, nap.tz_offset)} <span class="text-muted">· {dur(((nap.wake ?? 0) - (nap.bed ?? 0)) / 60000)}</span></span>
       <button type="button" class="press -mr-2 grid h-11 w-11 place-items-center rounded-[12px] text-muted" aria-label="Remove nap" onclick={() => deleteNap(nap.id, n.night)}><Icon name="trash" size={18} /></button>
     </div>
     <div class="ml-12 h-px bg-sep"></div>

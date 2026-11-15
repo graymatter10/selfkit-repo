@@ -8,7 +8,7 @@
 # ld, bun/node/vite, java/gradle, webkit test apps); never the desktop, Claude,
 # adb or system processes.
 # usage: dev/thermal-guard.sh     (runs until killed; log: /shared/selfkitextra/locks/thermal.log)
-HOT=${HOT:-70}; CRIT=${CRIT:-75}; COOL=${COOL:-55}; HOT_SECS=${HOT_SECS:-30}
+HOT=${HOT:-65}; CRIT=${CRIT:-70}; COOL=${COOL:-55}; HOT_SECS=${HOT_SECS:-10}
 LOG=/shared/selfkitextra/locks/thermal.log
 zone=$(grep -l x86_pkg_temp /sys/class/thermal/thermal_zone*/type 2>/dev/null | head -1)
 zone=${zone%/type}/temp

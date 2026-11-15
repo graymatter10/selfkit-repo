@@ -1,25 +1,27 @@
 package com.selfkit.hisab
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
-import android.provider.Telephony
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
-import org.json.JSONArray
-import org.json.JSONObject
 
 class MainActivity : TauriActivity() {
   @Volatile private var launchAction = ""
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
+    // ---- Selfkit sync (android-plugins/selfkit-sync): key for the secrets file before Rust starts.
+    try {
+      com.selfkit.sync.SelfkitSyncNative.ensureLoaded(this)
+      com.selfkit.sync.SelfkitSyncNative.setWrapKey(com.selfkit.sync.SelfkitSecrets.wrapKey(this))
+    } catch (t: Throwable) { android.util.Log.w("SelfkitSync", "wrap key", t) }
+    // ---- end Selfkit sync
     super.onCreate(savedInstanceState)
+    // ---- Selfkit sync: ~15 min job + sync on open (WorkManager).
+    Thread { try { com.selfkit.sync.SelfkitSync.init(this) } catch (t: Throwable) { android.util.Log.w("SelfkitSync", "init", t) } }.start()
+    // ---- end Selfkit sync
     readAction(intent)
   }
 
@@ -32,9 +34,23 @@ class MainActivity : TauriActivity() {
     if (i?.action == AddWidget.ACTION_ADD) launchAction = "add"
   }
 
-  // window.HisabNative: status-bar colour, SMS import, widget launch.
+  // ---- Selfkit sync: LAN discovery broadcasts while the app is open.
+  override fun onResume() {
+    super.onResume()
+    com.selfkit.sync.SelfkitSync.onForeground(this)
+  }
+
+  override fun onPause() {
+    com.selfkit.sync.SelfkitSync.onBackground(this)
+    super.onPause()
+  }
+  // ---- end Selfkit sync
+
+  // window.HisabNative: status-bar colour, widget launch. (SMS import removed 2026-11-15.)
   override fun onWebViewCreate(webView: WebView) {
-    val act = this
+    // ---- Selfkit sync: window.SelfkitSync for the shared Sync screen (battery tip, reschedule).
+    webView.addJavascriptInterface(com.selfkit.sync.SelfkitSyncBridge(this), "SelfkitSync")
+    // ---- end Selfkit sync
     webView.addJavascriptInterface(object {
       @JavascriptInterface
       fun setDark(dark: Boolean) {
@@ -44,47 +60,6 @@ class MainActivity : TauriActivity() {
           c.isAppearanceLightNavigationBars = !dark
         }
       }
-
-      @JavascriptInterface
-      fun smsPermission(): Boolean =
-        ContextCompat.checkSelfPermission(act, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED &&
-          ContextCompat.checkSelfPermission(act, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
-
-      @JavascriptInterface
-      fun requestSms() {
-        runOnUiThread {
-          ActivityCompat.requestPermissions(act, arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS), 77)
-        }
-      }
-
-      @JavascriptInterface
-      fun setSmsEnabled(on: Boolean) {
-        SmsReceiver.prefs(act).edit().putBoolean("enabled", on).apply()
-      }
-
-      /** Inbox messages newer than sinceMs, newest first (max 400). */
-      @JavascriptInterface
-      fun readSms(sinceMs: Double): String {
-        val out = JSONArray()
-        if (!smsPermission()) return out.toString()
-        try {
-          contentResolver.query(
-            Telephony.Sms.Inbox.CONTENT_URI,
-            arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE),
-            "${Telephony.Sms.DATE} > ?", arrayOf(sinceMs.toLong().toString()),
-            "${Telephony.Sms.DATE} DESC",
-          )?.use { c ->
-            while (c.moveToNext() && out.length() < 400) {
-              out.put(JSONObject().put("sender", c.getString(0) ?: "").put("body", c.getString(1) ?: "").put("at", c.getLong(2)))
-            }
-          }
-        } catch (_: Exception) {}
-        return out.toString()
-      }
-
-      /** Messages the receiver queued while the app was closed (cleared on read). */
-      @JavascriptInterface
-      fun takeQueued(): String = SmsReceiver.take(act)
 
       @JavascriptInterface
       fun minimize() {

@@ -1,3 +1,5 @@
+> **Removed 2026-11-15** (user's decision). The UI, the Rust parser/commands (`sms.rs` is no longer compiled), the Android permissions, receiver and bridge methods are gone; old entries keep `source: sms`. Replaced by [CSV import](csv-import.md). Left-over unused files that can be deleted: `src-tauri/src/sms.rs`, `src/lib/sms.ts`, `src/components/SmsReview.svelte`, `gen/android/.../SmsReceiver.kt`. The text below is history.
+
 # Hisab · SMS import (Android)
 
 - Off by default. More → SMS imports explains what happens and asks for READ_SMS + RECEIVE_SMS only when you tap "Allow SMS access".

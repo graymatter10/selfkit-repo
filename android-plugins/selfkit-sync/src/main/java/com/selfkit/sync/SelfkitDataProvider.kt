@@ -14,7 +14,7 @@ import org.json.JSONObject
  * signature permission com.selfkit.permission.SHARE (only Selfkit apps signed with the
  * same key). Goes through selfkit-appsync/selfkit-core so history and dirty flags stay right.
  *
- *  query  /changes?store=<app|settings>&since=<lseq>&limit=500  -> lseq, id, collection, data, updated_at, deleted
+ *  query  /changes?store=<app|settings>&since=<lseq>&limit=500  -> lseq, id, collection, data, updated_at, deleted, record (full JSON)
  *  insert /records  values: store?, collection, id?, data(JSON)  -> /records/<id>
  *  call   "status" | "sync_now" | "settings" | "set_settings" | "schedule" | "conflicts"   (arg/extras "json")
  *         -> Bundle { "json": <result> }
@@ -38,12 +38,12 @@ class SelfkitDataProvider : ContentProvider() {
             .put("since", uri.getQueryParameter("since")?.toLongOrNull() ?: 0L)
             .put("limit", uri.getQueryParameter("limit")?.toLongOrNull() ?: 500L)
         val res = SelfkitSync.call(ctx, "changes", args)
-        val c = MatrixCursor(arrayOf("lseq", "id", "collection", "data", "updated_at", "deleted"))
+        val c = MatrixCursor(arrayOf("lseq", "id", "collection", "data", "updated_at", "deleted", "record"))
         val rows = res.optJSONArray("rows") ?: return c
         for (i in 0 until rows.length()) {
             val row = rows.getJSONObject(i)
             val r = row.getJSONObject("record")
-            c.addRow(arrayOf<Any?>(row.getLong("lseq"), r.getString("id"), r.getString("collection"), r.get("data").toString(), r.getLong("updated_at"), if (r.getBoolean("deleted")) 1 else 0))
+            c.addRow(arrayOf<Any?>(row.getLong("lseq"), r.getString("id"), r.getString("collection"), r.get("data").toString(), r.getLong("updated_at"), if (r.getBoolean("deleted")) 1 else 0, r.toString()))
         }
         return c
     }

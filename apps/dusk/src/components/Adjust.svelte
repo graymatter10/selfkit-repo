@@ -7,7 +7,7 @@
   import { onMount } from "svelte";
   import type { Edit } from "../lib/state.svelte";
   import { addNap, app, nightByKey, resetToEstimate, setLog } from "../lib/state.svelte";
-  import { dur, hm, nightRange, normTime, shiftTime, tdisp, toMin, uses12h } from "../lib/fmt";
+  import { dayLong, dur, hm, nightRange, normTime, shiftTime, tdisp, toMin, uses12h } from "../lib/fmt";
   import Confirm from "./Confirm.svelte";
   import Icon from "./Icon.svelte";
   import TimeSheet from "./TimeSheet.svelte";
@@ -232,7 +232,7 @@
   {#if desktop}
     <div class="flex flex-1 flex-col overflow-y-auto px-5 py-[22px]">
       <div class="mb-3.5 flex items-center">
-        <div class="flex flex-1 flex-col"><h2 class="m-0 text-[18px] font-bold tracking-[-0.02em]">{nap ? "Add nap" : "Adjust times"}</h2><span class="text-[12.5px] text-muted">{nightRange(edit.night)}</span></div>
+        <div class="flex flex-1 flex-col"><h2 class="m-0 text-[18px] font-bold tracking-[-0.02em]">{nap ? "Add nap" : "Adjust times"}</h2><span class="text-[12.5px] text-muted">{nap ? `Nap · ${dayLong(edit.night)}` : nightRange(edit.night)}</span></div>
         <button type="button" class="press -mr-2 grid h-11 w-11 place-items-center rounded-[12px] text-ink2" aria-label="Close (Esc)" onclick={close}><Icon name="close" size={20} stroke={2} /></button>
       </div>
       {@render form()}
@@ -246,7 +246,7 @@
   {:else}
     <div class="flex h-14 shrink-0 items-center pr-1.5 pl-1">
       <button type="button" class="press grid h-11 w-11 place-items-center rounded-[12px] text-ink2" aria-label="Back" onclick={close}><Icon name="back" /></button>
-      <div class="ml-1 flex flex-col"><h2 class="m-0 text-[18px] font-bold tracking-[-0.02em]">{nap ? "Add nap" : "Adjust times"}</h2><span class="text-[12.5px] text-muted">{nightRange(edit.night)}</span></div>
+      <div class="ml-1 flex flex-col"><h2 class="m-0 text-[18px] font-bold tracking-[-0.02em]">{nap ? "Add nap" : "Adjust times"}</h2><span class="text-[12.5px] text-muted">{nap ? `Nap · ${dayLong(edit.night)}` : nightRange(edit.night)}</span></div>
     </div>
     <div class="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-4">{@render form()}</div>
     <div class="shrink-0 bg-bg px-4 pt-3 pb-[max(20px,env(safe-area-inset-bottom))]">

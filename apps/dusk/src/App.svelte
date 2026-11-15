@@ -8,6 +8,8 @@
   import Icon from "./components/Icon.svelte";
   import NightPage from "./components/NightPage.svelte";
   import SettingsPage from "./components/SettingsPage.svelte";
+  import SyncSettings from "../../../ui/src/sync/SyncSettings.svelte";
+  import Conflicts from "../../../ui/src/sync/Conflicts.svelte";
   import Toast from "./components/Toast.svelte";
   import TrendsPage from "./components/TrendsPage.svelte";
   import { api } from "./lib/api";
@@ -43,6 +45,8 @@
   function back(): boolean {
     if (app.closeGuard?.()) return true;
     if (app.edit) app.edit = null;
+    else if (app.tab === "settings" && app.conflictsOpen) app.conflictsOpen = false;
+    else if (app.tab === "settings" && app.syncOpen) app.syncOpen = false;
     else if (app.tab === "settings") app.tab = app.prevTab;
     else if (app.tab !== "night") app.tab = "night";
     else if (app.shown) show(currentKey());
@@ -80,6 +84,7 @@
     for (let i = 0; i < 50 && !app.dash; i++) await new Promise((r) => setTimeout(r, 100));
     if (p.back) await show(addDays(currentKey(), -Number(p.back)));
     if (p.tab) openTab(p.tab as Tab);
+    if (p.sync || p.conflicts) { openTab("settings"); app.syncOpen = true; app.conflictsOpen = !!p.conflicts; }
     if (p.edit) app.edit = { kind: p.edit as "adjust" | "nap", night: shownKey(), focus: (p.focus as "bed") || undefined };
   });
 </script>
@@ -91,6 +96,10 @@
   {:else if app.tab === "night"}<NightPage {desktop} />
   {:else if app.tab === "trends"}<TrendsPage {desktop} />
   {:else if app.tab === "connections"}<ConnectionsPage {desktop} />
+  {:else if app.conflictsOpen}<div class={desktop ? "card h-[calc(100vh-110px)] overflow-hidden flex flex-col" : "flex min-h-0 flex-1 flex-col"}><Conflicts phone={!desktop} onclose={() => (app.conflictsOpen = false)} names={{ sleep_log: "Dusk sleep entry", dusk_settings: "Dusk goals", device_use: "Phone use" }} /></div>
+  {:else if app.syncOpen}
+    {#if desktop}<div class="mb-5 flex items-center gap-2"><button type="button" class="press grid h-9 w-9 place-items-center rounded-[10px] text-ink2" aria-label="Back" onclick={() => (app.syncOpen = false)}><Icon name="back" /></button><h1 class="m-0 text-[22px] font-bold tracking-[-0.025em]">Sync</h1></div>{/if}
+    <SyncSettings phone={!desktop} onconflicts={() => (app.conflictsOpen = true)} />
   {:else}<SettingsPage {desktop} />{/if}
 {/snippet}
 
@@ -131,8 +140,8 @@
     {:else}
       <header class="flex h-14 shrink-0 items-center {app.tab === 'settings' ? 'pl-1' : 'pr-1.5 pl-5'}">
         {#if app.tab === "settings"}
-          <button type="button" class="press grid h-11 w-11 place-items-center rounded-[12px] text-ink2" aria-label="Back" onclick={() => (app.tab = app.prevTab)}><Icon name="back" /></button>
-          <h1 class="m-0 ml-1 text-[18px] font-bold tracking-[-0.02em]">Settings</h1>
+          <button type="button" class="press grid h-11 w-11 place-items-center rounded-[12px] text-ink2" aria-label="Back" onclick={() => back()}><Icon name="back" /></button>
+          <h1 class="m-0 ml-1 text-[18px] font-bold tracking-[-0.02em]">{app.conflictsOpen ? "Changed on two devices" : app.syncOpen ? "Sync" : "Settings"}</h1>
         {:else}
           {#if app.tab === "night"}
             <span class="flex text-accent"><Icon name="moon" size={20} stroke={2.2} /></span><span class="ml-2 text-[18px] font-bold tracking-[-0.02em]">Dusk</span>
@@ -143,7 +152,7 @@
           <button type="button" class="press grid h-11 w-11 place-items-center rounded-[12px] text-ink2" aria-label="Settings" onclick={() => openTab("settings")}><Icon name="gear" /></button>
         {/if}
       </header>
-      <div bind:this={scroller} class="min-h-0 flex-1 overflow-y-auto px-4 {app.tab === 'settings' ? 'pb-6' : 'pb-24'}">
+      <div bind:this={scroller} class="min-h-0 flex-1 {app.tab === 'settings' && app.conflictsOpen ? 'flex flex-col' : 'overflow-y-auto px-4'} {app.tab === 'settings' ? (app.conflictsOpen ? '' : 'pb-6') : 'pb-24'}">
         {#if app.error && app.dash}<p role="alert" class="card mb-4 px-4 py-3 text-[14px] text-danger">{app.error}</p>{/if}
         {@render page()}
       </div>

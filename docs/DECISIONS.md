@@ -1,5 +1,14 @@
 # Decisions (newest first)
 
+## 2026-11-15 — Sync in apps, Hisab CSV import, installers
+- Sync is integrated into all five apps through `selfkit-appsync` (shared Tauri commands + shared `ui/src/sync` Sync page and conflict screen; Android plugin bridge). Test builds use the `sync-test-key` feature (on by default) so testing never asks for a passphrase.
+- On Android, Reflect reads read-only mirrors of the other apps' data through their signature-protected ContentProviders (`SelfkitMirror`).
+- Hisab accounts carry `explicit_currency`; new entries default to the main currency unless the account's currency was chosen by the user. Unused never-chosen accounts follow the main currency; used ones get a one-at-a-time "switch?" offer (banner + Settings).
+- Hisab SMS import removed (user request); the `sms` collection name stays so old synced records remain valid.
+- Hisab CSV import: own export format first-class, generic bank CSV via a mapping step, duplicate skip (date+amount+note), whole-import undo via `import_batch`; hand-written parser (no new dependency).
+- Windows installers: per-user NSIS per app (WebView2 bootstrapper), agent installer with HKCU Run autostart (no admin), and a combined Selfkit Setup that runs the per-app installers and carries the offline WebView2 once. Uninstall keeps data unless "Also delete my Selfkit data" is ticked.
+- Linux: AppImage outputs are copied per app right after each build (Tauri empties the bundle folder each time).
+
 ## 2026-11-15 — Main currency and shared settings writes
 - Shared settings are written with `Settings::update(store, |s| …)`: reload, change only the fields this app owns, keep the rest. Fixes stale whole-object saves (e.g. Agenda writing an old USD over Hisab's BDT on desktop).
 - Hisab never silently falls back to USD: the last known main currency is kept (Rust state + kv, UI localStorage).

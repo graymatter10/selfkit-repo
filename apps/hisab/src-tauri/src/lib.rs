@@ -1,6 +1,7 @@
 //! Hisab (com.selfkit.hisab): money app. Tauri commands over selfkit-core.
 //! Docs: docs/apps/hisab/README.md (code map, data model).
 
+pub mod csvimport;
 pub mod currency;
 pub mod export;
 pub mod fx;
@@ -8,7 +9,6 @@ pub mod model;
 pub mod photos;
 pub mod recover;
 pub mod recur;
-pub mod sms;
 pub mod stats;
 
 use std::sync::Mutex;
@@ -67,6 +67,7 @@ fn boot(state: State<AppState>) -> R<Value> {
     let main = main_currency(&state);
     let store = state.store.lock().unwrap();
     model::seed_defaults(&store, &main)?;
+    currency::follow_main(&store, &main)?;
     let made = recur::generate(&store, &main, today())?;
     let prefs = store.kv_get("hisab.prefs").map_err(e)?.and_then(|v| serde_json::from_str::<Value>(&v).ok()).unwrap_or_else(|| json!({}));
     let draft = store.kv_get("hisab.draft").map_err(e)?.and_then(|v| serde_json::from_str::<Value>(&v).ok());
@@ -100,10 +101,10 @@ fn snapshot(state: State<AppState>, month: String) -> R<Value> {
         "recurring": stats::recurring_view(&d),
         "overview": stats::overview(&d, &month, t),
         "recent": recent,
-        "sms_pending": sms::pending(&store)?.len(),
         "rates": fx::raw(&store)?,
         "tags": all_tags(&d),
         "missing_rates": d.missing(),
+        "stale_accounts": currency::stale_accounts(&store, &main)?,
     }))
 }
 
@@ -203,23 +204,37 @@ fn generate_recurring(app: AppHandle, state: State<AppState>) -> R<usize> {
     Ok(n)
 }
 
+/// CSV import, step 1: read the file text, guess (or use) the column mapping
+/// and show what would be imported into `account`. Nothing is written.
 #[tauri::command]
-fn sms_ingest(app: AppHandle, state: State<AppState>, messages: Vec<sms::Incoming>) -> R<usize> {
-    let n = sms::ingest(&state.store.lock().unwrap(), &messages)?;
-    if n > 0 {
-        changed(&app);
+fn csv_preview(state: State<AppState>, text: String, mapping: Option<csvimport::Mapping>, account: String) -> R<Value> {
+    let main = main_currency(&state);
+    let t = csvimport::parse(&text)?;
+    let m = mapping.unwrap_or_else(|| csvimport::guess(&t));
+    let p = csvimport::preview(&state.store.lock().unwrap(), &t, &m, &account, &main)?;
+    Ok(json!({"headers": t.headers, "sample": t.rows.iter().take(3).collect::<Vec<_>>(), "delimiter": t.delimiter, "count": t.rows.len(), "mapping": m, "preview": p}))
+}
+
+/// CSV import, step 2: store the previewed rows (errors and duplicates are
+/// skipped). Returns the new ids; `csv_import_undo` removes them all at once.
+#[tauri::command]
+fn csv_import(app: AppHandle, state: State<AppState>, rows: Vec<csvimport::Row>) -> R<Vec<String>> {
+    let main = main_currency(&state);
+    let batch = format!("import-{}", selfkit_core::time::now_ms());
+    let ids = csvimport::import(&state.store.lock().unwrap(), &rows, &main, &batch)?;
+    changed(&app);
+    Ok(ids)
+}
+
+#[tauri::command]
+fn csv_import_undo(app: AppHandle, state: State<AppState>, ids: Vec<String>) -> R<usize> {
+    let store = state.store.lock().unwrap();
+    for id in &ids {
+        store.delete(id).map_err(e)?;
     }
-    Ok(n)
-}
-
-#[tauri::command]
-fn sms_pending(state: State<AppState>) -> R<Vec<Value>> {
-    sms::pending(&state.store.lock().unwrap())
-}
-
-#[tauri::command]
-fn sms_parse(sender: String, body: String) -> Option<sms::Parsed> {
-    sms::parse(&sender, &body)
+    drop(store);
+    changed(&app);
+    Ok(ids.len())
 }
 
 #[tauri::command]
@@ -389,6 +404,14 @@ fn account_relabel(app: AppHandle, state: State<AppState>, id: String, currency:
     let n = currency::relabel_account(&state.store.lock().unwrap(), &id, &currency)?;
     changed(&app);
     Ok(n)
+}
+
+/// "Keep USD" on the relabel offer: the account's currency counts as chosen.
+#[tauri::command]
+fn account_keep_currency(app: AppHandle, state: State<AppState>, id: String) -> R<()> {
+    currency::keep_currency(&state.store.lock().unwrap(), &id)?;
+    changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -630,6 +653,10 @@ pub fn run() {
                 .or_else(|| store.kv_get("hisab.main").ok().flatten())
                 .unwrap_or_else(|| Settings::default().main_currency);
             app.manage(AppState { store: Mutex::new(store), settings: Mutex::new(settings), notice: Mutex::new(n1.or(n2)), last_main: Mutex::new(last) });
+            // Selfkit sync (selfkit-appsync): status, Sync now, settings, conflicts; desktop syncs on open.
+            let sync = selfkit_appsync::tauri_cmds::default_handle("hisab", paths::data_dir())?;
+            selfkit_appsync::tauri_cmds::spawn_on_open(app.handle(), &sync);
+            app.manage(sync);
             #[cfg(desktop)]
             {
                 let s = Settings::load(&app.state::<AppState>().settings.lock().unwrap()).unwrap_or_default();
@@ -653,9 +680,15 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            boot, snapshot, transactions, trends, save, get, remove, restore, generate_recurring, sms_ingest, sms_pending, sms_parse,
-            rates_save, rates_manual, export_file, photo_save, photo_get, photo_export, prefs_set, draft_set, settings_get, settings_set, main_currency_set, account_relabel, close_capture,
-            reschedule, dev_hooks, startup_notice
+            boot, snapshot, transactions, trends, save, get, remove, restore, generate_recurring, csv_preview, csv_import, csv_import_undo,
+            rates_save, rates_manual, export_file, photo_save, photo_get, photo_export, prefs_set, draft_set, settings_get, settings_set, main_currency_set, account_relabel, account_keep_currency, close_capture,
+            reschedule, dev_hooks, startup_notice,
+            selfkit_appsync::tauri_cmds::sync_status, selfkit_appsync::tauri_cmds::sync_now,
+            selfkit_appsync::tauri_cmds::sync_settings_set, selfkit_appsync::tauri_cmds::sync_server_get,
+            selfkit_appsync::tauri_cmds::sync_server_set, selfkit_appsync::tauri_cmds::sync_server_test,
+            selfkit_appsync::tauri_cmds::sync_encryption_setup, selfkit_appsync::tauri_cmds::sync_unlock,
+            selfkit_appsync::tauri_cmds::sync_change_passphrase, selfkit_appsync::tauri_cmds::sync_conflicts,
+            selfkit_appsync::tauri_cmds::sync_resolve, selfkit_appsync::tauri_cmds::sync_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running Hisab");

@@ -22,6 +22,9 @@ export const app = $state({
   prefs: {} as Prefs,
   settings: null as Settings | null,
   settingsOpen: false,
+  /** Settings → Sync layer and its conflict screen (shared ui/src/sync). */
+  syncOpen: false,
+  conflictsOpen: false,
   view: "list" as View,
   /** Tag filter for every view (null = all). */
   tag: null as string | null,

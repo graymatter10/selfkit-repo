@@ -45,5 +45,8 @@
             android:name="android.support.FILE_PROVIDER_PATHS"
             android:resource="@xml/file_paths" />
         </provider>
+        <!-- Selfkit sync plugin: which app and Rust library (android-plugins/selfkit-sync) -->
+        <meta-data android:name="com.selfkit.sync.APP" android:value="agenda" />
+        <meta-data android:name="com.selfkit.sync.LIB" android:value="agenda_lib" />
     </application>
 </manifest>

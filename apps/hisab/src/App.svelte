@@ -8,6 +8,7 @@
   import CategorySheet from "./components/CategorySheet.svelte";
   import CurrencySheet from "./components/CurrencySheet.svelte";
   import ExportSheet from "./components/ExportSheet.svelte";
+  import ImportSheet from "./components/ImportSheet.svelte";
   import GoalSheet from "./components/GoalSheet.svelte";
   import Goals from "./components/Goals.svelte";
   import History from "./components/History.svelte";
@@ -22,7 +23,8 @@
   import RecurringList from "./components/RecurringList.svelte";
   import RecurringSheet from "./components/RecurringSheet.svelte";
   import Settings from "./components/Settings.svelte";
-  import SmsReview from "./components/SmsReview.svelte";
+  import SyncSettings from "../../../ui/src/sync/SyncSettings.svelte";
+  import Conflicts from "../../../ui/src/sync/Conflicts.svelte";
   import SplitSheet from "./components/SplitSheet.svelte";
   import Toast from "./components/Toast.svelte";
   import TxSheet from "./components/TxSheet.svelte";
@@ -30,7 +32,6 @@
   import { onBackButtonPress } from "@tauri-apps/api/app";
   import { minimize, takeLaunchAction } from "./lib/native";
   import { maybeFetchRates } from "./lib/rates";
-  import { syncSms } from "./lib/sms";
   import { app, back, closeSheet, go, historyPreset, init, openSheet, page, type Page } from "./lib/state.svelte";
 
   init();
@@ -46,24 +47,21 @@
 
   const TITLES: Record<Page, string> = {
     home: "Hisab", history: "History", insights: "Insights", accounts: "Accounts", loans: "Loans", goals: "Savings goals", recurring: "Recurring",
-    categories: "Categories", sms: "SMS imports", settings: "Settings", more: "More",
+    categories: "Categories", settings: "Settings", more: "More", sync: "Sync", conflicts: "Changed on two devices",
   };
   const NAV: { id: Page; icon: string; key: string }[] = [
     { id: "home", icon: "plus", key: "N" }, { id: "history", icon: "list", key: "H" }, { id: "insights", icon: "chart", key: "I" }, { id: "accounts", icon: "wallet", key: "A" },
     { id: "loans", icon: "people", key: "L" }, { id: "goals", icon: "target", key: "G" }, { id: "recurring", icon: "repeat", key: "R" }, { id: "categories", icon: "tag", key: "C" },
-    { id: "sms", icon: "sms", key: "" },
   ];
 
-  // After start: rates (if stale), SMS (Android, if on), widget launch.
+  // After start: rates (if stale), widget launch.
   $effect(() => {
     if (!app.ready) return;
     maybeFetchRates();
-    syncSms();
     if (takeLaunchAction() === "add") go("home");
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden || !app.ready) return;
-    syncSms();
     if (takeLaunchAction() === "add") {
       app.sheets = [];
       go("home");
@@ -103,6 +101,7 @@
     if (p.sheet === "split") openSheet({ kind: "split" });
     if (p.sheet === "category") openSheet({ kind: "category", id: app.snap?.categories[Number(p.i ?? 0)]?.id });
     if (p.sheet === "export") openSheet({ kind: "export" });
+    if (p.sheet === "import") openSheet({ kind: "import" });
     if (p.sheet === "goal") openSheet({ kind: "goal", id: app.snap?.goals[0]?.id });
     if (p.sheet === "recurring") openSheet({ kind: "recurring", id: app.snap?.recurring[0]?.id });
     if (p.sheet === "account") openSheet({ kind: "account", id: app.snap?.accounts[0]?.id });
@@ -151,8 +150,9 @@
   {:else if p === "goals"}<Goals {desktop} />
   {:else if p === "recurring"}<RecurringList {desktop} />
   {:else if p === "categories"}<Categories {desktop} />
-  {:else if p === "sms"}<SmsReview {desktop} />
   {:else if p === "settings"}<Settings {desktop} />
+  {:else if p === "sync"}<div class={desktop ? "max-w-[1100px]" : ""}><SyncSettings phone={!desktop} onconflicts={() => go("conflicts")} /></div>
+  {:else if p === "conflicts"}<div class={desktop ? "card flex h-[calc(100vh-120px)] max-w-[1100px] flex-col overflow-hidden" : "-mx-4 -mb-6 flex h-[calc(100dvh-64px)] flex-col"}><Conflicts phone={!desktop} onclose={back} names={{ transactions: "Hisab transaction", loans: "Loan", accounts: "Account", categories: "Category", goals: "Savings goal", recurring: "Recurring payment", rates: "Exchange rates" }} /></div>
   {:else if p === "more"}<More />{/if}
 {/snippet}
 
@@ -167,7 +167,7 @@
       {#each NAV as n}
         <button type="button" class="press flex h-9 items-center gap-2.5 rounded-[9px] px-2.5 text-left text-[14px] {page() === n.id ? 'card font-semibold text-ink' : 'font-medium text-ink2'}" onclick={() => go(n.id)} aria-current={page() === n.id ? "page" : undefined}>
           <Ic name={n.icon} size={18} />{n.id === "home" ? "Add" : TITLES[n.id]}
-          {#if n.id === "sms" && app.snap?.sms_pending}<span class="ml-auto rounded-full bg-accent px-1.5 text-[11px] font-bold text-on-accent">{app.snap.sms_pending}</span>{:else}<span class="ml-auto text-[11px] font-medium text-muted">{n.key}</span>{/if}
+          <span class="ml-auto text-[11px] font-medium text-muted">{n.key}</span>
         </button>
       {/each}
       <button type="button" class="press flex h-9 items-center gap-2.5 rounded-[9px] px-2.5 text-left text-[14px] font-medium text-ink2" onclick={() => openSheet({ kind: "export" })}><Ic name="export" size={18} />Export</button>
@@ -194,7 +194,7 @@
         <button type="button" aria-label="Insights" class="press flex h-10 w-10 items-center justify-center rounded-full text-ink2" onclick={() => go("insights")}><Ic name="chart" size={22} /></button>
         <button type="button" aria-label="Accounts" class="press flex h-10 w-10 items-center justify-center rounded-full text-ink2" onclick={() => go("accounts")}><Ic name="wallet" size={22} /></button>
         <button type="button" aria-label="More" class="press relative flex h-10 w-10 items-center justify-center rounded-full text-ink2" onclick={() => go("more")}><Ic name="more" size={22} stroke={2.6} />
-          {#if app.snap?.sms_pending || app.snap?.loans.some((l) => l.status === "overdue")}<span class="absolute top-2 right-2 h-2 w-2 rounded-full bg-accent"></span>{/if}</button>
+          {#if app.snap?.loans.some((l) => l.status === "overdue")}<span class="absolute top-2 right-2 h-2 w-2 rounded-full bg-accent"></span>{/if}</button>
       </header>
       <div class="min-h-0 flex-1"><Home bind:panel /></div>
     {:else}
@@ -219,6 +219,7 @@
   {:else if s.kind === "goal"}<GoalSheet id={s.id} {desktop} />
   {:else if s.kind === "recurring"}<RecurringSheet id={s.id} {desktop} />
   {:else if s.kind === "export"}<ExportSheet {desktop} />
+  {:else if s.kind === "import"}<ImportSheet {desktop} />
   {:else if s.kind === "currency"}<CurrencySheet value={s.value} onpick={s.onpick} {desktop} />
   {:else if s.kind === "split"}<SplitSheet {desktop} />
   {:else if s.kind === "photo"}<PhotoViewer id={s.id} />{/if}

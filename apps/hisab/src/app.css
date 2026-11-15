@@ -78,3 +78,13 @@ textarea.field { height: auto; padding: 10px 12px; resize: none; }
 @keyframes slide { from { transform: translateX(24px); opacity: 0.4; } }
 @keyframes pop { from { opacity: 0; transform: scale(0.97); } }
 @media (prefers-reduced-motion: reduce) { .rise, .fade, .pop, .slide { animation: none; } }
+
+/* Shared Sync screens (ui/src/sync): Hisab's tokens. */
+.sks, .skc { --sync-surface: var(--card); --sync-line: var(--sep); --sync-sunk: var(--fill2); --sync-accent-soft: var(--accent-soft); --sync-on-accent: var(--on-accent); --sync-ok: var(--accent-ink); }
+
+/* Date/time inputs: Android WebView ignores text-align on the input itself,
+   so right-aligned rows (entry editor) showed the value on the left (QA hi18). */
+input[type="date"].text-right::-webkit-date-and-time-value,
+input[type="time"].text-right::-webkit-date-and-time-value { text-align: right; }
+input[type="date"].text-right::-webkit-datetime-edit,
+input[type="time"].text-right::-webkit-datetime-edit { justify-content: flex-end; }

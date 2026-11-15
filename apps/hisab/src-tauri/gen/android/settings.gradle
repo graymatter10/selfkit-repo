@@ -1,3 +1,6 @@
 include ':app'
+// Selfkit sync plugin (android-plugins/selfkit-sync)
+include ':selfkit-sync'
+project(':selfkit-sync').projectDir = new File(rootDir, '../../../../../android-plugins/selfkit-sync')
 
 apply from: 'tauri.settings.gradle'

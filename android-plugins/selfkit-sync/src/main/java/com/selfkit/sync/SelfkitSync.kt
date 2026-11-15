@@ -51,6 +51,7 @@ object SelfkitSync {
         schedule(ctx)
         val s = call(ctx, "schedule")
         if (s.optBoolean("run_on_open")) runOnce(ctx, "open")
+        Meta.mirror(ctx).takeIf { it.isNotEmpty() }?.let { SelfkitMirror.pull(ctx, it) }
     }
 
     /** (Re)apply the periodic job from the Rust settings (owner, auto sync, minutes). Call after settings change. */

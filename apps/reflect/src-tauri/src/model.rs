@@ -998,13 +998,26 @@ pub fn period(kind: &str, offset: i32, today: i32, week_start: u8) -> (i32, i32)
     }
 }
 
+/// How far back the Review can go (an offset ≤ -1): to the period holding the
+/// oldest data, and always at least one period before the current one (QA
+/// 2026-11-15: on "November so far" ← was disabled when data began in
+/// November, so October couldn't be opened; empty periods say "No data").
+pub fn earliest_offset(cx: &Ctx, kind: &str, week_start: u8) -> i32 {
+    let first = cx.days.first().map(|d| d.idx).unwrap_or(cx.today);
+    let mut o = -1;
+    while o > -600 && period(kind, o, cx.today, week_start).0 > first {
+        o -= 1;
+    }
+    o
+}
+
 pub fn review(cx: &Ctx, kind: &str, offset: i32, week_start: u8, defs: &[StreakDef]) -> Review {
     let (a, b) = period(kind, offset, cx.today, week_start);
     let len = (b - a + 1) as usize;
     let (pa, pb) = period(kind, offset - 1, cx.today, week_start);
     let word = if kind == "month" { "month" } else { "week" };
     let mut r = Review { kind: kind.into(), offset, in_progress: b >= cx.today, can_next: b < cx.today, ..Default::default() };
-    r.can_prev = cx.days.first().is_some_and(|f| f.idx < a);
+    r.can_prev = offset > earliest_offset(cx, kind, week_start);
     let (da, db) = (idx_date(a), idx_date(b));
     if kind == "month" {
         r.label = format!("{} {}", MONTHS[da.month0() as usize], da.year());
@@ -1390,5 +1403,29 @@ mod tests {
         assert!(r.sub.starts_with("You finished 21 tasks"), "{}", r.sub);
         assert_eq!(r.sleep.as_ref().unwrap().sub, "Usually asleep around 23:50");
         assert!(r.can_next && !r.in_progress);
+    }
+
+    /// QA 2026-11-15: the current period opens with ← enabled even when data
+    /// starts inside it; ← stops at the period holding the oldest data (but
+    /// never before one step back); → only stops at the current period.
+    #[test]
+    fn review_navigation_bounds() {
+        let t = date_idx(NaiveDate::from_ymd_opt(2026, 11, 15).unwrap());
+        let d = |i: i32| { let mut x = Day { idx: i, ..Default::default() }; x.tasks = Some(1.0); x };
+        // Data only since 10 Nov (this week and this month).
+        let cx = cx_with((t - 5..=t).map(d).collect(), t);
+        for kind in ["week", "month"] {
+            let now = review(&cx, kind, 0, 0, &default_streaks());
+            assert!(now.in_progress && !now.can_next && now.can_prev, "{kind}: current period, ← allowed");
+            let prev = review(&cx, kind, -1, 0, &default_streaks());
+            assert!(prev.can_next && !prev.can_prev, "{kind}: one step back is the floor");
+            assert!(prev.empty && prev.headline.starts_with("No data"), "{kind}: empty period says so");
+        }
+        assert_eq!(review(&cx, "month", -1, 0, &default_streaks()).label, "October 2026");
+        // Data since 20 Aug: months go back to August, not further.
+        let cx = cx_with((t - 87..=t).map(d).collect(), t);
+        assert_eq!(earliest_offset(&cx, "month", 0), -3);
+        assert!(review(&cx, "month", -2, 0, &default_streaks()).can_prev);
+        assert!(!review(&cx, "month", -3, 0, &default_streaks()).can_prev);
     }
 }

@@ -4,7 +4,10 @@
   import { app, breakMin, defaultReminder, defaultSeverity, focusMin, refresh, savePrefs, saveSettings } from "../lib/state.svelte";
   import { api } from "../lib/api";
   import Seg from "./Seg.svelte";
+  import { syncApi } from "../../../../ui/src/sync/api";
   let { desktop = false }: { desktop?: boolean } = $props();
+  let syncLine = $state("");
+  $effect(() => { if (app.settingsOpen && !app.syncOpen) syncApi.status().then((st) => (syncLine = st.conflicts ? `${st.conflicts} to review` : st.headline.split(" · ")[0])).catch(() => (syncLine = "")); });
   let recording = $state(false);
   let shortcutError = $state("");
   const set = (k: "theme" | "reminder" | "severity" | "focus_min" | "break_min", v: unknown) => savePrefs({ ...app.prefs, [k]: v });
@@ -84,6 +87,12 @@
         <button type="button" class="press justify-self-end text-[17px] font-semibold text-accent" onclick={() => (app.settingsOpen = false)}>Done</button>
       </div>
       <div class="flex flex-col gap-[22px] overflow-y-auto *:shrink-0 px-4 pt-2 pb-[max(28px,env(safe-area-inset-bottom))]">
+        <div class="overflow-hidden rounded-xl bg-card">
+          <button type="button" class="hl flex w-full items-center pl-4 text-left text-[17px]" onclick={() => (app.syncOpen = true)}>
+            <span class="flex flex-1 items-center gap-3 py-[11px] pr-4"><span class="flex-1">Sync</span><span class="truncate text-[15px] text-muted">{syncLine}</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg></span></button>
+        </div>
+
         <div class="flex flex-col gap-2">
           <span class="px-4 text-[13px] text-muted uppercase">Appearance</span>
           <Seg label="Appearance" items={[{ id: "system", name: "System" }, { id: "light", name: "Light" }, { id: "dark", name: "Dark" }]}

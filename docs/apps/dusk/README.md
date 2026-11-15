@@ -26,7 +26,7 @@ Every time in Dusk (Adjust: bedtime/fell asleep and woke up; Settings: bedtime g
 - **Keys**: ←↓ / ↑→ −/+1 (Shift: 5 minutes, PageUp/PageDown ±5), digits type minutes, Tab hour → minutes → am/pm → Cancel → Done (focus stays in the dialog), Enter = Done, Esc = Cancel (doesn't close the Adjust panel behind it).
 - **Container**: phone (< 900 px) bottom sheet with handle, title, "Estimate 23:48" hint, Cancel / Done; desktop a 340 px dialog with a key hint line. While open it takes over `app.closeGuard`, so Android Back = Cancel, and hands the previous guard (Adjust's "Discard your changes?") back on close.
 - **12h / 24h**: there is no app or shared setting, so it follows the system locale (`Intl` hour cycle; `uses12h()` in `lib/fmt.ts`). In 12h the time fields and the wind-down line show "11:30 pm"; values are still stored as "HH:MM". Android WebView reports the language's default, not the system 24-hour switch.
-- Starting value: the field's time, else the estimate, else 23:00 / 07:00 (nap: 14:00, and the wake time starts 30 min after "Fell asleep").
+- Starting value: the field's time, else the estimate, else 23:00 / 07:00 (nap: 14:00, and the wake time starts 30 min after "Fell asleep" — `current()` in `Adjust.svelte`; re-verified 2026-11-15, the phone build that showed 2:30 pm after 4:15 pm predates it).
 - Tested 2026-11-15 on Linux (Xvfb: drag hour on the inner ring, drag minutes incl. a 1-minute stop, Alt+↓/arrows/Tab/Enter/Esc on desktop) and on the vivo (720×1600, 12h locale, APK 0.1.2): `adb shell input swipe` on the dial, nap added and deleted, bedtime goal changed and restored, Back closes the sheet (Adjust and Settings), wake-before-bed message, dark mode.
 
 ## Data model (`dusk.db`, selfkit-core records)
@@ -87,8 +87,23 @@ Screenshots without a window: Xvfb on :84, then `DUSK_SHOT_DATA=/tmp/dusk-demo a
 - `src/components/`: `NightPage`, `Adjust` (times/notes/nap), `TimeDial` (clock face + readout), `TimeSheet` (dial in a bottom sheet / desktop dialog, Back/Esc/Enter), `TrendsPage`, `ConnectionsPage`, `SettingsPage`, `Timeline`, `NightBars`, `RangeChart`, `StatsGrid`, `Rating`, `Seg`, `Icon`, `Toast`, `Confirm`.
 - `scripts/shot.sh`: off-screen screenshots.
 
+## Sync (wave 2, 2026-11-15)
+Shared module [selfkit-appsync](../../components/selfkit-appsync.md) + Android plugin [selfkit-sync](../../../android-plugins/selfkit-sync/README.md); same UI in every app (`ui/src/sync/`).
+- **Settings → Sync**: status ("Synced locally with Linux PC · 2 min ago" / "Synced via server · …" / "Waiting to sync · N changes saved here"), **Sync now**, local sync toggle + seen devices, server setup (Postgres + optional S3 for photos, Test/Save), encryption setup with recovery key / unlock / change passphrase, who syncs (Android: This app | Selfkit companion; desktop: Background agent | This app), battery tip on OPPO/vivo-style phones, sync log.
+- **Conflict screen** (Settings → Sync → Review): Keep A (this device) / Keep B / Merge field by field, long text as a line list to tick; edited-vs-deleted explained.
+- **When**: on open, every ~15 min (Android WorkManager, needs a network; desktop: the agent), and Sync now. Transport per run: LAN to a reachable Selfkit device, else the server.
+- **Stores synced**: `dusk.db` and the shared `settings.db`.
+- **Test builds**: Cargo feature `sync-test-key` (default on) uses the public built-in key, so there are no passphrase prompts; build with `--no-default-features` for real data.
+- **Code**: `src-tauri/src/lib.rs` (setup: `selfkit_appsync::tauri_cmds::default_handle("dusk", …)` + `sync_*` commands), Settings row + page wiring in the frontend, `.sks, .skc` token mapping in `src/app.css`, Android: `MainActivity.kt` "Selfkit sync" blocks, `settings.gradle` / `app/build.gradle.kts` module lines, manifest meta-data `com.selfkit.sync.APP/LIB`. Provider: `content://com.selfkit.dusk.provider` (signature permission `com.selfkit.permission.SHARE`).
+
 ## QA 2026-11-15
 Tested with the default seed (120 nights; the user asked not to use a year for Dusk) on Linux and the 0.1.0 APK on the vivo.
 - Linux: open ≈ 1.1 s; screen switches 70–190 ms CPU; ~215 MB PSS total, ~380 MB summed RSS.
 - Fixed: changing only one time in Adjust (e.g. bedtime 03:00 while the estimated wake was 02:52) was saved and the night showed "No data" with no way back — `log_set` now checks the bed/wake pair that will show and refuses with "Wake time must be after bedtime" (and "Use the estimate" shows whenever a time was typed); the spending connection summed Hisab amounts in other currencies as if they were the main currency (e.g. ৳3,500 counted as $3,500); damaged `dusk.db`/`settings.db` crash at start; two desktop instances (single-instance plugin, `--rate` goes to the running one).
 - Verified: unreadable `chrono.db` / truncated `agenda.db` → Dusk still opens, the cards degrade; Usage access denied → "Allow" card; rapid rating taps end in a consistent saved state; invalid typed time (9999) refused.
+
+## Phone QA fixes 2026-11-15
+- Nap rows and the Night page times (bed/wake cells, "was …", last screen use, timeline ticks and its label) use the same 12h/24h rule as the pickers (`hmd()` = `tdisp(hm())` in `lib/fmt.ts`), so a 12h phone no longer shows "16:15–17:30" next to a "4:15 pm" picker. Timeline ticks read "3 am" in 12h.
+- The nap screen header says which day: "Add nap" · "Nap · Sun 15 Nov" (was the night range "Sat 14 – Sun 15 Nov"); naps belong to the day of the night's morning.
+- Default wake time for a nap = fell asleep + 30 min: already in the tree (clock-dial work), verified in code.
+- Needs a phone re-check (12h locale: nap row format, header).

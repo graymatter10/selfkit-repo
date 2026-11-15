@@ -33,5 +33,10 @@
             android:name="android.support.FILE_PROVIDER_PATHS"
             android:resource="@xml/file_paths" />
         </provider>
+        <!-- Selfkit sync plugin: which app and Rust library (android-plugins/selfkit-sync) -->
+        <meta-data android:name="com.selfkit.sync.APP" android:value="reflect" />
+        <meta-data android:name="com.selfkit.sync.LIB" android:value="reflect_lib" />
+        <!-- Reflect reads these apps' data on the phone (read-only copies via their providers). -->
+        <meta-data android:name="com.selfkit.sync.MIRROR" android:value="chrono,hisab,agenda,dusk" />
     </application>
 </manifest>

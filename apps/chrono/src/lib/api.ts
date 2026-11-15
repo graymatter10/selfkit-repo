@@ -70,6 +70,7 @@ export const api = {
   saveNote: (day: string, text: string, photos: string[]) => call<DayNote | null>("note_save", { day, text, photos }),
   photoSave: (data: string, mime: string, w: number, h: number) => call<string>("photo_save", { data, mime, w, h }),
   photoGet: (id: string) => call<string>("photo_get", { id }),
+  photoExport: (id: string) => call<string>("photo_export", { id }),
   appChanges: () => call<AppChange[]>("app_changes"),
   devHooks: () => call<string | null>("dev_hooks"),
 };

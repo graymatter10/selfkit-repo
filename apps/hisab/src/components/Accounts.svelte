@@ -7,6 +7,7 @@
   import { app, go, main, openHistory, openSheet } from "../lib/state.svelte";
   import CatBadge from "./CatBadge.svelte";
   import Ic from "./Ic.svelte";
+  import StaleOffer from "./StaleOffer.svelte";
   let { desktop = false }: { desktop?: boolean } = $props();
   let tr = $state<Trends | null>(null);
   $effect(() => {
@@ -29,6 +30,7 @@
 </script>
 
 <div class="flex flex-col gap-3">
+  <div class="-mb-2.5 empty:hidden"><StaleOffer banner /></div>
   <div class="card px-4 pt-3.5 pb-3">
     <div class="text-[12.5px] font-medium text-muted">Net worth · accounts + lent − borrowed</div>
     <div class="num text-[30px] font-semibold tracking-[-0.8px]">{money(app.snap?.overview.net_worth ?? 0, main())}</div>

@@ -5,7 +5,7 @@ import { on, showToast } from "@selfkit/ui";
 import { api, type Account, type Category, type Coll, type Prefs, type Snapshot, type Tx } from "./api";
 import { monthIso, todayIso } from "./fmt";
 
-export type Page = "home" | "history" | "insights" | "accounts" | "loans" | "goals" | "recurring" | "categories" | "sms" | "settings" | "more";
+export type Page = "home" | "history" | "insights" | "accounts" | "loans" | "goals" | "recurring" | "categories" | "settings" | "more" | "sync" | "conflicts";
 export type Sheet =
   | { kind: "tx"; id: string }
   | { kind: "account"; id?: string }
@@ -15,6 +15,7 @@ export type Sheet =
   | { kind: "goal"; id?: string }
   | { kind: "recurring"; id?: string }
   | { kind: "export" }
+  | { kind: "import" }
   | { kind: "currency"; value: string; onpick: (c: string) => void }
   | { kind: "split" }
   | { kind: "photo"; id: string };
@@ -42,9 +43,11 @@ export function emptyDraft(): Draft {
   return { kind: "expense", amount: "", currency: "", account: "", to_account: "", category: "", splits: [], note: "", tags: [], photos: [], date: "", time: "", };
 }
 
-/** An untouched draft (no amount) follows today (older versions stored today's date in it). */
+/** An untouched draft (no amount) follows today (older versions stored today's
+ *  date in it) and the main currency: a currency picked by hand lasts for that
+ *  one entry only, so a restart never brings back an old "USD" (QA 2026-11-15). */
 function freshDate(d: Draft): Draft {
-  return d.amount ? d : { ...d, date: "" };
+  return d.amount ? d : { ...d, date: "", currency: "" };
 }
 
 function loadDraft(): Draft {

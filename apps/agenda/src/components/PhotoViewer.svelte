@@ -4,13 +4,20 @@
   import { api } from "../lib/api";
   import { SavePhotoButton, saveToGallery } from "../lib/photo-source";
   import { photoUrl } from "../lib/photos";
-  import { app } from "../lib/state.svelte";
+  import { app, applyTheme } from "../lib/state.svelte";
   import Photo from "./Photo.svelte";
   $effect(() => {
     if (!app.photo) return;
     const prev = app.closeGuard;
     app.closeGuard = () => ((app.photo = null), true);
     return () => (app.closeGuard = prev);
+  });
+  // Android: light status-bar icons on the black viewer (the clock was
+  // invisible); the app theme's colours come back when it closes.
+  $effect(() => {
+    if (!app.photo) return;
+    (window as unknown as { AgendaBars?: { setDark(d: boolean): void } }).AgendaBars?.setDark(true);
+    return () => applyTheme();
   });
   const save = (id: string) =>
     saveToGallery("Agenda", async () => ({ dataUrl: await photoUrl(id) }), () => api.photoExport(id));

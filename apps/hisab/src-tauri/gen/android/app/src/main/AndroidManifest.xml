@@ -4,10 +4,6 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <!-- SMS import: asked only when the user turns it on in Hisab → SMS imports. -->
-    <uses-permission android:name="android.permission.READ_SMS" />
-    <uses-permission android:name="android.permission.RECEIVE_SMS" />
-    <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <!-- "Take photo" (SelfkitPhotos.kt): lets Android 11+ resolve the camera app.
          No CAMERA permission on purpose: the system camera then needs no runtime grant. -->
     <queries>
@@ -39,11 +35,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Bank / wallet SMS → queued for review (only while import is on). -->
-        <receiver android:name=".SmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
-            <intent-filter><action android:name="android.provider.Telephony.SMS_RECEIVED" /></intent-filter>
-        </receiver>
-
         <!-- Home-screen quick-add widget. -->
         <receiver android:name=".AddWidget" android:exported="true" android:label="@string/widget_label">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
@@ -59,5 +50,8 @@
             android:name="android.support.FILE_PROVIDER_PATHS"
             android:resource="@xml/file_paths" />
         </provider>
+        <!-- Selfkit sync plugin: which app and Rust library (android-plugins/selfkit-sync) -->
+        <meta-data android:name="com.selfkit.sync.APP" android:value="hisab" />
+        <meta-data android:name="com.selfkit.sync.LIB" android:value="hisab_lib" />
     </application>
 </manifest>

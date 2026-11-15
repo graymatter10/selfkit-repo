@@ -131,6 +131,7 @@ pub fn accounts_view(d: &Data) -> Vec<Value> {
             let x = round2(*bal.get(s(a, "id")).unwrap_or(&0.0));
             v["balance"] = json!(x);
             v["balance_main"] = json!(round2(d.main_of(x, s(a, "currency"))));
+            v["entry_currency"] = json!(crate::currency::entry_currency(a, &d.main));
             v
         })
         .collect();

@@ -38,11 +38,11 @@
   const budgets = $derived((app.snap?.categories ?? []).filter((c) => c.kind === "expense" && !c.archived && c.budget > 0));
   const cur = $derived(main());
   const card = "card px-4 pt-3.5 pb-4";
-  const h2 = "m-0 mb-2 flex items-baseline justify-between text-[14px] font-semibold";
+  const h2 = "m-0 mb-2 flex items-baseline justify-between gap-2 text-[14px] font-semibold";
 </script>
 
 {#snippet stat(label: string, v: string, cls = "")}
-  <div class="min-w-0 flex-1 {desktop ? 'px-4' : 'px-3'} py-3.5"><div class="text-[12.5px] font-medium text-muted">{label}</div><div class="num mt-0.5 truncate {desktop ? "text-[21px]" : v.length > 11 ? "text-[13px]" : v.length > 7 ? "text-[15px]" : "text-[18px]"} font-semibold tracking-[-0.5px] {cls}">{v}</div></div>
+  <div class="min-w-0 flex-1 {desktop ? 'px-4' : 'px-3'} py-3.5"><div class="text-[12.5px] font-medium text-muted">{label}</div><div class="num mt-0.5 leading-tight [overflow-wrap:anywhere] {desktop ? (v.length > 14 ? "text-[17px]" : "text-[21px]") : v.length > 13 ? "text-[12px]" : v.length > 10 ? "text-[13.5px]" : v.length > 7 ? "text-[15px]" : "text-[18px]"} font-semibold tracking-[-0.4px] {cls}">{v}</div></div>
 {/snippet}
 
 <div class="flex flex-col gap-3">
@@ -66,7 +66,7 @@
         {@render stat("Balance", (ov.balance > 0 ? "+" : "") + money(ov.balance, cur), ov.balance > 0 ? "text-accent-ink" : ov.balance < 0 ? "text-danger" : "")}
         {#if desktop}{@render stat("vs last month", vsPrev === null ? "—" : `${vsPrev > 0 ? "+" : ""}${vsPrev}%`)}{/if}
       </div>
-      <div class="grid gap-3 {desktop ? 'grid-cols-[1.4fr_1fr]' : ''}">
+      <div class="grid gap-3 {desktop ? 'grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]' : 'grid-cols-[minmax(0,1fr)]'}">
         <div class={card}>
           <h3 class={h2}>Daily spending<span class="text-[12px] font-normal text-muted">vs {monthName(addMonths(month, -1))} ┄</span></h3>
           <Cumulative daily={tr.daily} prev={tr.daily_prev} budget={ov.budget} today={ov.days_elapsed} {cur} />
@@ -98,7 +98,7 @@
         {@render stat("Income", money(yearSums.income, cur))}
         {@render stat("Saved", money(yearSums.income - yearSums.spent, cur), yearSums.income - yearSums.spent >= 0 ? "text-accent-ink" : "text-danger")}
       </div>
-      <div class="grid gap-3 {desktop ? 'grid-cols-[1.4fr_1fr]' : ''}">
+      <div class="grid gap-3 {desktop ? 'grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]' : 'grid-cols-[minmax(0,1fr)]'}">
         <div class={card}><h3 class={h2}>Months<span class="text-[12px] font-normal text-muted">spent · income (grey)</span></h3>
           <Bars items={tr.months.map((m, i) => ({ label: MS[i], key: m.month, spent: m.spent, income: m.income }))} active={month} /></div>
         <div class={card}><h3 class={h2}>By category · {year}</h3><Donut data={tr.by_category_year} {cur} /></div>
@@ -111,7 +111,7 @@
         {@render stat("Net worth", money(ov.net_worth, cur), ov.net_worth < 0 ? "text-danger" : "")}
       </div>
       <p class="m-0 px-1 text-[13px] text-muted">{tr.lifetime.count} entries{tr.lifetime.first ? ` since ${shortDate(tr.lifetime.first)}` : ""}</p>
-      <div class="grid gap-3 {desktop ? 'grid-cols-2' : ''}">
+      <div class="grid gap-3 {desktop ? 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : 'grid-cols-[minmax(0,1fr)]'}">
         <div class={card}><h3 class={h2}>Years</h3><Bars items={tr.years.map((y) => ({ label: y.year, key: y.year, spent: y.spent, income: y.income }))} /></div>
         <div class={card}><h3 class={h2}>Net worth over time</h3><Trend values={tr.networth.map((n) => n.value)} labels={tr.networth.map((n) => monthName(n.month, true))} /></div>
       </div>

@@ -1,4 +1,4 @@
 # Build output lives on /shared (root partition is tight). See docs/platforms/linux.md.
 [build]
 target-dir = "/shared/selfkitextra/target"
-jobs = 2
+jobs = 12

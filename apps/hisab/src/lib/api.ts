@@ -9,7 +9,7 @@ export interface Tx {
   to_account?: string; to_amount?: number; category: string; splits: Split[]; tags: string[]; note: string;
   photos: string[]; source: string; amount_main?: number; recurring?: string; created_at?: number;
 }
-export interface Account { id: string; name: string; kind: string; currency: string; opening: number; archived: boolean; order: number; balance: number; balance_main: number }
+export interface Account { id: string; name: string; kind: string; currency: string; opening: number; archived: boolean; order: number; balance: number; balance_main: number; explicit_currency?: boolean; entry_currency: string }
 export interface Category { id: string; name: string; kind: "expense" | "income"; icon: string; color: string; budget: number; archived: boolean; order: number; usage: number; spent: number }
 export interface Repayment { id: string; date: string; amount: number; note: string }
 export interface Loan {
@@ -31,7 +31,8 @@ export interface Overview {
 export interface Rates { base: string; rates: Record<string, number>; manual: Record<string, number>; fetched_at: number }
 export interface Snapshot {
   main: string; today: string; accounts: Account[]; categories: Category[]; loans: Loan[]; goals: Goal[]; recurring: Recurring[];
-  overview: Overview; recent: Tx[]; sms_pending: number; rates: Rates; tags: string[]; missing_rates: string[];
+  overview: Overview; recent: Tx[]; rates: Rates; tags: string[]; missing_rates: string[];
+  stale_accounts: MainChange["used"];
 }
 export interface Trends {
   month: string; main: string; daily: number[]; daily_prev: number[]; by_category_month: CatAmount[]; income_by_category_month: CatAmount[];
@@ -40,12 +41,25 @@ export interface Trends {
   lifetime: { spent: number; income: number; count: number; first: string | null }; missing_rates: string[];
 }
 export interface Filter { q?: string; kind?: string; category?: string; account?: string; tag?: string; from?: string; to?: string; min?: number; max?: number; limit?: number }
-export interface SmsItem { id: string; sender: string; body: string; at: number; status: string; parsed: { kind: "expense" | "income"; amount: number; currency: string; merchant: string; hint: string } }
-export interface Prefs { theme?: "system" | "light" | "dark"; rank?: "manual" | "used"; account?: string; sms?: boolean; sms_since?: number; notify?: boolean }
+// CSV import (src-tauri/src/csvimport.rs). Column indexes; null = not in the file.
+export interface CsvMapping {
+  date: number | null; time: number | null; amount: number | null; debit: number | null; credit: number | null; description: number | null;
+  category: number | null; account: number | null; currency: number | null; kind: number | null; tags: number | null; to_account: number | null; to_amount: number | null;
+  date_format: string; hisab: boolean; positive_is_expense: boolean;
+}
+export interface CsvRow {
+  line: number; date: string; time: string; kind: string; amount: number; currency: string; note: string; category: string; category_name: string;
+  account: string; to_account: string; to_amount: number; tags: string[]; duplicate: boolean; error: string;
+}
+export interface CsvPreview {
+  headers: string[]; sample: string[][]; delimiter: string; count: number; mapping: CsvMapping;
+  preview: { rows: CsvRow[]; ok: number; duplicates: number; errors: number };
+}
+export interface Prefs { theme?: "system" | "light" | "dark"; rank?: "manual" | "used"; account?: string; notify?: boolean }
 export interface MainChange { old: string; new: string; switched: string[]; used: { id: string; name: string; currency: string; entries: number }[] }
 export interface Settings { day_start_min: number; main_currency: string; theme: unknown; shortcuts: Record<string, string> }
 
-export type Coll = "accounts" | "categories" | "transactions" | "recurring" | "loans" | "goals" | "sms";
+export type Coll = "accounts" | "categories" | "transactions" | "recurring" | "loans" | "goals";
 
 export const api = {
   boot: () => call<{ main: string; today: string; prefs: Prefs; generated: number; draft: object | null }>("boot"),
@@ -60,8 +74,9 @@ export const api = {
   remove: (id: string) => call<void>("remove", { id }),
   restore: (id: string) => call<void>("restore", { id }),
   generateRecurring: () => call<number>("generate_recurring"),
-  smsIngest: (messages: { sender: string; body: string; at: number }[]) => call<number>("sms_ingest", { messages }),
-  smsPending: () => call<SmsItem[]>("sms_pending"),
+  csvPreview: (text: string, mapping: CsvMapping | null, account: string) => call<CsvPreview>("csv_preview", { text, mapping, account }),
+  csvImport: (rows: CsvRow[]) => call<string[]>("csv_import", { rows }),
+  csvImportUndo: (ids: string[]) => call<number>("csv_import_undo", { ids }),
   ratesSave: (base: string, rates: Record<string, number>) => call<Rates>("rates_save", { base, rates }),
   ratesManual: (currency: string, rate: number | null) => call<Rates>("rates_manual", { currency, rate }),
   exportFile: (kind: "csv" | "pdf", from: string, to: string) => call<string>("export_file", { kind, from, to }),
@@ -74,6 +89,7 @@ export const api = {
   /** Change the global main currency; returns used accounts still in the old one. */
   mainCurrencySet: (code: string) => call<MainChange>("main_currency_set", { code }),
   accountRelabel: (id: string, currency: string) => call<number>("account_relabel", { id, currency }),
+  accountKeepCurrency: (id: string) => call<void>("account_keep_currency", { id }),
   closeCapture: () => call<void>("close_capture"),
   reschedule: () => call<void>("reschedule"),
   devHooks: () => call<string | null>("dev_hooks"),
