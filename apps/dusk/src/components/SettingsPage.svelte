@@ -8,6 +8,7 @@
   import TimeSheet from "./TimeSheet.svelte";
 
   import { syncApi } from "../../../../ui/src/sync/api";
+  import LockSettings from "../../../../ui/src/lock/LockSettings.svelte"; // App lock section
   let { desktop }: { desktop: boolean } = $props();
   let syncLine = $state("");
   $effect(() => { syncApi.status().then((st) => (syncLine = st.conflicts ? `${st.headline.split(" · ")[0]} · ${st.conflicts} to review` : st.headline)).catch(() => (syncLine = "")); });
@@ -145,6 +146,9 @@
     {#if app.sources?.mobile && app.usageAccess}
       <button type="button" class="press mt-3 h-11 w-full text-[15px] font-semibold text-accent" onclick={async () => (await importUsage(), refresh())}>Read phone use again</button>
     {/if}
+
+    <h2 class="mx-1 mt-6 mb-2 text-[13.5px] font-[650] text-ink2">App lock</h2>
+    <LockSettings phone={!desktop} appName="Dusk" heading={false} />
   </div>
 {/snippet}
 

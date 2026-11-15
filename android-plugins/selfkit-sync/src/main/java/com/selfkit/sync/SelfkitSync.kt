@@ -52,6 +52,7 @@ object SelfkitSync {
         val s = call(ctx, "schedule")
         if (s.optBoolean("run_on_open")) runOnce(ctx, "open")
         Meta.mirror(ctx).takeIf { it.isNotEmpty() }?.let { SelfkitMirror.pull(ctx, it) }
+        SelfkitMirror.pullSettings(ctx)
     }
 
     /** (Re)apply the periodic job from the Rust settings (owner, auto sync, minutes). Call after settings change. */
@@ -93,6 +94,9 @@ object SelfkitSync {
     fun onForeground(ctx: Context) {
         if (foregroundLock == null) foregroundLock = multicastLock(ctx, "selfkit-sync-foreground")
         foregroundLock?.let { if (!it.isHeld) it.acquire() }
+        // Settings changed in another Selfkit app while this one was in the background.
+        val app = ctx.applicationContext
+        Thread { try { SelfkitMirror.pullSettings(app) } catch (t: Throwable) { } }.start()
     }
 
     fun onBackground(@Suppress("UNUSED_PARAMETER") ctx: Context) {

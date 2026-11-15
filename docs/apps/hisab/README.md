@@ -106,3 +106,6 @@ From the user's phones (OPPO + vivo). Builds/tests run on GitHub only (no local 
 - **CSV import added** next to export: [csv-import.md](csv-import.md).
 - Tests: `currency::tests` (+4: stale offer without re-pick, entry currency, BDT entry on USD account converts, follow_main), `csvimport::tests` (5: quoting/delimiters, amounts/dates, Hisab export round trip + duplicates + undo, bank CSV mapping + dedupe + errors, positive-only amounts).
 - Needs a phone re-check: add screen opens in BDT with "Cash" in USD; banner + Settings offer; Insights cards at 360/412 dp; date/time alignment in the entry editor (WebView-specific CSS); CSV import through the Android system file picker.
+
+## App lock
+Optional PIN/passphrase (+ fingerprint on Android, + "Hide content in app switcher") from Settings → App lock; locks on start and after Immediately / 1 / 5 / 15 min away. Shared implementation: [../../components/app-lock.md](../../components/app-lock.md). Hooks here: `<LockGate appName="Hisab">` in `src/App.svelte`, `<LockSettings>` in `src/components/Settings.svelte` (under Sync), `LockHandle::new("hisab", …)` + `lock_*` commands in `src-tauri/src/lib.rs`, "---- Selfkit lock" blocks in `MainActivity.kt` + `SelfkitLock.kt`, `.skl` tokens in `src/app.css`, feature `lock-test` in `src-tauri/Cargo.toml`. The quick-add popup is not gated.

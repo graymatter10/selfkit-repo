@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LockGate from "../../../ui/src/lock/LockGate.svelte"; // App lock (docs/components/app-lock.md)
   // Chrono main window. Phone (< 900 px): header + bottom tabs, settings and
   // sources as full pages. Desktop: left rail (screens, recording status with
   // the one Pause control, settings) + content.
@@ -285,3 +286,5 @@
 <PhotoViewer />
 <PhotoSourceSheet privateNote="Stays private in Chrono, not in your gallery" />
 <div style="position:fixed;left:50%;transform:translateX(-50%);bottom:{phone ? 96 : 24}px;width:min(420px,calc(100vw - 32px));z-index:95;pointer-events:none"><Toast /></div>
+<!-- App lock: covers everything while locked (ui/src/lock, docs/components/app-lock.md). -->
+<LockGate appName="Chrono" phone={phone} />

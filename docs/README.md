@@ -15,6 +15,7 @@
 | [components/selfkit-core.md](components/selfkit-core.md) | Shared Rust library + code map |
 | [components/selfkit-agent.md](components/selfkit-agent.md) | Desktop background service + code map |
 | [components/browser-extension.md](components/browser-extension.md) | Chrome/Firefox extension |
+| [components/app-lock.md](components/app-lock.md) | App lock (PIN/passphrase, fingerprint, backoff, test builds) in all apps + code map |
 | [platforms/linux.md](platforms/linux.md) · [windows.md](platforms/windows.md) · [android.md](platforms/android.md) | Build, test, quirks per platform |
 | [release.md](release.md) | How to cut a release: APKs, Windows and Linux installers, draft GitHub release |
 | `apps/<app>/README.md` | Per app: purpose, screens, data model, status, code map |

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LockGate from "../../../ui/src/lock/LockGate.svelte"; // App lock (docs/components/app-lock.md)
   // Reflect main window. Phone (< 900 px): top bar with Health and Settings,
   // one page, bottom tabs Today / Streaks / Connections / Review (Week|Month).
   // Desktop: left nav (Ctrl+1–5, Ctrl+, settings), Health at the bottom.
@@ -156,3 +157,5 @@
   </div>
   <div class="pointer-events-none fixed inset-x-3 bottom-[max(84px,calc(env(safe-area-inset-bottom)+76px))] z-[60]"><Toast /></div>
 {/if}
+<!-- App lock: covers everything while locked (ui/src/lock, docs/components/app-lock.md). -->
+<LockGate appName="Reflect" phone={!desktop} />

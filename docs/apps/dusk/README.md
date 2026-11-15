@@ -107,3 +107,6 @@ Tested with the default seed (120 nights; the user asked not to use a year for D
 - The nap screen header says which day: "Add nap" · "Nap · Sun 15 Nov" (was the night range "Sat 14 – Sun 15 Nov"); naps belong to the day of the night's morning.
 - Default wake time for a nap = fell asleep + 30 min: already in the tree (clock-dial work), verified in code.
 - Needs a phone re-check (12h locale: nap row format, header).
+
+## App lock
+Optional PIN/passphrase (+ fingerprint on Android, + "Hide content in app switcher") from Settings → App lock; locks on start and after Immediately / 1 / 5 / 15 min away. Shared implementation: [../../components/app-lock.md](../../components/app-lock.md). Hooks here: `<LockGate appName="Dusk">` in `src/App.svelte`, `<LockSettings>` in `src/components/SettingsPage.svelte` (after Data), `LockHandle::new("dusk", …)` + `lock_*` commands in `src-tauri/src/lib.rs`, "---- Selfkit lock" blocks in `MainActivity.kt` + `SelfkitLock.kt`, `.skl` tokens in `src/app.css`, feature `lock-test` in `src-tauri/Cargo.toml`. The capture popup is not gated.

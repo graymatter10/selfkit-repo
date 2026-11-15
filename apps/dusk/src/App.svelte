@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LockGate from "../../../ui/src/lock/LockGate.svelte"; // App lock (docs/components/app-lock.md)
   // Dusk main window. Phone (< 900 px): top bar, one page, bottom tabs
   // Night / Trends / Connections; settings and Adjust are full pages with a
   // back arrow. Desktop: left nav (Ctrl+1/2/3, Ctrl+,), page, and Adjust as a
@@ -170,3 +171,5 @@
   <!-- Above the tab bar; at the top while Adjust is open, so it never covers the number pad. -->
   <div class="pointer-events-none fixed inset-x-3 z-[60] {app.edit ? 'top-[calc(env(safe-area-inset-top)+64px)]' : 'bottom-[max(84px,calc(env(safe-area-inset-bottom)+76px))]'}"><Toast /></div>
 {/if}
+<!-- App lock: covers everything while locked (ui/src/lock, docs/components/app-lock.md). -->
+<LockGate appName="Dusk" phone={!desktop} />

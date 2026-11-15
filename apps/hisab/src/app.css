@@ -81,6 +81,8 @@ textarea.field { height: auto; padding: 10px 12px; resize: none; }
 
 /* Shared Sync screens (ui/src/sync): Hisab's tokens. */
 .sks, .skc { --sync-surface: var(--card); --sync-line: var(--sep); --sync-sunk: var(--fill2); --sync-accent-soft: var(--accent-soft); --sync-on-accent: var(--on-accent); --sync-ok: var(--accent-ink); }
+/* Shared App lock (ui/src/lock): this app's tokens. */
+.skl { --lock-bg: var(--bg); --lock-surface: var(--card); --lock-line: var(--sep); --lock-key: var(--key); --lock-key-down: var(--key-down); }
 
 /* Date/time inputs: Android WebView ignores text-align on the input itself,
    so right-aligned rows (entry editor) showed the value on the left (QA hi18). */

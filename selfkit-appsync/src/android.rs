@@ -120,6 +120,20 @@ fn run(app: &str, data_dir: &str, wrap: Option<Vec<u8>>, device_name: &str, meth
                 let store = mirror_store(&sync, args["store"].as_str().unwrap_or(""))?;
                 json!({"cursor": store.kv_get("mirror.cursor")?.and_then(|s| s.parse::<i64>().ok()).unwrap_or(0)})
             }
+            // Shared settings from sibling Selfkit apps on this phone (their providers):
+            // merged field by field into this app's settings.db.
+            "settings_adopt" => {
+                let stores = sync.open_stores()?;
+                let s = stores.get(selfkit_core::settings::APP).ok_or_else(|| selfkit_core::Error::NotFound("settings".into()))?;
+                let recs: Vec<selfkit_core::Record> = serde_json::from_value(args["records"].clone())?;
+                let mut changed = 0;
+                for r in recs.iter().filter(|r| r.collection == selfkit_core::settings::COLLECTION) {
+                    if s.apply_peer(r)? != selfkit_core::store::Applied::Unchanged {
+                        changed += 1;
+                    }
+                }
+                json!({"ok": true, "changed": changed})
+            }
             "mirror_apply" => {
                 let store = mirror_store(&sync, args["store"].as_str().unwrap_or(""))?;
                 let recs: Vec<selfkit_core::Record> = serde_json::from_value(args["records"].clone())?;

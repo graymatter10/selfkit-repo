@@ -55,6 +55,9 @@ struct Payload {
     updated_at: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     device_id: Option<String>,
+    /// Per-field change clocks (field merge across devices).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    fclock: std::collections::BTreeMap<String, i64>,
 }
 
 fn aad(app: &str, id: &str, collection: &str) -> Vec<u8> {
@@ -69,6 +72,7 @@ pub fn encrypt_record(key: &SecretKey, app: &str, r: &Record) -> Result<RemoteRe
         hist: r.hist.clone(),
         updated_at: Some(r.updated_at),
         device_id: Some(r.device_id.clone()),
+        fclock: r.fclock.clone(),
     })?;
     Ok(RemoteRecord {
         id: r.id.clone(),
@@ -94,6 +98,7 @@ pub fn decrypt_record(key: &SecretKey, rr: &RemoteRecord) -> Result<Record> {
         device_id: p.device_id.unwrap_or_else(|| rr.device_id.clone()),
         deleted: p.deleted,
         hist: p.hist,
+        fclock: p.fclock,
     })
 }
 

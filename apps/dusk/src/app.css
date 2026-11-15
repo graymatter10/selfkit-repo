@@ -70,3 +70,5 @@
 
 /* Shared Sync screens (ui/src/sync): Dusk's tokens. */
 .sks, .skc { --sync-surface: var(--card); --sync-line: var(--sep); --sync-sunk: var(--fill); --sync-accent-soft: var(--accent-soft); --sync-on-accent: var(--on-accent); }
+/* Shared App lock (ui/src/lock): this app's tokens. */
+.skl { --lock-bg: var(--bg); --lock-surface: var(--card); --lock-line: var(--sep); --lock-key: var(--fill); --lock-key-down: var(--faint); }

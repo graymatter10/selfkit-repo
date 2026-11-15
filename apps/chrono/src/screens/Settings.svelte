@@ -9,6 +9,7 @@
   import Seg from "../components/Seg.svelte";
   import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
   import { syncApi } from "../../../../ui/src/sync/api";
+  import LockSettings from "../../../../ui/src/lock/LockSettings.svelte"; // App lock section
   let { phone, onsources, onsync }: { phone: boolean; onsources: () => void; onsync: () => void } = $props();
   let syncLine = $state("");
   $effect(() => { void app.rev; syncApi.status().then((st) => (syncLine = st.conflicts ? `${st.headline.split(" · ")[0]} · ${st.conflicts} to review` : st.headline)).catch(() => (syncLine = "")); });
@@ -247,7 +248,7 @@
 <datalist id="chrono-apps">{#each appNames as n}<option value={n}></option>{/each}</datalist>
 <datalist id="chrono-sites">{#each siteNames as n}<option value={n}></option>{/each}</datalist>
 {#if phone}
-  <div class="grid">{@render syncCard()}{@render track()}{@render androidCard()}{@render goalsCard()}{@render exclCard()}{@render catsCard()}{@render sourcesCard()}{@render themeCard()}</div>
+  <div class="grid">{@render syncCard()}<LockSettings {phone} appName="Chrono" />{@render track()}{@render androidCard()}{@render goalsCard()}{@render exclCard()}{@render catsCard()}{@render sourcesCard()}{@render themeCard()}</div>
 {:else}
-  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="grid">{@render track()}{@render exclCard()}{@render catsCard()}</div><div class="grid">{@render syncCard()}{@render goalsCard()}{@render androidCard()}{@render sourcesCard()}{@render themeCard()}</div></div>
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="grid">{@render track()}{@render exclCard()}{@render catsCard()}</div><div class="grid">{@render syncCard()}<LockSettings {phone} appName="Chrono" />{@render goalsCard()}{@render androidCard()}{@render sourcesCard()}{@render themeCard()}</div></div>
 {/if}

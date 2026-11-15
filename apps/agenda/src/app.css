@@ -83,3 +83,5 @@
 
 /* Shared Sync screens (ui/src/sync): Agenda's tokens. */
 .sks, .skc { --sync-surface: var(--card); --sync-line: var(--sep); --sync-sunk: var(--fill2); --sync-accent-soft: var(--accent-soft); --sync-on-accent: var(--on-accent); --sync-radius: 12px; }
+/* Shared App lock (ui/src/lock): this app's tokens. */
+.skl { --lock-bg: var(--bg); --lock-surface: var(--card); --lock-line: var(--sep); --lock-key: var(--fill); --lock-key-down: var(--faint); --lock-radius: 12px; }

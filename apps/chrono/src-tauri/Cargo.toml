@@ -15,8 +15,10 @@ path = "src/main.rs"
 [features]
 # Test builds: built-in public sync key, so no passphrase prompts while testing.
 # Turn off (cargo --no-default-features) for builds that hold real data.
-default = ["sync-test-key"]
+default = ["sync-test-key", "lock-test"]
 sync-test-key = ["selfkit-appsync/test-key"]
+# Test builds: the app-lock screen opens by itself after a few seconds (docs/components/app-lock.md).
+lock-test = ["selfkit-appsync/lock-test"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

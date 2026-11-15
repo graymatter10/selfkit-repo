@@ -3,7 +3,7 @@
   // B = the other one. Keep A / Keep B / Merge field by field; long text gets a
   // line list where the user ticks the lines to keep. Same CSS variables as SyncSettings.
   import { onMount } from "svelte";
-  import { label, show, syncApi, type Choice, type ConflictView, type SeenPeer } from "./api";
+  import { bottomInset, label, show, syncApi, type Choice, type ConflictView, type SeenPeer } from "./api";
 
   let { phone = false, onclose, names = {} }: {
     phone?: boolean;
@@ -14,6 +14,8 @@
 
   let list = $state<ConflictView[]>([]);
   let peers = $state<SeenPeer[]>([]);
+  let names2 = $state<Record<string, string>>({});
+  const inset = bottomInset();
   let myName = $state("This device");
   let idx = $state(0);
   let picks = $state<Record<string, "a" | "b">>({});
@@ -26,6 +28,7 @@
       const [cs, st] = await Promise.all([syncApi.conflicts(), syncApi.status()]);
       list = cs;
       peers = st.peers;
+      names2 = st.device_names ?? {};
       myName = phone ? "This phone" : "This PC";
       if (idx >= list.length) idx = Math.max(0, list.length - 1);
       reset();
@@ -43,7 +46,7 @@
     picks = Object.fromEntries(c.fields.map((f) => [f.key, "a" as const]));
     lines = Object.fromEntries(c.fields.filter((f) => f.lines).map((f) => [f.key, f.lines!.map((l, i) => (l.tag === "Local" ? i : -1)).filter((i) => i >= 0)]));
   }
-  const other = (dev: string) => peers.find((p) => p.device_id === dev)?.name ?? "Other device";
+  const other = (dev: string) => names2[dev] ?? peers.find((p) => p.device_id === dev)?.name ?? "Other device";
   const when = (t: number) => {
     const d = new Date(t), today = new Date();
     const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -55,7 +58,8 @@
   };
   /** Timestamps (`*_at`, UTC ms) as dates; everything else as text. */
   const fmt = (key: string, v: unknown) =>
-    typeof v === "number" && /(^|_)at$/.test(key) && v > 1e11 ? new Date(v).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : show(v);
+    key === "day_start_min" && typeof v === "number" ? `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}` :
+    typeof v === "number" && /(^|_)(at|until)$/.test(key) && v > 1e11 ? new Date(v).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : show(v);
   const kindName = (c: ConflictView) => names[c.collection] ?? `${label(c.store)} · ${label(c.collection)}`;
   function toggleLine(key: string, i: number) {
     const s = new Set(lines[key] ?? []);
@@ -155,7 +159,7 @@
         {/if}
         {@render detail(cur)}
       </div>
-      <div class="k-bar">{@render actions(cur)}</div>
+      <div class="k-bar" style={inset ? `padding-bottom:${12 + inset}px` : ""}>{@render actions(cur)}</div>
     </div>
   {:else}
     <div class="k-desk">
@@ -169,7 +173,7 @@
       </div>
       <div class="k-cdetail">
         <div class="k-scroll">{@render detail(cur)}</div>
-        <div class="k-bar"><span class="k-hint k-grow">{cur.delete_vs_edit ? "" : "Merge saves your picks as a new version on every device."}</span>{@render actions(cur)}</div>
+        <div class="k-bar" style={inset ? `padding-bottom:${12 + inset}px` : ""}><span class="k-hint k-grow">{cur.delete_vs_edit ? "" : "Merge saves your picks as a new version on every device."}</span>{@render actions(cur)}</div>
       </div>
     </div>
   {/if}

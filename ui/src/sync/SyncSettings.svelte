@@ -4,7 +4,7 @@
   // --sync-accent, --sync-accent-soft, --sync-on-accent, --sync-surface, --sync-sunk,
   // --sync-line, --sync-ink, --sync-muted, --sync-danger, --sync-ok, --sync-radius.
   import { onDestroy, onMount } from "svelte";
-  import { ago, bridge, syncApi, type ServerForm, type ServerView, type SyncOutcome, type SyncSettings, type SyncStatus } from "./api";
+  import { ago, bottomInset, bridge, syncApi, type ServerForm, type ServerView, type SyncOutcome, type SyncSettings, type SyncStatus } from "./api";
 
   let { phone = false, onconflicts }: { phone?: boolean; onconflicts?: () => void } = $props();
 
@@ -94,10 +94,20 @@
   function openEncrypt() { pass1 = pass2 = ""; recovery = null; confirmGroup = ""; err = null; sheet = "encrypt"; }
   async function setupEncryption() {
     err = null;
-    if (pass1.length < 8) return void (err = "Use at least 8 characters.");
+    if (pass1.length < 12) return void (err = "Use at least 12 characters.");
     if (pass1 !== pass2) return void (err = "The two passphrases differ.");
     try { recovery = await syncApi.setupEncryption(pass1); pass1 = pass2 = ""; } catch (e) { err = String(e); }
   }
+  /** Rough strength: length plus character variety (a few words beat short symbol soup). */
+  function strength(p: string): { score: number; label: string } {
+    if (!p) return { score: 0, label: "" };
+    const kinds = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) => r.test(p)).length;
+    const words = p.trim().split(/\s+/).length;
+    let score = p.length >= 20 ? 3 : p.length >= 16 ? 2 : p.length >= 12 ? 1 : 0;
+    if (score > 0 && (kinds >= 3 || words >= 4)) score++;
+    return { score, label: ["Too short (12 or more)", "Weak", "OK", "Strong", "Very strong"][Math.min(score, 4)] };
+  }
+  const meter = $derived(strength(pass1));
   const groups = $derived(recovery ? recovery.split("-") : []);
   const lastGroup = $derived(groups.length ? groups[groups.length - 1] : "");
   async function unlock() {
@@ -271,7 +281,7 @@
   {#if sheet}
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div class="k-scrim" role="presentation" onclick={(e) => e.target === e.currentTarget && recovery === null && (sheet = "")}>
-      <div class="k-dlg" role="dialog" aria-modal="true">
+      <div class="k-dlg" role="dialog" aria-modal="true" style={phone && bottomInset() ? `padding-bottom:${24 + bottomInset()}px` : ""}>
         {#if sheet === "server"}
           <div class="k-dh"><h4>Server</h4><button type="button" class="k-x" aria-label="Close" onclick={() => (sheet = "")}>{@render icon("x")}</button></div>
           <p class="k-hint">Any Postgres and any S3 storage. Everything is encrypted before upload, so the server only sees noise.</p>
@@ -289,6 +299,7 @@
             <div class="k-dh"><h4>Set up encryption</h4><button type="button" class="k-x" aria-label="Close" onclick={() => (sheet = "")}>{@render icon("x")}</button></div>
             <p class="k-hint">Choose a passphrase you will remember. Your other devices ask for it once.</p>
             <label>Passphrase<input type="password" bind:value={pass1} autocomplete="new-password" /></label>
+            {#if pass1}<div class="k-meter" aria-live="polite"><span style="width:{Math.max(1, meter.score) * 25}%" class:k-bad={meter.score < 2}></span></div><p class="k-hint" style="margin-top:6px">{meter.label} · a few unrelated words work well, e.g. "lamp river orbit cactus"</p>{/if}
             <label>Repeat it<input type="password" bind:value={pass2} autocomplete="new-password" /></label>
             {#if err}<p class="k-msg k-bad">{err}</p>{/if}
             <div class="k-dacts"><button type="button" class="k-btn k-pri" onclick={setupEncryption}>Continue</button></div>
@@ -418,6 +429,9 @@
   .k-rk { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px; }
   .k-rk span { font-family: ui-monospace, "DejaVu Sans Mono", monospace; font-size: 15px; letter-spacing: 0.06em; text-align: center; background: var(--sunk); border-radius: 8px; padding: 7px 0; }
   .k-log { margin-top: 10px; }
+  .k-meter { height: 6px; border-radius: 3px; background: var(--sunk); margin-top: 8px; overflow: hidden; }
+  .k-meter span { display: block; height: 100%; background: var(--ok); transition: width 0.15s; }
+  .k-meter span.k-bad { background: var(--bad); }
   .k-lrow { padding: 10px 0; border-top: 1px solid var(--line-c); }
   .k-lrow:first-child { border-top: 0; }
 </style>

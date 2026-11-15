@@ -17,6 +17,14 @@ class SelfkitSyncBridge(private val activity: Activity) {
         activity.runOnUiThread { SelfkitSync.openBatterySettings(activity) }
     }
 
+    /** Height of the system navigation bar in CSS px (env(safe-area-inset-bottom) is 0 on some WebViews). */
+    @JavascriptInterface
+    fun bottomInset(): Int = try {
+        val insets = androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)
+        val px = insets?.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+        (px / activity.resources.displayMetrics.density).toInt()
+    } catch (t: Throwable) { 0 }
+
     /** Re-apply the periodic job after the sync settings changed (owner, automatic). */
     @JavascriptInterface
     fun schedule() {

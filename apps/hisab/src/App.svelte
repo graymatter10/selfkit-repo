@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LockGate from "../../../ui/src/lock/LockGate.svelte"; // App lock (docs/components/app-lock.md)
   // Hisab main window. Phone (< 900 px): opens to the add screen; other pages
   // open over it with a back arrow; sheets slide up. Desktop: sidebar + page.
   import AccountSheet from "./components/AccountSheet.svelte";
@@ -229,3 +230,5 @@
      can't hit "Undo" by accident (QA 2026-11-15). -->
 <PhotoSourceSheet privateNote="Stays private in Hisab, not in your gallery" />
 <div class="pointer-events-none fixed z-[90] {desktop ? 'bottom-6 left-1/2 w-[420px] -translate-x-1/2' : 'inset-x-3 top-[calc(env(safe-area-inset-top)+64px)]'}"><Toast /></div>
+<!-- App lock: covers everything while locked (ui/src/lock, docs/components/app-lock.md). -->
+<LockGate appName="Hisab" phone={!desktop} />

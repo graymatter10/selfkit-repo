@@ -79,3 +79,6 @@ Shared module [selfkit-appsync](../../components/selfkit-appsync.md) + Android p
 
 ## Phone QA fixes 2026-11-15
 - Review navigation was stuck: on "November 2026 so far" (and 9–15 Nov) ‹ was disabled because data began inside the current period, and both tabs opened on the previous period. Now both open on the current period (`state.svelte.ts` `offset: {week: 0, month: 0}`); ‹ is allowed while the period starts after the oldest data day, and always for at least one step back (`earliest_offset` in `src-tauri/src/model.rs`); › is disabled only at the current period. Test: `model::tests::review_navigation_bounds`. Needs a phone re-check (Week and Month tabs, ‹ to October, "No data" period).
+
+## App lock
+Optional PIN/passphrase (+ fingerprint on Android, + "Hide content in app switcher") from Settings → App lock; locks on start and after Immediately / 1 / 5 / 15 min away. Shared implementation: [../../components/app-lock.md](../../components/app-lock.md). Hooks here: `<LockGate appName="Reflect">` in `src/App.svelte`, `<LockSettings>` in `src/components/SettingsPage.svelte` (after Sync), `LockHandle::new("reflect", …)` + `lock_*` commands in `src-tauri/src/lib.rs`, "---- Selfkit lock" blocks in `MainActivity.kt` + `SelfkitLock.kt`, `.skl` tokens in `src/app.css`, feature `lock-test` in `src-tauri/Cargo.toml`.

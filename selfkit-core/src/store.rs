@@ -82,6 +82,11 @@ CREATE TRIGGER records_ver_au AFTER UPDATE OF data, deleted, updated_at, device_
   WHERE rowid = new.rowid;
 END;
 "#,
+}, Migration {
+    // Per-field change clocks: {"field": UTC ms of its last local change}. Lets edits
+    // to different fields of one record on two devices merge without a conflict.
+    name: "core/003_field_clocks",
+    sql: "ALTER TABLE records ADD COLUMN fclock TEXT NOT NULL DEFAULT '{}';",
 }];
 
 /// How many past versions each record remembers.
@@ -115,6 +120,9 @@ pub struct Record {
     /// Recent versions, oldest first, ending with this one. Filled by the store.
     #[serde(default)]
     pub hist: Vec<String>,
+    /// When each top-level data field last changed (UTC ms). Filled by the store.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub fclock: std::collections::BTreeMap<String, i64>,
 }
 
 impl Record {
@@ -160,9 +168,9 @@ pub struct Store {
     device_id: String,
 }
 
-const COLS: &str = "id, collection, data, updated_at, tz_offset, device_id, deleted, hist";
+const COLS: &str = "id, collection, data, updated_at, tz_offset, device_id, deleted, hist, fclock";
 /// Index of the first column after COLS.
-const NCOLS: usize = 8;
+const NCOLS: usize = 9;
 
 fn row_to_record(r: &rusqlite::Row) -> rusqlite::Result<Record> {
     let data: String = r.get(2)?;
@@ -175,7 +183,38 @@ fn row_to_record(r: &rusqlite::Row) -> rusqlite::Result<Record> {
         device_id: r.get(5)?,
         deleted: r.get::<_, i64>(6)? != 0,
         hist: serde_json::from_str(&r.get::<_, String>(7)?).unwrap_or_default(),
+        fclock: serde_json::from_str(&r.get::<_, String>(8)?).unwrap_or_default(),
     })
+}
+
+/// New field clocks after a local edit: fields whose value changed get `now`.
+fn stamp_clocks(old: Option<&Record>, data: &Value, now: i64) -> std::collections::BTreeMap<String, i64> {
+    let mut clock = old.map(|o| o.fclock.clone()).unwrap_or_default();
+    let empty = serde_json::Map::new();
+    let old_obj = old.and_then(|o| o.data.as_object()).unwrap_or(&empty);
+    let new_obj = data.as_object().unwrap_or(&empty);
+    for k in old_obj.keys().chain(new_obj.keys()) {
+        if old_obj.get(k) != new_obj.get(k) || !clock.contains_key(k) {
+            clock.insert(k.clone(), now);
+        }
+    }
+    clock
+}
+
+/// Merge two versions of a list field changed on both devices: items (objects with an
+/// `id`, or plain values) from both sides; the same item changed on both → the newer
+/// side's copy. Known limit: an item removed on one device while the other device also
+/// changed that list comes back.
+fn union_lists(newer: &[Value], older: &[Value]) -> Value {
+    let key = |v: &Value| v.get("id").map(|i| i.to_string()).unwrap_or_else(|| v.to_string());
+    let mut seen: std::collections::HashSet<String> = newer.iter().map(key).collect();
+    let mut out: Vec<Value> = newer.to_vec();
+    for v in older {
+        if seen.insert(key(v)) {
+            out.push(v.clone());
+        }
+    }
+    Value::Array(out)
 }
 
 impl Store {
@@ -262,11 +301,15 @@ impl Store {
 
     /// Create (id = None → new UUIDv7) or replace a record's data.
     pub fn put(&self, collection: &str, id: Option<&str>, data: &Value) -> Result<Record> {
+        let id = id.map(str::to_owned).unwrap_or_else(new_id);
+        let now = time::now_ms();
+        let old = self.get(&id)?;
         let rec = Record {
-            id: id.map(str::to_owned).unwrap_or_else(new_id),
+            fclock: stamp_clocks(old.as_ref(), data, now),
+            id,
             collection: collection.into(),
             data: data.clone(),
-            updated_at: time::now_ms(),
+            updated_at: now,
             tz_offset: time::local_offset_min(),
             device_id: self.device_id.clone(),
             deleted: false,
@@ -278,12 +321,13 @@ impl Store {
 
     fn write_local(&self, r: &Record) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO records (id, collection, data, updated_at, tz_offset, device_id, deleted, dirty)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1)
+            "INSERT INTO records (id, collection, data, updated_at, tz_offset, device_id, deleted, dirty, fclock)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8)
              ON CONFLICT(id) DO UPDATE SET collection=excluded.collection, data=excluded.data,
                updated_at=excluded.updated_at, tz_offset=excluded.tz_offset, device_id=excluded.device_id,
-               deleted=excluded.deleted, dirty=1",
-            params![r.id, r.collection, r.data.to_string(), r.updated_at, r.tz_offset, r.device_id, r.deleted as i64],
+               deleted=excluded.deleted, dirty=1, fclock=excluded.fclock",
+            params![r.id, r.collection, r.data.to_string(), r.updated_at, r.tz_offset, r.device_id, r.deleted as i64,
+                serde_json::to_string(&r.fclock)?],
         )?;
         Ok(())
     }
@@ -391,13 +435,14 @@ impl Store {
     fn write_foreign(&self, r: &Record, dirty: bool, base_rev: i64) -> Result<()> {
         let hist = if r.hist.is_empty() { "[]".to_string() } else { serde_json::to_string(&r.hist)? };
         self.conn.execute(
-            "INSERT INTO records (id, collection, data, updated_at, tz_offset, device_id, deleted, dirty, base_rev, hist)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "INSERT INTO records (id, collection, data, updated_at, tz_offset, device_id, deleted, dirty, base_rev, hist, fclock)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(id) DO UPDATE SET collection=excluded.collection, data=excluded.data,
                updated_at=excluded.updated_at, tz_offset=excluded.tz_offset, device_id=excluded.device_id,
-               deleted=excluded.deleted, dirty=excluded.dirty, base_rev=excluded.base_rev, hist=excluded.hist",
+               deleted=excluded.deleted, dirty=excluded.dirty, base_rev=excluded.base_rev, hist=excluded.hist,
+               fclock=excluded.fclock",
             params![r.id, r.collection, r.data.to_string(), r.updated_at, r.tz_offset, r.device_id, r.deleted as i64,
-                dirty as i64, base_rev, hist],
+                dirty as i64, base_rev, hist, serde_json::to_string(&r.fclock)?],
         )?;
         Ok(())
     }
@@ -426,33 +471,70 @@ impl Store {
         Ok(())
     }
 
-    /// Automatic merge for records that carry per-field clocks (`_clock`, e.g. the
-    /// shared settings): each field comes from the side that changed it last.
-    /// `None` = can't decide (no clocks, a deletion, or a field changed on both
-    /// sides at the same moment) → a normal conflict for the user.
+    /// Automatic merge of two concurrent versions, field by field, using the per-field
+    /// clocks and the last version both share (from `hist`): a field changed on one side
+    /// only takes that side; a field changed on both takes the newer change, lists are
+    /// combined (`union_lists`). `None` = leave it to the user: a deletion, long text
+    /// changed on both (line merge on the conflict screen), records without clocks
+    /// (written by older builds), or an exact tie.
     pub fn field_merge(local: &Record, remote: &Record) -> Option<Value> {
-        use crate::settings::CLOCK_FIELD;
         if local.deleted || remote.deleted || local.collection != remote.collection {
             return None;
         }
-        let (l, r) = (local.data.as_object()?, remote.data.as_object()?);
-        let (lc, rc) = (l.get(CLOCK_FIELD)?.as_object()?, r.get(CLOCK_FIELD)?.as_object()?);
-        let ts = |c: &serde_json::Map<String, Value>, k: &str| c.get(k).and_then(Value::as_i64).unwrap_or(0);
-        let mut out = serde_json::Map::new();
-        let mut clock = serde_json::Map::new();
-        let keys: std::collections::BTreeSet<&String> = l.keys().chain(r.keys()).filter(|k| k.as_str() != CLOCK_FIELD).collect();
-        for k in keys {
-            let (tl, tr) = (ts(lc, k), ts(rc, k));
-            let v = match (l.get(k), r.get(k)) {
-                (Some(a), Some(b)) if a == b => a.clone(),
-                (a, _) if tl > tr => match a { Some(a) => a.clone(), None => continue },
-                (_, b) if tr > tl => match b { Some(b) => b.clone(), None => continue },
-                _ => return None,
-            };
-            out.insert(k.clone(), v);
-            clock.insert(k.clone(), tl.max(tr).into());
+        // Records from builds without field clocks: only the shared settings merge
+        // anyway (each whole record counts as changed at its own time), so the first
+        // sync of a new device never shows a settings conflict.
+        let settings = local.collection == crate::settings::COLLECTION;
+        if local.fclock.is_empty() && remote.fclock.is_empty() && !settings {
+            return None;
         }
-        out.insert(CLOCK_FIELD.into(), Value::Object(clock));
+        let (l, r) = (local.data.as_object()?, remote.data.as_object()?);
+        let legacy = |rec: &Record, k: &str| rec.fclock.get(k).copied().or(if settings && rec.fclock.is_empty() { Some(rec.updated_at) } else { None });
+        let ts = |v: &String| v.split(':').next().and_then(|t| t.parse::<i64>().ok()).unwrap_or(0);
+        let base = local.hist.iter().filter(|v| remote.hist.contains(v)).map(ts).max().unwrap_or(0);
+        let empty = |v: Option<&Value>| match v {
+            None | Some(Value::Null) => true,
+            Some(Value::String(s)) => s.is_empty(),
+            Some(Value::Array(a)) => a.is_empty(),
+            _ => false,
+        };
+        let long = |v: Option<&Value>| matches!(v, Some(Value::String(s)) if s.contains('\n') || s.chars().count() > 80);
+        let mut out = serde_json::Map::new();
+        let keys: std::collections::BTreeSet<&String> = l.keys().chain(r.keys()).collect();
+        for k in keys {
+            let (lv, rv) = (l.get(k), r.get(k));
+            let pick = |v: Option<&Value>, out: &mut serde_json::Map<String, Value>| {
+                if let Some(v) = v {
+                    out.insert(k.clone(), v.clone());
+                }
+            };
+            if lv == rv {
+                pick(lv, &mut out);
+                continue;
+            }
+            let (tl, tr) = (legacy(local, k).unwrap_or(0), legacy(remote, k).unwrap_or(0));
+            let (cl, cr) = (tl > base, tr > base);
+            if cl && !cr {
+                pick(lv, &mut out);
+            } else if cr && !cl {
+                pick(rv, &mut out);
+            } else if empty(lv) != empty(rv) {
+                // Filled on one side, empty on the other (typical when the same record
+                // was created on two devices): keep what was filled in.
+                pick(if empty(lv) { rv } else { lv }, &mut out);
+            } else if let (Some(Value::Array(a)), Some(Value::Array(b))) = (lv, rv) {
+                let v = if tl >= tr { union_lists(a, b) } else { union_lists(b, a) };
+                out.insert(k.clone(), v);
+            } else if long(lv) && long(rv) {
+                return None;
+            } else if tl > tr {
+                pick(lv, &mut out);
+            } else if tr > tl {
+                pick(rv, &mut out);
+            } else {
+                return None;
+            }
+        }
         Some(Value::Object(out))
     }
 
@@ -566,6 +648,39 @@ impl Store {
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
         let remote: Record = serde_json::from_str(&remote_json)?;
+        let local = self.get(id)?.ok_or_else(|| Error::NotFound(id.into()))?;
+        // Field clocks of the result: the winning side's, edits made here now are "now".
+        let now = time::now_ms();
+        let fclock = {
+            let differs = |a: &Value, b: &Value, k: &String| a.get(k) != b.get(k);
+            let keys: Vec<String> = local.fclock.keys().chain(remote.fclock.keys()).cloned().collect();
+            match &how {
+                Resolution::KeepRemote => remote.fclock.clone(),
+                Resolution::KeepLocal => {
+                    let mut c = local.fclock.clone();
+                    let obj_keys: Vec<String> = local.data.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default();
+                    for k in keys.iter().chain(obj_keys.iter()) {
+                        if differs(&local.data, &remote.data, k) {
+                            c.insert(k.clone(), now);
+                        }
+                    }
+                    c
+                }
+                Resolution::Merged(v) => {
+                    let mut c = std::collections::BTreeMap::new();
+                    for k in &keys {
+                        let t = local.fclock.get(k).copied().unwrap_or(0).max(remote.fclock.get(k).copied().unwrap_or(0));
+                        c.insert(k.clone(), t);
+                    }
+                    for k in v.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()).unwrap_or_default() {
+                        if differs(v, &local.data, &k) && differs(v, &remote.data, &k) {
+                            c.insert(k, now);
+                        }
+                    }
+                    c
+                }
+            }
+        };
         // Also called from apply_remote/apply_peer inside a sync transaction.
         let tx = if self.conn.is_autocommit() { Some(self.conn.unchecked_transaction()?) } else { None };
         let db = &self.conn;
@@ -604,6 +719,7 @@ impl Store {
                 )?;
             }
         }
+        db.execute("UPDATE records SET fclock=?2 WHERE id=?1", params![id, serde_json::to_string(&fclock)?])?;
         db.execute("DELETE FROM conflicts WHERE id=?", [id])?;
         if let Some(tx) = tx {
             tx.commit()?;

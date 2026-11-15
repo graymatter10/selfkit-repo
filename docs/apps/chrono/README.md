@@ -138,3 +138,6 @@ Shared module [selfkit-appsync](../../components/selfkit-appsync.md) + Android p
 
 ## Phone QA fixes 2026-11-15 (photos)
 - Photo viewer: light status-bar icons while the black viewer is open (`ChronoBars.setDark(true)`, existing bridge method, no MainActivity change), theme colours restored on close (`applyTheme()`). File: `src/components/PhotoViewer.svelte`. Needs a phone re-check in light theme.
+
+## App lock
+Optional PIN/passphrase (+ fingerprint on Android, + "Hide content in app switcher") from Settings → App lock; locks on start and after Immediately / 1 / 5 / 15 min away. Shared implementation: [../../components/app-lock.md](../../components/app-lock.md). Hooks here: `<LockGate appName="Chrono">` in `src/App.svelte`, `<LockSettings>` in `src/screens/Settings.svelte` (card after Sync), `LockHandle::new("chrono", …)` + `lock_*` commands in `src-tauri/src/lib.rs`, "---- Selfkit lock" blocks in `MainActivity.kt` + `SelfkitLock.kt`, `.skl` tokens in `src/app.css`, feature `lock-test` in `src-tauri/Cargo.toml`.

@@ -7,6 +7,7 @@ App-side sync, shared by every app (and by a future companion app). Status: **bu
 - With the test key active, the page shows a red "Test key — not private" banner and turning sync on asks a second time ("Set a passphrase" / "Turn on anyway").
 
 ## Keys across devices
+- Passphrase: at least 12 characters, with a strength meter on the Sync page (the published `keys.json` allows offline guessing, so length matters).
 - Setup (`setup_encryption`) writes `keys.json` (the data key wrapped by the passphrase and by the recovery key; never the raw key). Every server pass publishes it to `sk_meta.keyfile` (and to S3 `bundles/_keys/keys.json` when S3 is set, the agent's place) when it changed, so `change_passphrase` reaches the other devices too.
 - `unlock` / `unlock_recovery` fetch the newest published `keys.json` (server meta, else S3, else the local copy). Over LAN a locked device can't get it (the LAN channel itself needs the key), so a new device needs the server once, or the key file copied.
 - **From the test key to your own key:** setting up encryption on a device that used the test key resets its sync state (everything is re-uploaded with the new key) and marks `sync/rekey-from-test`. Its next server pass sees the server's key check is the test key's, deletes all `sk_records` rows (`PgRemote::wipe_records`) and claims the server with the new key. Other devices then report "encryption key doesn't match" → Unlock with the passphrase → they reset and re-upload their data. Photos are re-uploaded too (uploaded marks cleared). On Android each app has its own secret store, so each app is unlocked once.
@@ -44,6 +45,7 @@ Headlines: "Synced locally with Linux PC · 2 min ago", "Synced via server · 5 
 - Each app has a Cargo feature `sync-test-key` (default on in test builds) → `selfkit-appsync/test-key`.
 - Desktop: the test key is used when the keychain has no data key or cannot be read, only while no `keys.json` exists.
 - Every app registers `tauri_cmds::nav_guard()` (webviews stay on the app's own origins; the Android JS bridges are never handed to an outside page).
+- App lock (`lock_cmds`, `lock_*` commands, shared UI `ui/src/lock/`, feature `lock-test`): see [app-lock.md](app-lock.md).
 
 ## Read-only mirrors (Reflect on Android)
 `SelfkitMirror` (Kotlin) pulls `content://com.selfkit.<app>.provider/changes` page by page and the JNI methods `mirror_cursor` / `mirror_apply` store the records in `<data_dir>/<app>.db` with `apply_peer` (cursor in kv `mirror.cursor`). Enabled per app with manifest meta-data `com.selfkit.sync.MIRROR` (Reflect: `chrono,hisab,agenda,dusk`); runs on init, in the background job, and from the page via `window.SelfkitSync.mirror(apps)`. Never touches the app's own DB.
@@ -96,5 +98,6 @@ Server table for all three: 16.3 MB (encrypted). The first push is slow because 
 - `src/agent.rs`: desktop agent IPC client. `src/explain.rs`: plain errors.
 - `src/android.rs` (feature `android`): JNI `SelfkitSyncNative.call` / `setWrapKey`, `android::secrets()` (lazy wrap key), mirror methods.
 - `src/tauri_cmds.rs` (feature `tauri`): shared app commands, `default_handle`, `spawn_on_open`.
+- `src/lock_cmds.rs` (feature `tauri`): app lock commands + `LockHandle`; feature `lock-test` (test builds: lock screen opens by itself, off when `SELFKIT_RELEASE=1`). See [app-lock.md](app-lock.md).
 - `ui/src/sync/`: shared Svelte Sync page + conflict screen.
 - `src/bin/sksync.rs`: headless test device for scripts.

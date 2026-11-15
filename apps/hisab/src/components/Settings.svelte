@@ -11,6 +11,7 @@
   import Seg from "./Seg.svelte";
   import StaleOffer from "./StaleOffer.svelte";
   import { syncApi } from "../../../../ui/src/sync/api";
+  import LockSettings from "../../../../ui/src/lock/LockSettings.svelte"; // App lock section
   let { desktop = false }: { desktop?: boolean } = $props();
   let syncLine = $state("");
   // Version from the app bundle (tauri.conf.json), not a hard-coded string.
@@ -119,6 +120,9 @@
 <div class="flex flex-col gap-1 {desktop ? 'max-w-[640px]' : ''}">
   <p class={h}>Sync</p>
   <div class="card overflow-hidden"><button type="button" class="{row} w-full text-left text-[15px]" onclick={() => go("sync")}><span class="flex-1">Sync</span><span class="truncate text-[14px] text-muted">{syncLine}</span><Ic name="chevron" size={16} class="text-muted" /></button></div>
+
+  <p class="{h} pt-4">App lock</p>
+  <LockSettings phone={!desktop} appName="Hisab" heading={false} />
 
   <p class="{h} pt-4">Appearance</p>
   <Seg label="Theme" items={[{ id: "system", name: "System" }, { id: "light", name: "Light" }, { id: "dark", name: "Dark" }]} value={app.prefs.theme ?? "system"} onchange={(v) => setPrefs({ theme: v })} />

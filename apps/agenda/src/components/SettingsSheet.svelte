@@ -5,6 +5,7 @@
   import { api } from "../lib/api";
   import Seg from "./Seg.svelte";
   import { syncApi } from "../../../../ui/src/sync/api";
+  import LockSettings from "../../../../ui/src/lock/LockSettings.svelte"; // App lock section
   let { desktop = false }: { desktop?: boolean } = $props();
   let syncLine = $state("");
   $effect(() => { if (app.settingsOpen && !app.syncOpen) syncApi.status().then((st) => (syncLine = st.conflicts ? `${st.conflicts} to review` : st.headline.split(" · ")[0])).catch(() => (syncLine = "")); });
@@ -92,6 +93,8 @@
             <span class="flex flex-1 items-center gap-3 py-[11px] pr-4"><span class="flex-1">Sync</span><span class="truncate text-[15px] text-muted">{syncLine}</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg></span></button>
         </div>
+
+        <LockSettings phone={!desktop} appName="Agenda" />
 
         <div class="flex flex-col gap-2">
           <span class="px-4 text-[13px] text-muted uppercase">Appearance</span>

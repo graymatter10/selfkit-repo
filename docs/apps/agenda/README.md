@@ -63,6 +63,7 @@ Test hooks (desktop, env): `AGENDA_WINDOW_SIZE=WxH`, `AGENDA_EXPORT_DIR` (where 
 ## Sync (wave 2, 2026-11-15)
 Shared module [selfkit-appsync](../../components/selfkit-appsync.md) + Android plugin [selfkit-sync](../../../android-plugins/selfkit-sync/README.md); same UI in every app (`ui/src/sync/`).
 - **Settings → Sync**: status ("Synced locally with Linux PC · 2 min ago" / "Synced via server · …" / "Waiting to sync · N changes saved here"), **Sync now**, local sync toggle + seen devices, server setup (Postgres + optional S3 for photos, Test/Save), encryption setup with recovery key / unlock / change passphrase, who syncs (Android: This app | Selfkit companion; desktop: Background agent | This app), battery tip on OPPO/vivo-style phones, sync log.
+- **Reminders after sync** (Android): on start and after every sync that brought changes (`data-changed`), `reminders::reschedule_all` cancels alarms of tasks that are no longer active (completed/deleted/moved on another device) and schedules new or changed ones. A task with a reminder fires on every phone that has Agenda.
 - **Conflict screen** (Settings → Sync → Review): Keep A (this device) / Keep B / Merge field by field, long text as a line list to tick; edited-vs-deleted explained.
 - **When**: on open, every ~15 min (Android WorkManager, needs a network; desktop: the agent), and Sync now. Transport per run: LAN to a reachable Selfkit device, else the server.
 - **Stores synced**: `agenda.db` and the shared `settings.db`. Photos (`photos` + `agenda-photos/`) go through S3 when configured.
@@ -79,3 +80,6 @@ Tested with a year of data (`seed --year`) on Linux (Xvfb, debug build, software
 - Photo viewer: the status bar switches to light icons while the black viewer is open (`AgendaBars.setDark(true)`) and back to the theme's colours on close (`applyTheme()`); the clock was invisible before.
 - New/Edit Task form: tapping a photo thumbnail opens the viewer (Back closes the viewer first, then the form); the thumbnail grid has the same 6 px inset on every side.
 - Files: `src/components/PhotoViewer.svelte`, `TaskForm.svelte`, `Photo.svelte` (block image). Needs a phone re-check (status bar icons in light theme, thumbnail inset).
+
+## App lock
+Optional PIN/passphrase (+ fingerprint on Android, + "Hide content in app switcher") from Settings → App lock; locks on start and after Immediately / 1 / 5 / 15 min away. Shared implementation: [../../components/app-lock.md](../../components/app-lock.md). Hooks here: `<LockGate appName="Agenda">` in `src/App.svelte`, `<LockSettings>` in `src/components/SettingsSheet.svelte` (under Sync), `LockHandle::new("agenda", …)` + `lock_*` commands in `src-tauri/src/lib.rs`, "---- Selfkit lock" blocks in `MainActivity.kt` + `SelfkitLock.kt`, `.skl` tokens in `src/app.css`, feature `lock-test` in `src-tauri/Cargo.toml`. The quick-capture popup is not gated (it only adds tasks).

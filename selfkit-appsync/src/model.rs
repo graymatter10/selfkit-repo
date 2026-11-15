@@ -173,6 +173,8 @@ pub struct SyncStatus {
     pub pending: i64,
     pub conflicts: i64,
     pub peers: Vec<SeenPeer>,
+    /// Names of all devices that sync (device id → name), from the shared `devices` records.
+    pub device_names: BTreeMap<String, String>,
     /// Ready-made line, e.g. "Synced locally with Linux PC · 2 min ago".
     pub headline: String,
     pub next_auto_at: Option<i64>,

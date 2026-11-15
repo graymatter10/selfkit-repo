@@ -465,6 +465,8 @@ pub fn run() {
             let sync = sync_handle()?;
             selfkit_appsync::tauri_cmds::spawn_on_open(app.handle(), &sync);
             app.manage(sync);
+            // App lock (docs/components/app-lock.md): local PIN/passphrase; locked on start when set.
+            app.manage(selfkit_appsync::lock_cmds::LockHandle::new("chrono", &paths::data_dir()));
             #[cfg(desktop)]
             {
                 if let (Ok(sz), Some(w)) = (std::env::var("CHRONO_WINDOW_SIZE"), app.get_webview_window("main"))
@@ -486,7 +488,12 @@ pub fn run() {
             selfkit_appsync::tauri_cmds::sync_server_set, selfkit_appsync::tauri_cmds::sync_server_test,
             selfkit_appsync::tauri_cmds::sync_encryption_setup, selfkit_appsync::tauri_cmds::sync_unlock,
             selfkit_appsync::tauri_cmds::sync_change_passphrase, selfkit_appsync::tauri_cmds::sync_conflicts,
-            selfkit_appsync::tauri_cmds::sync_resolve, selfkit_appsync::tauri_cmds::sync_log
+            selfkit_appsync::tauri_cmds::sync_resolve, selfkit_appsync::tauri_cmds::sync_log,
+            selfkit_appsync::lock_cmds::lock_status, selfkit_appsync::lock_cmds::lock_unlock,
+            selfkit_appsync::lock_cmds::lock_unlock_biometric, selfkit_appsync::lock_cmds::lock_test_unlock,
+            selfkit_appsync::lock_cmds::lock_enable, selfkit_appsync::lock_cmds::lock_change,
+            selfkit_appsync::lock_cmds::lock_disable, selfkit_appsync::lock_cmds::lock_set_options,
+            selfkit_appsync::lock_cmds::lock_away, selfkit_appsync::lock_cmds::lock_now, selfkit_appsync::lock_cmds::lock_reset
         ])
         .run(tauri::generate_context!())
         .expect("error while running Chrono");

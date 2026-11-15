@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LockGate from "../../../ui/src/lock/LockGate.svelte"; // App lock (docs/components/app-lock.md)
   // Agenda main window, iOS-minimal.
   // Phone (< 900 px): large title, search field, Active/All/Done, inset grouped
   // list, "New Task" at the bottom; forms and details slide up as sheets.
@@ -332,3 +333,5 @@
 <Focus {desktop} part="sheet" />
 <PhotoViewer />
 <PhotoSourceSheet privateNote="Stays private in Agenda, not in your gallery" />
+<!-- App lock: covers everything while locked (ui/src/lock, docs/components/app-lock.md). -->
+<LockGate appName="Agenda" phone={!desktop} />

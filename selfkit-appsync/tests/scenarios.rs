@@ -432,11 +432,8 @@ async fn server_edit_edit_and_edit_delete_conflicts_dusk_and_agenda() {
     a.put("sleep_log", Some("n-2026-11-15"), night(Some(4), Some("tea late"), None));
     b.put("sleep_log", Some("n-2026-11-15"), night(None, None, Some("woke at 3")));
     a.sync().await;
-    assert_eq!(b.sync().await.report.conflicts, 1);
-    let c = &b.sync.conflicts().unwrap()[0];
-    assert_eq!(c.source, "server");
-    let picks = HashMap::from([("quality".to_string(), "b".to_string()), ("note_before".into(), "b".into())]);
-    b.sync.resolve("dusk", "n-2026-11-15", &Choice::Merge { fields: picks, lines: HashMap::new() }).unwrap();
+    // Field clocks: what each phone filled in is kept, no conflict (was a manual merge).
+    assert_eq!(b.sync().await.report.conflicts, 0);
     b.sync().await;
     a.sync().await;
     let r = a.get("n-2026-11-15").unwrap().data;

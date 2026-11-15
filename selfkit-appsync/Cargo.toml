@@ -8,6 +8,9 @@ description = "App-side sync for Selfkit apps: one sync pass (LAN to a desktop a
 default = []
 # Built-in test key: test builds unlock without a passphrase. NEVER in release builds for real data.
 test-key = []
+# App lock in test builds: the lock screen opens by itself after a few seconds unless
+# someone types, so automated phone tests never get stuck. Ignored when SELFKIT_RELEASE=1.
+lock-test = []
 # JNI entry points for the Kotlin plugin (android-plugins/selfkit-sync).
 android = ["dep:jni"]
 # Shared Tauri commands (sync_status, sync_now, ...) for the apps.

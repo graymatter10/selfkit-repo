@@ -24,6 +24,28 @@ object SelfkitMirror {
         return out
     }
 
+    /**
+     * Keep the shared settings (main currency, day start, theme) the same in every Selfkit
+     * app on this phone: read each sibling app's settings record through its provider and
+     * merge it field by field (newest change per field wins). Cheap: one record per app.
+     */
+    fun pullSettings(ctx: Context) {
+        val me = Meta.app(ctx)
+        for (app in listOf("chrono", "hisab", "agenda", "dusk", "reflect")) {
+            if (app == me) continue
+            try {
+                val authority = "com.selfkit.$app.provider"
+                if (ctx.packageManager.resolveContentProvider(authority, 0) == null) continue
+                val records = JSONArray()
+                ctx.contentResolver.query(Uri.parse("content://$authority/changes?store=settings&since=0&limit=50"), null, null, null, null)?.use { c ->
+                    val iR = c.getColumnIndexOrThrow("record")
+                    while (c.moveToNext()) records.put(JSONObject(c.getString(iR)))
+                }
+                if (records.length() > 0) SelfkitSync.call(ctx, "settings_adopt", JSONObject().put("records", records))
+            } catch (t: Throwable) { /* app without the plugin, or not signed by the same key */ }
+        }
+    }
+
     private fun pullOne(ctx: Context, app: String): JSONObject {
         val authority = "com.selfkit.$app.provider"
         if (ctx.packageManager.resolveContentProvider(authority, 0) == null) {

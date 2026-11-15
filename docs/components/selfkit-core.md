@@ -27,6 +27,7 @@ Features: `remote` (Postgres + S3, tokio), `keychain` (OS keychain), `lan` (LAN 
 - `src/settings.rs`: shared settings record (day start, currency, theme, shortcuts). Apps share `settings.db` on desktop, so write with `Settings::update(store, |s| ...)` (reloads, writes back only the changed fields, keeps unknown ones); never `save` a copy loaded earlier (that overwrote other apps' changes, e.g. the main currency).
 - `src/bundle.rs`: `.skb` export/import (tar inside STREAM).
 - `src/keychain.rs`: OS keychain get/set/delete.
+- `src/applock.rs`: app lock rules: Argon2id PIN/passphrase hash, wrong-attempt backoff, lock-after timeout, local `lock/<app>.json`, `AppLock`. See [app-lock.md](app-lock.md).
 - `src/sync/mod.rs`: `Remote` trait, record encryption, `sync_once`.
 - `src/sync/memory.rs`: in-memory remote for tests.
 - `src/sync/pg.rs`: Postgres remote + server migrations, meta table, DB size.

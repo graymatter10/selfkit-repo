@@ -385,11 +385,14 @@ async fn qa_lan_conflict_updates_with_newer_remote_edit() {
     let t = a.put("tasks", None, task("base"));
     a.sync().await;
     b.sync().await;
-    a.put("tasks", Some(&t), task("A1"));
-    b.put("tasks", Some(&t), task("B1"));
+    // Long notes changed on both sides stay a real conflict (short fields auto-merge since
+    // field clocks; the title also carries the version for the checks below).
+    let edit = |title: &str| { let mut v = task(title); v["notes"] = json!(format!("Shared first line\n{title} wrote this")); v };
+    a.put("tasks", Some(&t), edit("A1"));
+    b.put("tasks", Some(&t), edit("B1"));
     a.sync().await;
     assert_eq!(b.sync().await.report.conflicts, 1);
-    a.put("tasks", Some(&t), task("A2"));
+    a.put("tasks", Some(&t), edit("A2"));
     a.sync().await;
     b.sync().await;
     let cs = b.sync.conflicts().unwrap();
@@ -658,4 +661,70 @@ async fn qa_three_devices_lan_and_server_all_edit() {
     assert_eq!(a.store().count("tasks").unwrap(), 87);
     assert_eq!(b.get(&ta[3]).unwrap().data["title"], "A3 edited by PC");
     assert_eq!(a.get(&tp[3]).unwrap().data["title"], "P3 edited by vivo");
+}
+
+// ---------------------------------------------------------------- field-level / list merges
+
+/// KNOWN BUG (QA-S1, general case): different fields of the same record edited on two devices
+/// (title on A, severity on B) always become a conflict the user must settle by hand.
+/// Expected: non-overlapping field edits merge automatically.
+#[tokio::test]
+async fn qa_lan_different_fields_of_one_task_merge_automatically() {
+    if skip_known_bug("QA-S1") {
+        return;
+    }
+    let key = SecretKey::generate();
+    let pc = spawn_pc(&key, "Linux PC").await;
+    let a = dev("agenda", "OPPO", &key, None, TransportMode::LanOnly, &[pc.addr]);
+    let b = dev("agenda", "vivo", &key, None, TransportMode::LanOnly, &[pc.addr]);
+    let t = a.put("tasks", None, task("Pay rent"));
+    a.sync().await;
+    b.sync().await;
+    let mut va = a.get(&t).unwrap().data;
+    va["title"] = json!("Pay rent (Nov)");
+    a.put("tasks", Some(&t), va);
+    let mut vb = b.get(&t).unwrap().data;
+    vb["severity"] = json!(5);
+    b.put("tasks", Some(&t), vb);
+    a.sync().await;
+    b.sync().await;
+    a.sync().await;
+    let (ra, rb) = (a.get(&t).unwrap().data, b.get(&t).unwrap().data);
+    assert_eq!(
+        (ra["title"].clone(), ra["severity"].clone(), rb["title"].clone(), rb["severity"].clone(), a.nconflicts() + b.nconflicts()),
+        (json!("Pay rent (Nov)"), json!(5), json!("Pay rent (Nov)"), json!(5), 0)
+    );
+}
+
+/// KNOWN BUG (QA-S5): a repayment added to the same Hisab loan on two devices. The conflict
+/// screen offers the whole `repayments` list from A or from B; every choice (Keep A, Keep B,
+/// Merge) loses one repayment. Same for Agenda `steps` (subtasks) and any other list field.
+/// Expected: a way to keep both list items (union by item id).
+#[tokio::test]
+async fn qa_lan_loan_repayments_added_on_two_devices_both_kept() {
+    if skip_known_bug("QA-S5") {
+        return;
+    }
+    let key = SecretKey::generate();
+    let pc = spawn_pc(&key, "Linux PC").await;
+    let a = dev("hisab", "OPPO", &key, None, TransportMode::LanOnly, &[pc.addr]);
+    let b = dev("hisab", "vivo", &key, None, TransportMode::LanOnly, &[pc.addr]);
+    let l = a.put("loans", None, json!({"direction": "lent", "person": "Karim", "title": "Rent share", "amount": 5000.0, "currency": "BDT", "given": "2026-11-01", "repayments": [], "photos": []}));
+    a.sync().await;
+    b.sync().await;
+    let mut va = a.get(&l).unwrap().data;
+    va["repayments"] = json!([{"id": "r-a", "date": "2026-11-10", "amount": 1000.0, "note": "cash"}]);
+    a.put("loans", Some(&l), va);
+    let mut vb = b.get(&l).unwrap().data;
+    vb["repayments"] = json!([{"id": "r-b", "date": "2026-11-12", "amount": 500.0, "note": "bKash"}]);
+    b.put("loans", Some(&l), vb);
+    a.sync().await;
+    b.sync().await;
+    a.sync().await;
+    // Fixed (field clocks + list union by item id): both repayments everywhere, no conflict.
+    assert_eq!(a.nconflicts() + b.nconflicts(), 0);
+    for d in [&a, &b] {
+        let ids: Vec<String> = d.get(&l).unwrap().data["repayments"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap().to_string()).collect();
+        assert!(ids.contains(&"r-a".to_string()) && ids.contains(&"r-b".to_string()), "{ids:?}");
+    }
 }

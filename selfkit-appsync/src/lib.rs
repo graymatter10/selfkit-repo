@@ -16,6 +16,8 @@ pub mod android;
 pub mod conflicts;
 pub mod explain;
 pub mod lan;
+#[cfg(feature = "tauri")]
+pub mod lock_cmds;
 pub mod model;
 pub mod secrets;
 pub mod server;
@@ -499,7 +501,7 @@ impl AppSync {
                 // still reach the server) but aren't "your changes".
                 pending += store
                     .conn()
-                    .query_row("SELECT count(*) FROM records WHERE dirty=1 AND device_id=?", [&me], |r| r.get::<_, i64>(0))
+                    .query_row("SELECT count(*) FROM records WHERE dirty=1 AND device_id=? AND collection<>'devices'", [&me], |r| r.get::<_, i64>(0))
                     .unwrap_or(0);
                 nconf += store.conflicts().map(|c| c.len() as i64).unwrap_or(0);
             }
@@ -508,6 +510,18 @@ impl AppSync {
         let server = self.server_config().ok().flatten();
         let running = RUNNING.lock().unwrap().as_ref().is_some_and(|r| r.contains(&self.lock_path()));
         let last = st.last.clone();
+        let mut device_names = std::collections::BTreeMap::new();
+        if let Ok(stores) = self.open_stores()
+            && let Some(s) = stores.get(selfkit_core::settings::APP)
+            && let Ok(mut q) = s.conn().prepare("SELECT id, json_extract(data, '$.name') FROM records WHERE collection='devices' AND deleted=0")
+            && let Ok(rows) = q.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)))
+        {
+            for (id, name) in rows.flatten() {
+                if let (Some(dev), Some(n)) = (id.strip_prefix("dev-"), name) {
+                    device_names.insert(dev.to_string(), n);
+                }
+            }
+        }
         let mut peers: Vec<SeenPeer> = st.peers.values().cloned().collect();
         peers.sort_by_key(|p| std::cmp::Reverse(p.last_seen));
 
@@ -531,6 +545,7 @@ impl AppSync {
             pending,
             conflicts: nconf,
             peers,
+            device_names,
             headline: String::new(),
             next_auto_at: (s.enabled && s.owner == SyncOwner::App && s.auto_sync)
                 .then(|| st.last_attempt_at.map(|t| t + s.background_minutes.max(15) as i64 * 60_000))
@@ -666,6 +681,15 @@ impl AppSync {
     async fn pass_inner(&self, settings: &SyncSettings, out: &mut SyncOutcome) -> Result<()> {
         let (key, _test) = self.data_key()?.ok_or_else(|| Error::Remote(explain::LOCKED.into()))?;
         let mut stores = self.open_stores()?;
+        // Device directory (shared settings DB): lets every device show names on the
+        // conflict screen, also for devices it never met directly.
+        if let Some(s) = stores.get(selfkit_core::settings::APP) {
+            let (id, name) = (format!("dev-{}", self.device_id()?), self.device_name());
+            let platform = if cfg!(target_os = "android") { "android" } else { std::env::consts::OS };
+            if s.get(&id)?.map(|r| r.data["name"] != name.as_str() || r.deleted).unwrap_or(true) {
+                s.put("devices", Some(&id), &serde_json::json!({"name": name, "platform": platform}))?;
+            }
+        }
         let server_cfg = self.server_config()?;
         let lan_allowed = settings.lan_enabled && settings.transport != TransportMode::ServerOnly;
         let server_allowed = settings.transport != TransportMode::LanOnly && server_cfg.is_some();

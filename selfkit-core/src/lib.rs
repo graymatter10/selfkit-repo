@@ -1,6 +1,7 @@
 //! selfkit-core: shared Rust library for all Selfkit apps.
 //! Docs: docs/components/selfkit-core.md (code map), docs/data-and-sync.md, docs/security.md.
 
+pub mod applock;
 pub mod bundle;
 pub mod conflict;
 pub mod crypto;

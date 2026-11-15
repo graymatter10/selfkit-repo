@@ -73,7 +73,7 @@ APKs built locally or by `dev/ci-apk.sh` are NOT release builds: they still carr
 - `BlobStore::get_raw` reads a whole object into memory (malicious server → large allocation). Fix: stream to a temp file with a size cap.
 - The agent's server sync loop does not run the key check (`server::preflight`); a misconfigured agent could push rows under another key (they'd show up as undecryptable). Fix: call the same preflight in `sync_loop`.
 - Beacons are recognisable (`SKD1` magic, cadence, length ≈ name length): an observer learns that a Selfkit device is present, not who. Fix: drop the magic, pad to a fixed size.
-- Plaintext local SQLite (see DECISIONS.md); app lock is UI-only.
+- Plaintext local SQLite (see DECISIONS.md); app lock is UI-only (Argon2id-hashed PIN in a local file, backoff, no wipe; other commands are not blocked while locked; test builds auto-open the lock screen unless `SELFKIT_RELEASE=1`). See [components/app-lock.md](components/app-lock.md).
 - Unix socket falls back to the shared temp dir when `XDG_RUNTIME_DIR` is unset (squatting by another local user). Fix: `/tmp/selfkit-<uid>/` created 0700 and owner-checked, same path in `selfkit-appsync/src/agent.rs`.
 - Chrome's extension id comes from the public `key` in `manifest.json`; an unpacked extension with the same key gets the same id and could talk to the native host (fake `web_sessions`, read pause state). Needs the user to load it in developer mode. Fix: publish the extension (store-signed) and drop the key.
 - FileProvider paths are the Tauri template's (`external-path .`, `cache-path .`). Fix: narrow to the capture folder.

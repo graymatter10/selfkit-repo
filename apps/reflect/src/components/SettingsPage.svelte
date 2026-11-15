@@ -5,6 +5,7 @@
   import Icon from "./Icon.svelte";
   import Seg from "./Seg.svelte";
   import { syncApi } from "../../../../ui/src/sync/api";
+  import LockSettings from "../../../../ui/src/lock/LockSettings.svelte"; // App lock section
   import { openTab } from "../lib/state.svelte";
   let { desktop }: { desktop: boolean } = $props();
   let syncLine = $state("");
@@ -124,8 +125,8 @@
 {:else if desktop}
   <div class="grid max-w-[1020px] grid-cols-2 gap-7 pb-8">
     <div><h1 class="dtitle">Settings</h1><div class="sect !mt-5">Streaks</div>{@render streaks()}</div>
-    <div class="pt-[31px]"><div class="sect !mt-5">Data sources</div>{@render sources()}<div class="sect">Reviews and connections</div>{@render other()}<div class="sect">Sync</div>{@render syncRow()}<div class="sect">Appearance</div>{@render look()}</div>
+    <div class="pt-[31px]"><div class="sect !mt-5">Data sources</div>{@render sources()}<div class="sect">Reviews and connections</div>{@render other()}<div class="sect">Sync</div>{@render syncRow()}<div class="sect">App lock</div><LockSettings phone={!desktop} appName="Reflect" heading={false} /><div class="sect">Appearance</div>{@render look()}</div>
   </div>
 {:else}
-  <div class="pb-4"><div class="sect !mt-1">Streaks</div>{@render streaks()}<div class="sect">Data sources</div>{@render sources()}<div class="sect">Reviews and connections</div>{@render other()}<div class="sect">Sync</div>{@render syncRow()}<div class="sect">Appearance</div>{@render look()}</div>
+  <div class="pb-4"><div class="sect !mt-1">Streaks</div>{@render streaks()}<div class="sect">Data sources</div>{@render sources()}<div class="sect">Reviews and connections</div>{@render other()}<div class="sect">Sync</div>{@render syncRow()}<div class="sect">App lock</div><LockSettings phone={!desktop} appName="Reflect" heading={false} /><div class="sect">Appearance</div>{@render look()}</div>
 {/if}

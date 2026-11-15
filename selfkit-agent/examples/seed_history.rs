@@ -23,7 +23,7 @@ fn main() -> anyhow::Result<()> {
                     json!({"amount": 100 + d * 3 + k as i64, "category": "food", "note": format!("seed {d}/{k}")})
                 };
                 let coll = if app == "chrono" { "app_sessions" } else { "transactions" };
-                let r = Record { id: new_id(), collection: coll.into(), data, updated_at: at + k as i64, tz_offset: 0, device_id: dev.clone(), deleted: false, hist: vec![] };
+                let r = Record { id: new_id(), collection: coll.into(), data, updated_at: at + k as i64, tz_offset: 0, device_id: dev.clone(), deleted: false, hist: vec![], fclock: Default::default() };
                 st.import_record(&r)?;
                 n += 1;
             }

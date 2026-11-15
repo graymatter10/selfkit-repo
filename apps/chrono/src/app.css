@@ -170,3 +170,5 @@ select.chip { appearance: none; border: 0; padding-right: 30px; background-image
 
 /* Shared Sync screens (ui/src/sync): Chrono's tokens. */
 .sks, .skc { --sync-accent-soft: var(--accent-soft); --sync-on-accent: var(--on-accent); --sync-sunk: var(--track); --sync-ok: var(--accent-ink); }
+/* Shared App lock (ui/src/lock): this app's tokens. */
+.skl { --lock-bg: var(--page); --lock-surface: var(--surface); --lock-line: var(--line); --lock-key: var(--track); --lock-key-down: var(--faint); }

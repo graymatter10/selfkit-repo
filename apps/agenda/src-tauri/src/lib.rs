@@ -353,13 +353,24 @@ mod reminders {
         let _ = app.notification().cancel(vec![tasks::notification_id(task_id)]);
     }
 
-    /// Android: re-schedule all reminders at startup (after updates/restores).
+    /// Android: bring the scheduled alarms in line with the tasks — at startup and after
+    /// every sync that brought changes (a task completed, deleted or moved on another
+    /// device must stop notifying here; new ones get scheduled). Alarms of tasks that are
+    /// no longer active are cancelled first. If the same task has a reminder on two
+    /// phones, both phones notify (each schedules its own alarm).
     #[cfg(mobile)]
     pub fn reschedule_all(app: &AppHandle) {
         let list = {
             let state = app.state::<AppState>();
             tasks::list(&state.store.lock().unwrap(), tasks::Filter::Active).unwrap_or_default()
         };
+        let wanted: std::collections::HashSet<i32> = list.iter().map(|t| tasks::notification_id(&t.id)).collect();
+        if let Ok(pending) = app.notification().pending() {
+            let stale: Vec<i32> = pending.iter().map(|p| p.id()).filter(|id| *id != FOCUS_NOTIFICATION && !wanted.contains(id)).collect();
+            if !stale.is_empty() {
+                let _ = app.notification().cancel(stale);
+            }
+        }
         for t in &list {
             schedule(app, t);
         }
@@ -533,6 +544,8 @@ pub fn run() {
             let sync = selfkit_appsync::tauri_cmds::default_handle("agenda", paths::data_dir())?;
             selfkit_appsync::tauri_cmds::spawn_on_open(app.handle(), &sync);
             app.manage(sync);
+            // App lock (docs/components/app-lock.md): local PIN/passphrase; locked on start when set.
+            app.manage(selfkit_appsync::lock_cmds::LockHandle::new("agenda", &paths::data_dir()));
             #[cfg(desktop)]
             {
                 let s = Settings::load(&app.state::<AppState>().settings.lock().unwrap()).unwrap_or_default();
@@ -552,6 +565,14 @@ pub fn run() {
             {
                 let h = app.handle().clone();
                 std::thread::spawn(move || reminders::reschedule_all(&h));
+                // After a sync pass brought changes (selfkit-appsync emits "data-changed"):
+                // reconcile the alarms with the synced tasks.
+                use tauri::Listener;
+                let h = app.handle().clone();
+                app.listen("data-changed", move |_| {
+                    let h = h.clone();
+                    std::thread::spawn(move || reminders::reschedule_all(&h));
+                });
             }
             Ok(())
         })
@@ -564,7 +585,12 @@ pub fn run() {
             selfkit_appsync::tauri_cmds::sync_server_set, selfkit_appsync::tauri_cmds::sync_server_test,
             selfkit_appsync::tauri_cmds::sync_encryption_setup, selfkit_appsync::tauri_cmds::sync_unlock,
             selfkit_appsync::tauri_cmds::sync_change_passphrase, selfkit_appsync::tauri_cmds::sync_conflicts,
-            selfkit_appsync::tauri_cmds::sync_resolve, selfkit_appsync::tauri_cmds::sync_log
+            selfkit_appsync::tauri_cmds::sync_resolve, selfkit_appsync::tauri_cmds::sync_log,
+            selfkit_appsync::lock_cmds::lock_status, selfkit_appsync::lock_cmds::lock_unlock,
+            selfkit_appsync::lock_cmds::lock_unlock_biometric, selfkit_appsync::lock_cmds::lock_test_unlock,
+            selfkit_appsync::lock_cmds::lock_enable, selfkit_appsync::lock_cmds::lock_change,
+            selfkit_appsync::lock_cmds::lock_disable, selfkit_appsync::lock_cmds::lock_set_options,
+            selfkit_appsync::lock_cmds::lock_away, selfkit_appsync::lock_cmds::lock_now, selfkit_appsync::lock_cmds::lock_reset
         ])
         .run(tauri::generate_context!())
         .expect("error while running Agenda");

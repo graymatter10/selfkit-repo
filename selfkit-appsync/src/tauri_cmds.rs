@@ -228,8 +228,8 @@ pub fn sync_server_set(h: State<'_, SyncHandle>, form: ServerForm) -> Res<Server
 /// First device: returns the recovery key (show once).
 #[tauri::command]
 pub fn sync_encryption_setup(h: State<'_, SyncHandle>, passphrase: String) -> Res<String> {
-    if passphrase.chars().count() < 8 {
-        return Err("Use at least 8 characters.".into());
+    if passphrase.chars().count() < 12 {
+        return Err("Use at least 12 characters.".into());
     }
     h.0.setup_encryption(&passphrase).map_err(e)
 }
@@ -248,8 +248,8 @@ pub async fn sync_unlock(h: State<'_, SyncHandle>, secret: String, recovery: boo
 
 #[tauri::command]
 pub fn sync_change_passphrase(h: State<'_, SyncHandle>, old: String, new: String) -> Res<()> {
-    if new.chars().count() < 8 {
-        return Err("Use at least 8 characters.".into());
+    if new.chars().count() < 12 {
+        return Err("Use at least 12 characters.".into());
     }
     h.0.change_passphrase(&old, &new).map_err(|err| match err {
         selfkit_core::Error::BadKey => "The current passphrase is wrong.".to_string(),

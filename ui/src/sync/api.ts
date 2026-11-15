@@ -21,6 +21,7 @@ export interface SyncStatus {
   encryption_set_up: boolean; server_configured: boolean; photos_configured: boolean;
   last_attempt_at: number | null; last_ok_at: number | null; last_transport: Transport | null; last_peers: string[];
   last_error: string | null; last_note: string | null; pending: number; conflicts: number; peers: SeenPeer[];
+  device_names: Record<string, string>;
   headline: string; next_auto_at: number | null; platform: "android" | "desktop"; settings: SyncSettings;
 }
 export interface ServerView {
@@ -58,7 +59,10 @@ export const syncApi = {
 };
 
 /** Android JS bridge from android-plugins/selfkit-sync (SelfkitSyncBridge); absent on desktop. */
-interface Bridge { needsBatteryTip(): boolean; openBatterySettings(): void; schedule(): void; runNow(): void }
+interface Bridge { needsBatteryTip(): boolean; openBatterySettings(): void; schedule(): void; runNow(): void; bottomInset?(): number }
+
+/** Bottom system bar height in px (Android bridge; CSS env() is 0 on some WebViews). */
+export const bottomInset = (): number => { try { return bridge()?.bottomInset?.() ?? 0; } catch { return 0; } };
 export const bridge = (): Bridge | null => ((globalThis as unknown as { SelfkitSync?: Bridge }).SelfkitSync ?? null);
 
 export function ago(now: number, t: number | null | undefined): string {
@@ -71,8 +75,17 @@ export function ago(now: number, t: number | null | undefined): string {
   return `${Math.floor(s / 86400)} days ago`;
 }
 
-/** "note_before" -> "Note before" */
-export const label = (k: string) => (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, " ");
+const LABELS: Record<string, string> = {
+  day_start_min: "Day starts at", main_currency: "Main currency", theme: "Appearance", shortcuts: "Shortcuts",
+  tz_offset: "Time zone", created_at: "Created", updated_at: "Updated", done_at: "Done", last_done_at: "Last done",
+  start: "Starts", stop: "Ends", reminder_min: "Reminder", repeat: "Repeats", steps: "Steps", tags: "Tags", notes: "Notes",
+  note_before: "Before bed", note_after: "After waking", bed: "Went to bed", wake: "Woke up", quality: "Sleep quality",
+  amount: "Amount", currency: "Currency", account: "Account", category: "Category", note: "Note", repayments: "Repayments",
+  to_account: "To account", to_amount: "Amount received", given: "Given on", due: "Due", person: "Person", photos: "Photos",
+  paused_until: "Paused until", exclude_apps: "Never-tracked apps", exclude_domains: "Never-tracked websites", goals: "Goals",
+};
+/** "note_before" -> "Before bed"; unknown keys: "some_field" -> "Some field". */
+export const label = (k: string) => LABELS[k] ?? (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, " ");
 
 export function show(v: unknown): string {
   if (v === undefined || v === null || v === "") return "—";
