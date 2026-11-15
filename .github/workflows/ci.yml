@@ -10,6 +10,9 @@ concurrency:
 env:
   CARGO_TARGET_DIR: ${{ github.workspace }}/target
   CARGO_BUILD_JOBS: "4"
+  # Smaller test artifacts (no full debug info): keeps the target dir within the runner's disk.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
 jobs:
   linux:
     runs-on: ubuntu-latest
@@ -21,6 +24,14 @@ jobs:
         ports: ["55432:5432"]
         options: --health-cmd pg_isready --health-interval 5s --health-retries 20
     steps:
+      - name: Free disk space
+        # The runner has ~20 GB free; 5 apps + every crate in one target dir ran out
+        # (ld "Bus error", signal 7). Drop preinstalled toolchains this job does not use.
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/lib/android
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h /
       - uses: actions/checkout@v4
       - name: System packages
         run: |
