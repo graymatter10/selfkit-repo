@@ -16,9 +16,15 @@ while :; do
   now=$(date +%s)
   connected=$(adb devices | awk 'NR>1 && $2=="device" {print $1}')
   # Keep every phone's screen on (they have a lock screen and no "Stay awake"
-  # option): a wake key every 4 min counts as activity, opens nothing.
-  if [ $((tick % 4)) -eq 0 ]; then
-    for s in $connected; do adb -s "$s" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1; done
+  # option). KEYCODE_WAKEUP only wakes a sleeping screen: on ColorOS it does
+  # NOT reset the screen-off timer while the screen is on. A bare Shift key
+  # press does count as user activity and types/opens nothing, so send both
+  # every 2 min.
+  if [ $((tick % 2)) -eq 0 ]; then
+    for s in $connected; do
+      adb -s "$s" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1
+      adb -s "$s" shell input keyevent KEYCODE_SHIFT_LEFT >/dev/null 2>&1
+    done
   fi
   tick=$((tick + 1))
   for L in "$D"/phone-*.d; do
