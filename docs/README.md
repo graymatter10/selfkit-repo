@@ -16,6 +16,7 @@
 | [components/selfkit-agent.md](components/selfkit-agent.md) | Desktop background service + code map |
 | [components/browser-extension.md](components/browser-extension.md) | Chrome/Firefox extension |
 | [platforms/linux.md](platforms/linux.md) · [windows.md](platforms/windows.md) · [android.md](platforms/android.md) | Build, test, quirks per platform |
+| [release.md](release.md) | How to cut a release: APKs, Windows and Linux installers, draft GitHub release |
 | `apps/<app>/README.md` | Per app: purpose, screens, data model, status, code map |
 | [templates/](templates/) | Templates for app, feature and handoff entries |
 | [../dev/README.md](../dev/README.md) | Local fake Postgres + S3 for testing |
