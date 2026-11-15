@@ -41,7 +41,11 @@ internal object Meta {
     fun lib(ctx: Context): String = meta(ctx).getString("com.selfkit.sync.LIB") ?: "${app(ctx)}_lib"
 
     /** Same folder the app's Rust code uses as the Selfkit data dir (Tauri: app data dir). */
+    /** Apps whose data this app mirrors read-only (meta-data com.selfkit.sync.MIRROR, e.g. "chrono,hisab"). */
+    fun mirror(ctx: Context): List<String> = (meta(ctx).getString("com.selfkit.sync.MIRROR") ?: "").split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+    /** Tauri's app_data_dir on Android is the app's dataDir (/data/user/0/<package>). */
     fun dataDir(ctx: Context): String = meta(ctx).getString("com.selfkit.sync.DATA_SUBDIR")
-        ?.let { java.io.File(ctx.filesDir.parentFile, it).absolutePath }
-        ?: ctx.filesDir.absolutePath
+        ?.let { java.io.File(ctx.dataDir, it).absolutePath }
+        ?: ctx.dataDir.absolutePath
 }

@@ -270,7 +270,13 @@ fn settings_get(state: State<AppState>) -> Res<Settings> {
 
 #[tauri::command]
 fn settings_set(app: AppHandle, state: State<AppState>, settings: Settings) -> Res<()> {
-    settings.save(&state.settings.lock().unwrap()).map_err(e)?;
+    // Agenda only edits its own shortcut; reload + change just that, so a copy
+    // loaded at startup can't undo other apps' changes (e.g. main currency).
+    let accel = settings.shortcuts.get("add_task").cloned().unwrap_or_default();
+    let settings = Settings::update(&state.settings.lock().unwrap(), |s| {
+        s.shortcuts.insert("add_task".into(), accel);
+    })
+    .map_err(e)?;
     #[cfg(desktop)]
     shortcut::register(&app, &settings);
     let _ = app.emit("settings-changed", &settings);
@@ -523,6 +529,10 @@ pub fn run() {
             let (store, n1) = recover::open(paths::app_db("agenda"), "agenda", &device, tasks::MIGRATIONS)?;
             let (settings, n2) = recover::open(paths::app_db(selfkit_core::settings::APP), selfkit_core::settings::APP, &device, &[])?;
             app.manage(AppState { store: Mutex::new(store), settings: Mutex::new(settings), notice: Mutex::new(n1.or(n2)) });
+            // Selfkit sync (selfkit-appsync): status, Sync now, settings, conflicts; desktop syncs on open.
+            let sync = selfkit_appsync::tauri_cmds::default_handle("agenda", paths::data_dir())?;
+            selfkit_appsync::tauri_cmds::spawn_on_open(app.handle(), &sync);
+            app.manage(sync);
             #[cfg(desktop)]
             {
                 let s = Settings::load(&app.state::<AppState>().settings.lock().unwrap()).unwrap_or_default();
@@ -548,7 +558,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_tasks, create_task, update_task, replace_task, toggle_task, get_task, delete_task, restore_task, search,
             lists, add_list, prefs_get, prefs_set, settings_get, settings_set, close_capture, dev_hooks, history,
-            focus_state, focus_start, focus_stop, focus_sessions, photo_save, photo_get, photo_export, ics_export, ics_import, save_export, startup_notice
+            focus_state, focus_start, focus_stop, focus_sessions, photo_save, photo_get, photo_export, ics_export, ics_import, save_export, startup_notice,
+            selfkit_appsync::tauri_cmds::sync_status, selfkit_appsync::tauri_cmds::sync_now,
+            selfkit_appsync::tauri_cmds::sync_settings_set, selfkit_appsync::tauri_cmds::sync_server_get,
+            selfkit_appsync::tauri_cmds::sync_server_set, selfkit_appsync::tauri_cmds::sync_server_test,
+            selfkit_appsync::tauri_cmds::sync_encryption_setup, selfkit_appsync::tauri_cmds::sync_unlock,
+            selfkit_appsync::tauri_cmds::sync_change_passphrase, selfkit_appsync::tauri_cmds::sync_conflicts,
+            selfkit_appsync::tauri_cmds::sync_resolve, selfkit_appsync::tauri_cmds::sync_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running Agenda");

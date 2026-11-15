@@ -3,7 +3,7 @@
 import { showToast } from "@selfkit/ui";
 import { api, type Conn, type Health, type Overview, type RSettings, type Review, type Shared, type Sources, type StreakView, type Theme } from "./api";
 
-export type Tab = "today" | "streaks" | "connections" | "week" | "month" | "health" | "settings";
+export type Tab = "today" | "streaks" | "connections" | "week" | "month" | "health" | "settings" | "sync" | "conflicts";
 
 export const app = $state({
   tab: "today" as Tab,
@@ -71,8 +71,9 @@ export async function load(tab: Tab = app.tab) {
 
 export function openTab(t: Tab) {
   if (t === app.tab) return;
-  if (t === "health" || t === "settings") {
-    if (app.tab !== "health" && app.tab !== "settings") app.prevTab = app.tab;
+  const side = (x: Tab) => x === "health" || x === "settings" || x === "sync" || x === "conflicts";
+  if (side(t)) {
+    if (!side(app.tab)) app.prevTab = app.tab;
   }
   if (t === "week" || t === "month") app.reviewKind = t;
   app.tab = t;
@@ -139,6 +140,14 @@ export async function init() {
   if (p) app.theme = p.theme ?? "system";
   applyTheme();
   await load("today");
+  // Android: refresh the read-only copies of Chrono/Hisab/Agenda/Dusk from their
+  // providers (android-plugins/selfkit-sync SelfkitMirror), then reload.
+  const mirror = () => {
+    const b = (window as unknown as { SelfkitSync?: { mirror(apps: string): string } }).SelfkitSync;
+    if (!b) return;
+    setTimeout(() => { try { b.mirror("chrono,hisab,agenda,dusk"); } catch { /* not available */ } load(); }, 50);
+  };
+  mirror();
   setInterval(() => document.visibilityState === "visible" && load(), 60_000);
-  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && load());
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { load(); mirror(); } });
 }

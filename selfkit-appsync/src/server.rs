@@ -80,7 +80,7 @@ fn uploaded_key(id: &str) -> String {
 
 /// Upload photos this device has and the server lacks; download photos records
 /// point to but this device lacks. Whole files in RAM (document-quality WebP, a few MB).
-pub async fn sync_photos(blobs: &BlobStore, key: &SecretKey, store: &Store, data_dir: &Path, pc: &PhotoConfig, rep: &mut PassReport) -> Result<()> {
+pub async fn sync_photos(blobs: &BlobStore, key: &SecretKey, store: &mut Store, data_dir: &Path, pc: &PhotoConfig, rep: &mut PassReport) -> Result<()> {
     let rows: Vec<(String, String, bool)> = {
         let mut st = store
             .conn()

@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- labels of launchable apps (Android 11+ package visibility) -->
     <queries>
+        <!-- "Take photo" (SelfkitPhotos.kt): resolve the camera app; no CAMERA permission on purpose. -->
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
@@ -39,6 +43,10 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Selfkit sync plugin: which app and Rust library (android-plugins/selfkit-sync) -->
+        <meta-data android:name="com.selfkit.sync.APP" android:value="chrono" />
+        <meta-data android:name="com.selfkit.sync.LIB" android:value="chrono_lib" />
 
         <!-- opt-in notification counter (Settings → Notification access) -->
         <service

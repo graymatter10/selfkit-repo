@@ -12,6 +12,7 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         val trigger = inputData.getString(KEY_TRIGGER) ?: "background"
         try {
             SelfkitSync.syncBlocking(applicationContext, trigger)
+            Meta.mirror(applicationContext).takeIf { it.isNotEmpty() }?.let { SelfkitMirror.pull(applicationContext, it) }
             Result.success() // failures are in the status; the next period retries
         } catch (t: Throwable) {
             Result.success()

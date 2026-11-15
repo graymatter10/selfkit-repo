@@ -22,6 +22,8 @@
   import RecurringList from "./components/RecurringList.svelte";
   import RecurringSheet from "./components/RecurringSheet.svelte";
   import Settings from "./components/Settings.svelte";
+  import SyncSettings from "../../../ui/src/sync/SyncSettings.svelte";
+  import Conflicts from "../../../ui/src/sync/Conflicts.svelte";
   import SmsReview from "./components/SmsReview.svelte";
   import SplitSheet from "./components/SplitSheet.svelte";
   import Toast from "./components/Toast.svelte";
@@ -46,7 +48,7 @@
 
   const TITLES: Record<Page, string> = {
     home: "Hisab", history: "History", insights: "Insights", accounts: "Accounts", loans: "Loans", goals: "Savings goals", recurring: "Recurring",
-    categories: "Categories", sms: "SMS imports", settings: "Settings", more: "More",
+    categories: "Categories", sms: "SMS imports", settings: "Settings", more: "More", sync: "Sync", conflicts: "Changed on two devices",
   };
   const NAV: { id: Page; icon: string; key: string }[] = [
     { id: "home", icon: "plus", key: "N" }, { id: "history", icon: "list", key: "H" }, { id: "insights", icon: "chart", key: "I" }, { id: "accounts", icon: "wallet", key: "A" },
@@ -153,6 +155,8 @@
   {:else if p === "categories"}<Categories {desktop} />
   {:else if p === "sms"}<SmsReview {desktop} />
   {:else if p === "settings"}<Settings {desktop} />
+  {:else if p === "sync"}<div class={desktop ? "max-w-[1100px]" : ""}><SyncSettings phone={!desktop} onconflicts={() => go("conflicts")} /></div>
+  {:else if p === "conflicts"}<div class={desktop ? "card flex h-[calc(100vh-120px)] max-w-[1100px] flex-col overflow-hidden" : "-mx-4 -mb-6 flex h-[calc(100dvh-64px)] flex-col"}><Conflicts phone={!desktop} onclose={back} names={{ transactions: "Hisab transaction", loans: "Loan", accounts: "Account", categories: "Category", goals: "Savings goal", recurring: "Recurring payment", rates: "Exchange rates" }} /></div>
   {:else if p === "more"}<More />{/if}
 {/snippet}
 

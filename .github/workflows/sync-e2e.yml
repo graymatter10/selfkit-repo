@@ -13,6 +13,8 @@ concurrency:
 env:
   CARGO_TARGET_DIR: ${{ github.workspace }}/target
   CARGO_BUILD_JOBS: "4"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
   SELFKIT_TEST_PG: postgres://selfkit:selfkit-dev@127.0.0.1:55432/selfkit
   SELFKIT_TEST_S3_ENDPOINT: http://127.0.0.1:59000
   SELFKIT_TEST_S3_BUCKET: selfkit-test
@@ -30,6 +32,14 @@ jobs:
         ports: ["55432:5432"]
         options: --health-cmd pg_isready --health-interval 5s --health-retries 20
     steps:
+      - name: Free disk space
+        # The runner has ~20 GB free; 5 apps + every crate in one target dir ran out
+        # (ld "Bus error", signal 7). Drop preinstalled toolchains this job does not use (keeps the Android SDK).
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h /
       - uses: actions/checkout@v4
       - name: S3-compatible storage (SeaweedFS, same as dev/docker-compose.yml)
         run: |

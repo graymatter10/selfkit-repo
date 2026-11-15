@@ -16,3 +16,23 @@
 - **Tracking:** active window via `_NET_ACTIVE_WINDOW` + `WM_CLASS`, idle via X11 ScreenSaver extension (`x11rb`). Testing under Xvfb: run a WM (i3 with its own `ipc-socket` so it doesn't clash with the real session), and `xset s reset` counts as user input.
 - **Screenshots without a window:** run Xvfb on :77 and use `dev/agenda-shot.sh` (real WebKitGTK rendering; set `WEBKIT_DISABLE_DMABUF_RENDERER=1`).
 - **Global shortcut:** registered through X11 (tauri-plugin-global-shortcut). If i3 already binds the same keys, i3 wins; change it in Settings or bind `exec agenda --capture` in i3.
+
+## Packages (built on GitHub Actions)
+`.github/workflows/linux.yml` (Ubuntu 22.04, so the AppImages run on older glibc too; push to `test/**`, by hand, or from `release.yml`; artifact `linux-installers`). Local build of the same files: `installer/linux/build-local.sh [out-dir] [app...]` (default `/shared/selfkitextra/installers/linux`; binaries then need this machine's glibc or newer; the agent .deb is packed in a Debian container when `dpkg-deb` is missing).
+
+| File | Install | Remove |
+| --- | --- | --- |
+| `<App>_<version>_amd64.deb` (5) | `sudo apt install ./Agenda_0.4.2_amd64.deb` | `sudo apt remove agenda` |
+| `<App>_<version>_amd64.AppImage` (5) | `chmod +x` and run (no install) | delete the file |
+| `selfkit-agent_<version>_amd64.deb` | `sudo apt install ./selfkit-agent_0.1.0_amd64.deb` | `sudo apt remove selfkit-agent` |
+| `selfkit-agent-<version>-linux-x86_64.tar.gz` | unpack, `./install.sh` (per user, no root) | `./uninstall.sh [--delete-data]` |
+
+- **Agent .deb** (`installer/linux/build-agent-packages.sh`): `/usr/bin/selfkit-agent`, systemd user unit `/usr/lib/systemd/user/selfkit-agent.service` enabled for every user on install (`systemctl --global enable`, as debhelper does; starts at the next login; now: `systemctl --user daemon-reload && systemctl --user start selfkit-agent`), native-messaging host manifests in `/etc/opt/chrome/`, `/etc/chromium/` and `/usr/lib/mozilla/native-messaging-hosts/`. Remove disables the unit and stops running agents. i3 still needs the `import-environment` line above.
+- **Agent tarball:** `install.sh` = copy to `~/.local/bin`, `install-native-host`, `install-service --enable` (or prints the i3 `exec` line when there is no systemd user session).
+- **Your data is never in a package**, so `apt remove` and `apt purge` leave `~/.local/share/selfkit` alone (default dpkg behaviour). Delete it yourself:
+  - everything: `rm -rf ~/.local/share/selfkit`
+  - one app `<a>`: `rm -rf ~/.local/share/selfkit/{<a>.db,<a>.db-wal,<a>.db-shm,<a>-photos,files/<a>,backups/<a>,sync/state-<a>.json}` (Hisab also `exports/`)
+  - agent only: `rm -rf ~/.local/share/selfkit/{agent.json,health.json,agent-reminders.json,logs,backups}`
+  - WebView caches: `~/.local/share/com.selfkit.<app>`, `~/.cache/com.selfkit.<app>`.
+- **AppImage fix (2026-11-15):** only Hisab's AppImage came out because Tauri empties `target/release/bundle/appimage/` at the start of every AppImage build, and the workflow built the apps one after another into the same target dir (Hisab was the last app). The workflow now copies each app's `.deb` and `.AppImage` to `dist/` right after its build.
+- **CI test** (`installer/linux/test-packages.sh`): each app .deb installs, has binary/.desktop/icon, starts under Xvfb for 12 s and creates `<app>.db`, then remove + purge keep `~/.local/share/selfkit`; each AppImage starts under Xvfb (`APPIMAGE_EXTRACT_AND_RUN=1`); agent .deb files, global unit enable, `status` answers, remove disables and stops it and keeps data; tarball contents.

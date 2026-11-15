@@ -16,7 +16,7 @@ Design: the reviewed design approved by the user on 2026-11-15 (scratchpad `revi
 - **App changes**: from Trends (card with the last three changes → "See all"): installs, removals, reinstalls (updates on request), grouped by month, with icons and each app's all-time use; removed apps show an "Uninstalled" tag in totals, the timeline and reports, and Trends has "Include uninstalled apps". See [app-changes.md](app-changes.md).
 - **Pause**: one control: the status line pill on phone Today, the Recording card in the desktop rail (menu: 15 min, 1 hour, until tomorrow, until I resume; Resume when paused). Writes `chrono_settings.paused_until` + `pause_log`; the agent, the native host and the Android importer honour it.
 
-Keyboard (desktop): T Today · L Timeline · R Trends · W Weekly report · , Settings · ←/→ previous/next day or week · N note for the shown day · P pause/resume · Esc close. Android Back closes the topmost layer (photo, note editor — saving changes —, pause menu, sources, settings, past day, other tab → Today).
+Keyboard (desktop): T Today · L Timeline · R Trends · W Weekly report · , Settings · ←/→ previous/next day or week · N note for the shown day · P pause/resume · Esc close. Android Back (Tauri `back-button` event since 0.1.1, like Agenda/Hisab; with nothing open `ChronoBars.toBackground()` leaves the app — the old history-entry approach left the app on the second Back after closing the photo viewer or photo sheet, because the WebView skips history entries re-added without a tap) closes the topmost layer ("Add photo" sheet, photo, note editor — saving changes —, pause menu, sources, settings, past day, other tab → Today).
 
 ## Data model (`chrono.db`, selfkit-core records)
 
@@ -101,7 +101,7 @@ dev/ci-apk.sh chrono 0.1.0                                           # signed ou
 Screenshots without a window: `dev/chrono-shot.sh <name> <light|dark> <WxH> "<CHRONO_DEMO params>"` (Xvfb on `$CHRONO_DISPLAY`, default :82; params `view=today|timeline|trends|report`, `day=-1`, `week=-7`, `settings=1`, `sources=1`, `note=1`, `setup=1|2`, `pause=1`, `scroll=<px>`). `dev/xin.py` (XTEST via ctypes) clicks and types under Xvfb when xdotool is missing.
 
 ## Code map
-- `src-tauri/src/lib.rs`: Tauri setup, state (`chrono.db` + shared `settings.db`), commands (`day_view`, `timeline`, `trends`, `report`, `names`, `sources`, `info`, `settings_get/save`, `pause`, `resume`, `theme_get/set`, `prefs_get/set`, `note_get/save`, `photo_save/get`, `android_status/open/import`, `dev_hooks`), desktop alert timer, `mobile` module (Kotlin plugin glue), `jni_bridge` (worker entry points), env hooks `CHRONO_DEMO`, `CHRONO_WINDOW_SIZE`.
+- `src-tauri/src/lib.rs`: Tauri setup, state (`chrono.db` + shared `settings.db`), commands (`day_view`, `timeline`, `trends`, `report`, `names`, `sources`, `info`, `settings_get/save`, `pause`, `resume`, `theme_get/set`, `prefs_get/set`, `note_get/save`, `photo_save/get/export`, `android_status/open/import`, `dev_hooks`), desktop alert timer, `mobile` module (Kotlin plugin glue), `jni_bridge` (worker entry points), env hooks `CHRONO_DEMO`, `CHRONO_WINDOW_SIZE`.
 - `src-tauri/src/stats.rs`: day splitting, unions, daily cache, all screen data ([stats.md](stats.md)).
 - `src-tauri/src/settings.rs`: `chrono_settings` model, pause/resume, exclude matching.
 - `src-tauri/src/categories.rs`: default categories, browser detection, Focus.
@@ -109,9 +109,9 @@ Screenshots without a window: `dev/chrono-shot.sh <name> <light|dark> <WxH> "<CH
 - `src-tauri/src/alerts.rs`: goal/limit/weekly alerts.
 - `src-tauri/src/notes.rs`: `day_notes` + photo files ([notes.md](notes.md)).
 - `src-tauri/examples/seed.rs` (+ two sample photos): sample data relative to now; `--bench`, `--settings-only`, `--theme`.
-- `src-tauri/gen/android/app/src/main/java/com/selfkit/chrono/`: Kotlin (UsagePlugin, Collector, NotifStore, ChronoNotificationListener, ImportWorker, ChronoNative, MainActivity).
+- `src-tauri/gen/android/app/src/main/java/com/selfkit/chrono/`: Kotlin (UsagePlugin, Collector, NotifStore, ChronoNotificationListener, ImportWorker, ChronoNative, MainActivity, SelfkitPhotos = `window.SelfkitPhotos` for camera capture cleanup and Save to gallery).
 - `src/App.svelte`: phone/desktop shell, navigation, pause menu, Android Back, keyboard, demo hooks. `src/app.css`: tokens (light/dark) and components from the approved design.
-- `src/lib/`: `api.ts` (typed commands), `state.svelte.ts` (state, theme, pause, Android refresh), `fmt.ts` (durations, dates, categories), `photos.ts` (scale + encode).
+- `src/lib/`: `api.ts` (typed commands), `state.svelte.ts` (state, theme, pause, Android refresh), `fmt.ts` (durations, dates, categories), `photos.ts` (scale + encode), `photo-source.ts` (shared camera/gallery sheet, Save to gallery).
 - `src/screens/`: `Today`, `Timeline`, `Trends`, `Report`, `Settings`, `Sources`, `Setup`.
 - `src/components/`: `DayRibbon`, `LaneChart`, `BarChart`, `Heatmap`, `WeekChart`, `GoalRows`, `TopRows`, `CatBreakdown`, `NoteCard`, `NoteEditor`, `Photo`, `PhotoViewer`, `VList`, `Seg`, `Icon`, `Toast`.
 

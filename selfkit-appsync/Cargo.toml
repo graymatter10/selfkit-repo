@@ -10,6 +10,8 @@ default = []
 test-key = []
 # JNI entry points for the Kotlin plugin (android-plugins/selfkit-sync).
 android = ["dep:jni"]
+# Shared Tauri commands (sync_status, sync_now, ...) for the apps.
+tauri = ["dep:tauri"]
 
 [dependencies]
 selfkit-core = { path = "../selfkit-core", default-features = false, features = ["remote", "lan"] }
@@ -20,6 +22,7 @@ tracing.workspace = true
 base64 = "0.22"
 sha2 = "0.10"
 jni = { version = "0.21", optional = true, default-features = false }
+tauri = { version = "2", optional = true }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 selfkit-core = { path = "../selfkit-core", default-features = false, features = ["remote", "lan", "keychain"] }

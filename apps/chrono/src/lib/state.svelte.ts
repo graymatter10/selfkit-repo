@@ -21,6 +21,9 @@ export const app = $state({
   settingsOpen: false,
   sourcesOpen: false,
   changesOpen: false,
+  /** Settings → Sync page and the conflict screen (shared ui/src/sync). */
+  syncOpen: false,
+  conflictsOpen: false,
   /** Android first-run setup step (0 = closed) */
   setup: 0,
   noteDay: null as string | null,

@@ -67,6 +67,7 @@ fn boot(state: State<AppState>) -> R<Value> {
     let main = main_currency(&state);
     let store = state.store.lock().unwrap();
     model::seed_defaults(&store, &main)?;
+    currency::follow_main(&store, &main)?;
     let made = recur::generate(&store, &main, today())?;
     let prefs = store.kv_get("hisab.prefs").map_err(e)?.and_then(|v| serde_json::from_str::<Value>(&v).ok()).unwrap_or_else(|| json!({}));
     let draft = store.kv_get("hisab.draft").map_err(e)?.and_then(|v| serde_json::from_str::<Value>(&v).ok());
@@ -104,6 +105,7 @@ fn snapshot(state: State<AppState>, month: String) -> R<Value> {
         "rates": fx::raw(&store)?,
         "tags": all_tags(&d),
         "missing_rates": d.missing(),
+        "stale_accounts": currency::stale_accounts(&store, &main)?,
     }))
 }
 
@@ -391,6 +393,14 @@ fn account_relabel(app: AppHandle, state: State<AppState>, id: String, currency:
     Ok(n)
 }
 
+/// "Keep USD" on the relabel offer: the account's currency counts as chosen.
+#[tauri::command]
+fn account_keep_currency(app: AppHandle, state: State<AppState>, id: String) -> R<()> {
+    currency::keep_currency(&state.store.lock().unwrap(), &id)?;
+    changed(&app);
+    Ok(())
+}
+
 #[tauri::command]
 fn close_capture(app: AppHandle) {
     if let Some(w) = app.get_webview_window("capture") {
@@ -630,6 +640,10 @@ pub fn run() {
                 .or_else(|| store.kv_get("hisab.main").ok().flatten())
                 .unwrap_or_else(|| Settings::default().main_currency);
             app.manage(AppState { store: Mutex::new(store), settings: Mutex::new(settings), notice: Mutex::new(n1.or(n2)), last_main: Mutex::new(last) });
+            // Selfkit sync (selfkit-appsync): status, Sync now, settings, conflicts; desktop syncs on open.
+            let sync = selfkit_appsync::tauri_cmds::default_handle("hisab", paths::data_dir())?;
+            selfkit_appsync::tauri_cmds::spawn_on_open(app.handle(), &sync);
+            app.manage(sync);
             #[cfg(desktop)]
             {
                 let s = Settings::load(&app.state::<AppState>().settings.lock().unwrap()).unwrap_or_default();
@@ -654,8 +668,14 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             boot, snapshot, transactions, trends, save, get, remove, restore, generate_recurring, sms_ingest, sms_pending, sms_parse,
-            rates_save, rates_manual, export_file, photo_save, photo_get, photo_export, prefs_set, draft_set, settings_get, settings_set, main_currency_set, account_relabel, close_capture,
-            reschedule, dev_hooks, startup_notice
+            rates_save, rates_manual, export_file, photo_save, photo_get, photo_export, prefs_set, draft_set, settings_get, settings_set, main_currency_set, account_relabel, account_keep_currency, close_capture,
+            reschedule, dev_hooks, startup_notice,
+            selfkit_appsync::tauri_cmds::sync_status, selfkit_appsync::tauri_cmds::sync_now,
+            selfkit_appsync::tauri_cmds::sync_settings_set, selfkit_appsync::tauri_cmds::sync_server_get,
+            selfkit_appsync::tauri_cmds::sync_server_set, selfkit_appsync::tauri_cmds::sync_server_test,
+            selfkit_appsync::tauri_cmds::sync_encryption_setup, selfkit_appsync::tauri_cmds::sync_unlock,
+            selfkit_appsync::tauri_cmds::sync_change_passphrase, selfkit_appsync::tauri_cmds::sync_conflicts,
+            selfkit_appsync::tauri_cmds::sync_resolve, selfkit_appsync::tauri_cmds::sync_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running Hisab");

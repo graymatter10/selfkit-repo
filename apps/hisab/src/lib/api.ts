@@ -9,7 +9,7 @@ export interface Tx {
   to_account?: string; to_amount?: number; category: string; splits: Split[]; tags: string[]; note: string;
   photos: string[]; source: string; amount_main?: number; recurring?: string; created_at?: number;
 }
-export interface Account { id: string; name: string; kind: string; currency: string; opening: number; archived: boolean; order: number; balance: number; balance_main: number }
+export interface Account { id: string; name: string; kind: string; currency: string; opening: number; archived: boolean; order: number; balance: number; balance_main: number; explicit_currency?: boolean; entry_currency: string }
 export interface Category { id: string; name: string; kind: "expense" | "income"; icon: string; color: string; budget: number; archived: boolean; order: number; usage: number; spent: number }
 export interface Repayment { id: string; date: string; amount: number; note: string }
 export interface Loan {
@@ -32,6 +32,7 @@ export interface Rates { base: string; rates: Record<string, number>; manual: Re
 export interface Snapshot {
   main: string; today: string; accounts: Account[]; categories: Category[]; loans: Loan[]; goals: Goal[]; recurring: Recurring[];
   overview: Overview; recent: Tx[]; sms_pending: number; rates: Rates; tags: string[]; missing_rates: string[];
+  stale_accounts: MainChange["used"];
 }
 export interface Trends {
   month: string; main: string; daily: number[]; daily_prev: number[]; by_category_month: CatAmount[]; income_by_category_month: CatAmount[];
@@ -74,6 +75,7 @@ export const api = {
   /** Change the global main currency; returns used accounts still in the old one. */
   mainCurrencySet: (code: string) => call<MainChange>("main_currency_set", { code }),
   accountRelabel: (id: string, currency: string) => call<number>("account_relabel", { id, currency }),
+  accountKeepCurrency: (id: string) => call<void>("account_keep_currency", { id }),
   closeCapture: () => call<void>("close_capture"),
   reschedule: () => call<void>("reschedule"),
   devHooks: () => call<string | null>("dev_hooks"),

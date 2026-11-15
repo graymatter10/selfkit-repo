@@ -4,6 +4,7 @@
   import { app, go, openSheet } from "../lib/state.svelte";
   import AddPanel from "./AddPanel.svelte";
   import Ic from "./Ic.svelte";
+  import StaleOffer from "./StaleOffer.svelte";
   import Summary from "./Summary.svelte";
   import TxRow from "./TxRow.svelte";
   let { desktop = false, panel = $bindable() }: { desktop?: boolean; panel?: AddPanel } = $props();
@@ -33,6 +34,7 @@
 {#if desktop}
   <div class="flex h-full gap-6 overflow-hidden px-8 pt-6 pb-6">
     <div class="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto">
+      <div class="empty:hidden"><StaleOffer banner /></div>
       <Summary big />
       <div>{@render recentList()}</div>
     </div>
@@ -41,6 +43,7 @@
 {:else}
   <div class="flex h-full flex-col overflow-hidden">
     <div class="min-h-0 flex-1 overflow-y-auto px-4 pt-1 pb-3">
+      <StaleOffer banner />
       <Summary compact />
       <div class="mt-1.5">{@render recentList()}</div>
     </div>

@@ -8,7 +8,10 @@
   import Icon from "../components/Icon.svelte";
   import Seg from "../components/Seg.svelte";
   import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
-  let { phone, onsources }: { phone: boolean; onsources: () => void } = $props();
+  import { syncApi } from "../../../../ui/src/sync/api";
+  let { phone, onsources, onsync }: { phone: boolean; onsources: () => void; onsync: () => void } = $props();
+  let syncLine = $state("");
+  $effect(() => { void app.rev; syncApi.status().then((st) => (syncLine = st.conflicts ? `${st.headline.split(" · ")[0]} · ${st.conflicts} to review` : st.headline)).catch(() => (syncLine = "")); });
   let names = $state<Total[]>([]);
   let q = $state("");
   let addApp = $state(""), addSite = $state("");
@@ -229,6 +232,12 @@
   </div>
 {/snippet}
 
+{#snippet syncCard()}
+  <div class="card" style="padding-top:6px;padding-bottom:6px">
+    <button type="button" class="row" style="min-height:52px" onclick={onsync}><div style="flex:1;min-width:0"><div class="nm" style="font-weight:600;font-size:14px">Sync</div><div class="sb">{syncLine || "Your devices, server and encryption"}</div></div><span class="muted"><Icon name="right" /></span></button>
+  </div>
+{/snippet}
+
 {#snippet themeCard()}
   <div class="card"><div class="ch"><h2>Appearance</h2></div>
     <Seg label="Appearance" value={app.theme} onchange={setTheme} items={[{ id: "system", name: "System" }, { id: "light", name: "Light" }, { id: "dark", name: "Dark" }]} />
@@ -238,7 +247,7 @@
 <datalist id="chrono-apps">{#each appNames as n}<option value={n}></option>{/each}</datalist>
 <datalist id="chrono-sites">{#each siteNames as n}<option value={n}></option>{/each}</datalist>
 {#if phone}
-  <div class="grid">{@render track()}{@render androidCard()}{@render goalsCard()}{@render exclCard()}{@render catsCard()}{@render sourcesCard()}{@render themeCard()}</div>
+  <div class="grid">{@render syncCard()}{@render track()}{@render androidCard()}{@render goalsCard()}{@render exclCard()}{@render catsCard()}{@render sourcesCard()}{@render themeCard()}</div>
 {:else}
-  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="grid">{@render track()}{@render exclCard()}{@render catsCard()}</div><div class="grid">{@render goalsCard()}{@render androidCard()}{@render sourcesCard()}{@render themeCard()}</div></div>
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="grid">{@render track()}{@render exclCard()}{@render catsCard()}</div><div class="grid">{@render syncCard()}{@render goalsCard()}{@render androidCard()}{@render sourcesCard()}{@render themeCard()}</div></div>
 {/if}

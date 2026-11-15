@@ -7,7 +7,10 @@
   import Seg from "./Seg.svelte";
   import TimeSheet from "./TimeSheet.svelte";
 
+  import { syncApi } from "../../../../ui/src/sync/api";
   let { desktop }: { desktop: boolean } = $props();
+  let syncLine = $state("");
+  $effect(() => { syncApi.status().then((st) => (syncLine = st.conflicts ? `${st.headline.split(" · ")[0]} · ${st.conflicts} to review` : st.headline)).catch(() => (syncLine = "")); });
   const goals = $derived(app.dash?.goals ?? { goal_min: 480, bedtime: "23:00", winddown_min: 30 });
   let bedDial = $state(app.demo.dial === "goal");
   let shortcut = $state("");
@@ -107,6 +110,9 @@
 
     <h2 class="mx-1 mt-6 mb-2 text-[13.5px] font-[650] text-ink2">Data</h2>
     <div class="card">
+      <button type="button" class="press flex min-h-[60px] w-full items-center gap-3 px-4 py-2 text-left text-[15.5px]" onclick={() => (app.syncOpen = true)}>
+        {@render lrow("Sync", syncLine || "Your devices, server and encryption")}<span class="flex text-muted"><Icon name="right" size={18} /></span></button>
+      <div class="h-px bg-sep"></div>
       {#if app.sources?.mobile}
         <div class="flex min-h-[60px] items-center gap-3 px-4 py-2 text-[15.5px]">
           {@render lrow("Usage access", "Used to estimate your sleep")}

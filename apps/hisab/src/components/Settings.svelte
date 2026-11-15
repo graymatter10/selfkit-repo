@@ -2,13 +2,20 @@
   // Settings: theme, main currency, exchange rates (fetch + hand edit),
   // category ranking, loan reminders, SMS import, export, desktop shortcut.
   import { showToast } from "@selfkit/ui";
-  import { api, type MainChange, type Settings } from "../lib/api";
+  import { api, type Settings } from "../lib/api";
   import { isAndroid } from "../lib/native";
   import { fetchRates } from "../lib/rates";
   import { app, go, main, openSheet, refresh, setPrefs } from "../lib/state.svelte";
   import Ic from "./Ic.svelte";
   import Seg from "./Seg.svelte";
+  import StaleOffer from "./StaleOffer.svelte";
+  import { syncApi } from "../../../../ui/src/sync/api";
   let { desktop = false }: { desktop?: boolean } = $props();
+  let syncLine = $state("");
+  // Version from the app bundle (tauri.conf.json), not a hard-coded string.
+  let version = $state("");
+  import("@tauri-apps/api/app").then((m) => m.getVersion()).then((v) => (version = v)).catch(() => {});
+  syncApi.status().then((st) => (syncLine = st.conflicts ? `${st.conflicts} to review` : st.headline.split(" · ")[0])).catch(() => {});
   let settings = $state<Settings | null>(null);
   api.settingsGet().then((s) => (settings = s));
   let fetching = $state(false);
@@ -24,22 +31,12 @@
     }
   }
   // Main currency: the global default everywhere. Unused accounts that still
-  // had the old default switch with it (in Rust); used ones are offered here.
-  let stale = $state<MainChange["used"]>([]);
+  // had the old default switch with it (in Rust); used ones are offered by
+  // StaleOffer (from the snapshot, so it shows without re-picking).
   async function setMain(c: string) {
     try {
       const ch = await api.mainCurrencySet(c);
       if (settings) settings = { ...settings, main_currency: ch.new };
-      stale = ch.used;
-      await refresh();
-    } catch (e) {
-      showToast(String(e));
-    }
-  }
-  async function relabel(id: string) {
-    try {
-      await api.accountRelabel(id, main());
-      stale = stale.filter((x) => x.id !== id);
       await refresh();
     } catch (e) {
       showToast(String(e));
@@ -119,19 +116,17 @@
 <svelte:window onkeydown={record} />
 
 <div class="flex flex-col gap-1 {desktop ? 'max-w-[640px]' : ''}">
-  <p class={h}>Appearance</p>
+  <p class={h}>Sync</p>
+  <div class="card overflow-hidden"><button type="button" class="{row} w-full text-left text-[15px]" onclick={() => go("sync")}><span class="flex-1">Sync</span><span class="truncate text-[14px] text-muted">{syncLine}</span><Ic name="chevron" size={16} class="text-muted" /></button></div>
+
+  <p class="{h} pt-4">Appearance</p>
   <Seg label="Theme" items={[{ id: "system", name: "System" }, { id: "light", name: "Light" }, { id: "dark", name: "Dark" }]} value={app.prefs.theme ?? "system"} onchange={(v) => setPrefs({ theme: v })} />
 
   <p class="{h} pt-4">Currencies</p>
   <div class="card overflow-hidden">
-    <div class={row}><span class="flex-1 text-[15px]">Main currency</span>
-      <button type="button" class="press text-[15px] font-semibold text-accent" onclick={() => openSheet({ kind: "currency", value: main(), onpick: setMain })}>{main()}</button></div>
-    {#each stale as a (a.id)}
-      <div class="border-b border-sep px-4 py-3 text-[14px]">
-        <p class="m-0 text-ink2">{a.name} is still in {a.currency} ({a.entries} {a.entries === 1 ? "entry" : "entries"}). Switch it to {main()}? The amounts keep their numbers.</p>
-        <div class="mt-2 flex gap-4"><button type="button" class="press font-semibold text-accent" onclick={() => relabel(a.id)}>Switch to {main()}</button><button type="button" class="press text-muted" onclick={() => (stale = stale.filter((x) => x.id !== a.id))}>Keep {a.currency}</button></div>
-      </div>
-    {/each}
+    <button type="button" class="{row} hl w-full text-left" onclick={() => openSheet({ kind: "currency", value: main(), onpick: setMain })}><span class="flex-1 text-[15px]">Main currency</span>
+      <span class="text-[15px] font-semibold text-accent">{main()}</span></button>
+    <StaleOffer />
     <div class={row}><span class="flex-1 text-[14px] text-muted">Rates updated {fetched}</span>
       <button type="button" disabled={fetching} class="press text-[14px] font-semibold text-accent disabled:opacity-40" onclick={refetch}>{fetching ? "Updating…" : "Update now"}</button></div>
     {#each used as c (c)}
@@ -183,5 +178,5 @@
     <button type="button" class="{row} w-full text-left text-[15px]" onclick={() => openSheet({ kind: "export" })}><span class="flex-1">Export CSV or PDF</span><Ic name="chevron" size={16} class="text-muted" /></button>
     <button type="button" class="{row} w-full text-left text-[15px]" onclick={() => go("recurring")}><span class="flex-1">Recurring and subscriptions</span><Ic name="chevron" size={16} class="text-muted" /></button>
   </div>
-  <p class="m-0 px-1 pt-1.5 pb-6 text-[12px] text-muted">Everything stays on this device and syncs encrypted through Selfkit. Hisab 0.1.1</p>
+  <p class="m-0 px-1 pt-1.5 pb-6 text-[12px] text-muted">Everything stays on this device and syncs encrypted through Selfkit. Hisab {version}</p>
 </div>

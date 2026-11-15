@@ -8,12 +8,16 @@
   import Icon from "./components/Icon.svelte";
   import NoteEditor from "./components/NoteEditor.svelte";
   import PhotoViewer from "./components/PhotoViewer.svelte";
+  import { PhotoSourceSheet, closePhotoSource } from "./lib/photo-source";
+  import { onBackButtonPress } from "@tauri-apps/api/app";
   import Toast from "./components/Toast.svelte";
   import AppChanges from "./screens/AppChanges.svelte";
   import Report from "./screens/Report.svelte";
   import Settings from "./screens/Settings.svelte";
   import Setup from "./screens/Setup.svelte";
   import Sources from "./screens/Sources.svelte";
+  import SyncSettings from "../../../ui/src/sync/SyncSettings.svelte";
+  import Conflicts from "../../../ui/src/sync/Conflicts.svelte";
   import Timeline from "./screens/Timeline.svelte";
   import Today from "./screens/Today.svelte";
   import Trends from "./screens/Trends.svelte";
@@ -37,6 +41,8 @@
   const weekStart = $derived(mondayOf(app.week ?? addDays(today(), -7)));
   const head = $derived.by(() => {
     if (app.changesOpen && !phone) return ["App changes", "Apps installed, removed and reinstalled on your phones"];
+    if (app.settingsOpen && !phone && app.conflictsOpen) return ["Changed on two devices", "Choose which version to keep"];
+    if (app.settingsOpen && !phone && app.syncOpen) return ["Sync", "Your devices, server and encryption"];
     if (app.settingsOpen && !phone) return app.sourcesOpen ? ["Devices and sources", "Where Chrono gets its data"] : ["Settings", ""];
     switch (app.view) {
       case "today": return isToday ? ["Today", longDay(day)] : [weekdayName(day), dayMonth(day)];
@@ -59,24 +65,46 @@
     app.settingsOpen = false;
     app.sourcesOpen = false;
     app.changesOpen = false;
+    app.syncOpen = false;
+    app.conflictsOpen = false;
     scroller?.scrollTo(0, 0);
   }
-  function openSettings() { app.settingsOpen = true; app.sourcesOpen = false; app.changesOpen = false; }
+  function openSettings() { app.settingsOpen = true; app.sourcesOpen = false; app.changesOpen = false; app.syncOpen = false; app.conflictsOpen = false; }
+  /** Back inside Settings: conflicts → sync → sources → settings. */
+  function settingsBack() {
+    if (app.conflictsOpen) app.conflictsOpen = false;
+    else if (app.syncOpen) app.syncOpen = false;
+    else if (app.sourcesOpen) app.sourcesOpen = false;
+    else app.settingsOpen = false;
+  }
   function seeAll() { trendsTab = "apps"; go("trends"); }
 
   // Android Back: one history entry while any layer is open; Back closes the topmost.
   const layered = $derived(phone && (!!app.photo || !!app.noteDay || app.setup > 0 || app.settingsOpen || app.changesOpen || app.pauseMenu || !!app.day || app.view !== "today"));
+  // Android uses Tauri's back-button event instead (like Agenda/Hisab): the
+  // WebView skips history entries re-added without a tap, so after closing an
+  // inner layer (photo source sheet, photo viewer) the next Back left the app.
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  if (isAndroid) {
+    onBackButtonPress(() => {
+      if (!closeTop()) (window as unknown as { ChronoBars?: { toBackground?(): void } }).ChronoBars?.toBackground?.();
+    }).catch(() => {});
+  }
   let pushed = false, skip = false;
   $effect(() => {
+    if (isAndroid) return;
     if (layered && !pushed) { history.pushState({ chrono: 1 }, ""); pushed = true; }
     else if (!layered && pushed) { pushed = false; skip = true; history.back(); }
   });
   function closeTop(): boolean {
+    if (closePhotoSource()) return true; // "Add photo" camera/gallery sheet
     if (app.photo) return void (app.photo = null), true;
     if (app.closeGuard?.()) return true;
     if (app.noteDay) return void (app.noteDay = null), true;
     if (app.pauseMenu) return void (app.pauseMenu = false), true;
     if (app.changesOpen) return void (app.changesOpen = false), true;
+    if (app.conflictsOpen) return void (app.conflictsOpen = false), true;
+    if (app.syncOpen) return void (app.syncOpen = false), true;
     if (app.sourcesOpen) return void (app.sourcesOpen = false), true;
     if (app.settingsOpen) return void (app.settingsOpen = false), true;
     if (app.day) return void (app.day = null), true;
@@ -84,6 +112,7 @@
     return false;
   }
   function onPop() {
+    if (isAndroid) return;
     if (skip) return void (skip = false);
     pushed = false;
     closeTop();
@@ -92,7 +121,7 @@
   function keys(e: KeyboardEvent) {
     const tag = (e.target as HTMLElement)?.tagName;
     if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || app.noteDay || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key === "Escape") { if (app.photo || app.pauseMenu || app.changesOpen || app.sourcesOpen || app.settingsOpen || app.day) closeTop(); return; }
+    if (e.key === "Escape") { if (app.photo || app.pauseMenu || app.changesOpen || app.sourcesOpen || app.syncOpen || app.settingsOpen || app.day) closeTop(); return; }
     const k = e.key.toLowerCase();
     if (k === "t") { go("today"); app.day = null; }
     else if (k === "l") go("timeline");
@@ -120,6 +149,8 @@
     if (p.week) app.week = addDays(today(), Number(p.week));
     if (p.settings) app.settingsOpen = true;
     if (p.sources) app.sourcesOpen = true;
+    if (p.sync) { app.settingsOpen = true; app.syncOpen = true; }
+    if (p.conflicts) { app.settingsOpen = true; app.syncOpen = true; app.conflictsOpen = true; }
     if (p.changes) app.changesOpen = true;
     if (p.note) app.noteDay = p.day ? addDays(today(), Number(p.day)) : today();
     if (p.setup) app.setup = Number(p.setup);
@@ -147,11 +178,18 @@
   {#if app.error}<p role="alert" class="card" style="color:var(--danger);font-size:14px;margin:0 0 14px;padding:12px 16px">{app.error}</p>{/if}
   {#if app.changesOpen && !phone}<AppChanges {phone} />
   {:else if app.settingsOpen && !phone}
-    {#if app.sourcesOpen}<Sources {phone} />{:else}<Settings {phone} onsources={() => (app.sourcesOpen = true)} />{/if}
+    {@render settingsBody()}
   {:else if app.view === "today"}<Today {phone} onseeall={seeAll} onsettings={openSettings} />
   {:else if app.view === "timeline"}<Timeline {phone} {scroller} />
   {:else if app.view === "trends"}<Trends {phone} {scroller} initialTab={trendsTab} onchanges={() => (app.changesOpen = true)} />
   {:else}<Report {phone} />{/if}
+{/snippet}
+
+{#snippet settingsBody()}
+  {#if app.conflictsOpen}<div style={phone ? "flex:1;min-height:0;display:flex;flex-direction:column" : "height:calc(100vh - 150px);border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column"}><Conflicts {phone} onclose={() => (app.conflictsOpen = false)} names={{ day_notes: "Chrono day note", photos: "Chrono photo", chrono_settings: "Chrono settings" }} /></div>
+  {:else if app.syncOpen}<SyncSettings {phone} onconflicts={() => (app.conflictsOpen = true)} />
+  {:else if app.sourcesOpen}<Sources {phone} />
+  {:else}<Settings {phone} onsources={() => (app.sourcesOpen = true)} onsync={() => (app.syncOpen = true)} />{/if}
 {/snippet}
 
 {#snippet dayButtons()}
@@ -199,12 +237,14 @@
   {#if app.settingsOpen}
     <div class="page rise">
       <div class="appbar">
-        <button type="button" class="ib" aria-label="Back" onclick={() => (app.sourcesOpen ? (app.sourcesOpen = false) : (app.settingsOpen = false))}><Icon name="back" size={22} /></button>
-        <span class="t">{app.sourcesOpen ? "Devices and sources" : "Settings"}</span>
+        <button type="button" class="ib" aria-label="Back" onclick={settingsBack}><Icon name="back" size={22} /></button>
+        <span class="t">{app.conflictsOpen ? "Changed on two devices" : app.syncOpen ? "Sync" : app.sourcesOpen ? "Devices and sources" : "Settings"}</span>
       </div>
-      <div class="content" style="flex:1;overflow-y:auto;padding:8px 16px 24px">
-        {#if app.sourcesOpen}<Sources {phone} />{:else}<Settings {phone} onsources={() => (app.sourcesOpen = true)} />{/if}
-      </div>
+      {#if app.conflictsOpen}
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column">{@render settingsBody()}</div>
+      {:else}
+        <div class="content" style="flex:1;overflow-y:auto;padding:8px 16px 24px">{@render settingsBody()}</div>
+      {/if}
     </div>
   {/if}
 {:else}
@@ -227,7 +267,7 @@
     <main class="main">
       <div class="top">
         {#if app.changesOpen}<button type="button" class="ib box" style="margin-right:4px" aria-label="Back" onclick={() => (app.changesOpen = false)}><Icon name="back" /></button>{/if}
-        {#if app.settingsOpen && app.sourcesOpen && !app.changesOpen}<button type="button" class="ib box" style="margin-right:4px" aria-label="Back" onclick={() => (app.sourcesOpen = false)}><Icon name="back" /></button>{/if}
+        {#if app.settingsOpen && (app.sourcesOpen || app.syncOpen) && !app.changesOpen}<button type="button" class="ib box" style="margin-right:4px" aria-label="Back" onclick={settingsBack}><Icon name="back" /></button>{/if}
         <div><h1>{head[0]}</h1>{#if head[1]}<div class="sub">{head[1]}</div>{/if}</div>
         <div style="flex:1"></div>
         {#if !app.settingsOpen && !app.changesOpen}
@@ -243,4 +283,5 @@
 {#if app.noteDay}<NoteEditor day={app.noteDay} {phone} />{/if}
 {#if app.setup > 0}<Setup />{/if}
 <PhotoViewer />
+<PhotoSourceSheet privateNote="Stays private in Chrono, not in your gallery" />
 <div style="position:fixed;left:50%;transform:translateX(-50%);bottom:{phone ? 96 : 24}px;width:min(420px,calc(100vw - 32px));z-index:95;pointer-events:none"><Toast /></div>

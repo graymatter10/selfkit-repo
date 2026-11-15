@@ -125,7 +125,7 @@ pub fn normalize(coll: &str, data: &Value, main: &str) -> R<Value> {
     let mut out = m.clone();
     out.remove("id");
     // Computed fields from views must never be stored.
-    for k in ["balance", "balance_main", "usage", "spent", "repaid", "remaining", "remaining_main", "status", "days_left", "saved", "monthly"] {
+    for k in ["balance", "balance_main", "usage", "spent", "repaid", "remaining", "remaining_main", "status", "days_left", "saved", "monthly", "entry_currency"] {
         out.remove(k);
     }
     match coll {
@@ -144,6 +144,11 @@ pub fn normalize(coll: &str, data: &Value, main: &str) -> R<Value> {
             out.insert("opening".into(), json!(round2(opening)));
             out.insert("archived".into(), json!(b(data, "archived")));
             out.insert("order".into(), json!(num(m, "order").unwrap_or(0.0)));
+            // Set when the user picked the currency (account sheet / "Keep"):
+            // only then do new entries default to it instead of the main one.
+            if let Some(x) = m.get("explicit_currency") {
+                out.insert("explicit_currency".into(), json!(x.as_bool().unwrap_or(false)));
+            }
         }
         CATEGORIES => {
             let name = text(m, "name");
@@ -365,7 +370,7 @@ pub fn seed_defaults(store: &Store, main: &str) -> R<()> {
         return Ok(());
     }
     let put = |c: &str, v: Value| store.put(c, None, &v).map(|_| ()).map_err(|e| e.to_string());
-    put(ACCOUNTS, json!({"name": "Cash", "kind": "cash", "currency": main, "opening": 0, "order": 0, "archived": false}))?;
+    put(ACCOUNTS, json!({"name": "Cash", "kind": "cash", "currency": main, "explicit_currency": false, "opening": 0, "order": 0, "archived": false}))?;
     let exp = [
         ("Food", "food", "#d9822b"),
         ("Transport", "car", "#3b82c4"),

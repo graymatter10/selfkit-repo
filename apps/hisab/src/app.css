@@ -78,3 +78,6 @@ textarea.field { height: auto; padding: 10px 12px; resize: none; }
 @keyframes slide { from { transform: translateX(24px); opacity: 0.4; } }
 @keyframes pop { from { opacity: 0; transform: scale(0.97); } }
 @media (prefers-reduced-motion: reduce) { .rise, .fade, .pop, .slide { animation: none; } }
+
+/* Shared Sync screens (ui/src/sync): Hisab's tokens. */
+.sks, .skc { --sync-surface: var(--card); --sync-line: var(--sep); --sync-sunk: var(--fill2); --sync-accent-soft: var(--accent-soft); --sync-on-accent: var(--on-accent); --sync-ok: var(--accent-ink); }

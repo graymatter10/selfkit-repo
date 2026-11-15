@@ -4,7 +4,11 @@
   import { app, saveSettings, setTheme } from "../lib/state.svelte";
   import Icon from "./Icon.svelte";
   import Seg from "./Seg.svelte";
+  import { syncApi } from "../../../../ui/src/sync/api";
+  import { openTab } from "../lib/state.svelte";
   let { desktop }: { desktop: boolean } = $props();
+  let syncLine = $state("");
+  $effect(() => { syncApi.status().then((st) => (syncLine = st.conflicts ? `${st.headline.split(" · ")[0]} · ${st.conflicts} to review` : st.headline)).catch(() => (syncLine = "")); });
   const s = $derived(app.settings);
   const KINDS: { kind: string; name: string; sub: string; value: number }[] = [
     { kind: "phone_under", name: "Phone under a time", sub: "Phone screen time each day", value: 180 },
@@ -97,7 +101,7 @@
         <span class="v">{#if app.sources?.has[a]}<span class="text-accent"><Icon name="check" size={17} stroke={2.4} /></span>{:else}<span class="text-[13px] font-medium text-muted">{app.sources?.mobile ? "Not shared yet" : found[a] ? "No data yet" : "Not installed"}</span>{/if}</span></div>
     {/each}
   </div>
-  <p class="mx-1 mt-2 text-[13px] leading-[1.45] text-muted">Reflect only reads these apps and never changes them. An app that isn't installed is simply left out.{app.sources?.mobile ? " On phones, apps can't share their data with Reflect yet; that comes later." : ""}</p>
+  <p class="mx-1 mt-2 text-[13px] leading-[1.45] text-muted">Reflect only reads these apps and never changes them. An app that isn't installed is simply left out.{app.sources?.mobile ? " On this phone Reflect reads the Selfkit apps installed here (each app shares its data only with your other Selfkit apps)." : ""}</p>
 {/snippet}
 {#snippet other()}
   <div class="card">
@@ -108,6 +112,9 @@
     <div class="lrow"><div class="lbl"><b>Day starts at</b><small>Shared by all Selfkit apps, set in Chrono or Dusk</small></div><span class="v num">{dayStart}</span></div>
   </div>
 {/snippet}
+{#snippet syncRow()}
+  <div class="card"><button type="button" class="lrow w-full text-left" onclick={() => openTab("sync")}><div class="lbl"><b>Sync</b><small>{syncLine || "Your devices, server and encryption"}</small></div><span class="flex text-muted"><Icon name="right" size={18} /></span></button></div>
+{/snippet}
 {#snippet look()}
   <div class="card"><div class="lrow"><div class="lbl"><b>Theme</b><small>On this device</small></div>
     <Seg label="Theme" items={[{ id: "system", name: "System" }, { id: "light", name: "Light" }, { id: "dark", name: "Dark" }]} value={app.theme} onchange={(v) => setTheme(v)} /></div></div>
@@ -117,8 +124,8 @@
 {:else if desktop}
   <div class="grid max-w-[1020px] grid-cols-2 gap-7 pb-8">
     <div><h1 class="dtitle">Settings</h1><div class="sect !mt-5">Streaks</div>{@render streaks()}</div>
-    <div class="pt-[31px]"><div class="sect !mt-5">Data sources</div>{@render sources()}<div class="sect">Reviews and connections</div>{@render other()}<div class="sect">Appearance</div>{@render look()}</div>
+    <div class="pt-[31px]"><div class="sect !mt-5">Data sources</div>{@render sources()}<div class="sect">Reviews and connections</div>{@render other()}<div class="sect">Sync</div>{@render syncRow()}<div class="sect">Appearance</div>{@render look()}</div>
   </div>
 {:else}
-  <div class="pb-4"><div class="sect !mt-1">Streaks</div>{@render streaks()}<div class="sect">Data sources</div>{@render sources()}<div class="sect">Reviews and connections</div>{@render other()}<div class="sect">Appearance</div>{@render look()}</div>
+  <div class="pb-4"><div class="sect !mt-1">Streaks</div>{@render streaks()}<div class="sect">Data sources</div>{@render sources()}<div class="sect">Reviews and connections</div>{@render other()}<div class="sect">Sync</div>{@render syncRow()}<div class="sect">Appearance</div>{@render look()}</div>
 {/if}

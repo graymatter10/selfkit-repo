@@ -26,6 +26,9 @@ export const app = $state({
   /** Where the settings page returns to (phone). */
   prevTab: "night" as Tab,
   edit: null as Edit | null,
+  /** Settings → Sync page and its conflict screen (shared ui/src/sync). */
+  syncOpen: false,
+  conflictsOpen: false,
   error: "",
   demo: {} as Record<string, string>,
   /** Set by an open sheet: returns true when it handled a close request (asked to discard). */
@@ -68,6 +71,7 @@ export async function refresh() {
 }
 
 export function openTab(t: Tab) {
+  if (t === "settings") app.syncOpen = app.conflictsOpen = false;
   if (t === app.tab) return;
   if (t === "settings") app.prevTab = app.tab === "settings" ? "night" : app.tab;
   app.tab = t;

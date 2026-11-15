@@ -36,8 +36,17 @@
     ],
     "category": "Lifestyle",
     "shortDescription": "Sleep, estimated and logged, offline and private",
+    "publisher": "Selfkit",
+    "copyright": "Selfkit",
     "windows": {
-      "webviewInstallMode": { "type": "offlineInstaller" }
+      "webviewInstallMode": { "type": "embedBootstrapper" },
+      "nsis": {
+        "installMode": "currentUser",
+        "startMenuFolder": "Selfkit",
+        "languages": ["English"],
+        "customLanguageFiles": { "English": "../../../installer/windows/app-english.nsh" },
+        "installerHooks": "../../../installer/windows/app-hooks.nsh"
+      }
     }
   }
 }

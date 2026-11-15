@@ -17,6 +17,15 @@
         android:protectionLevel="signature" />
     <uses-permission android:name="com.selfkit.permission.SHARE" />
 
+    <!-- Other Selfkit apps' providers (package visibility, Android 11+); used by SelfkitMirror. -->
+    <queries>
+        <provider android:authorities="com.selfkit.chrono.provider" />
+        <provider android:authorities="com.selfkit.hisab.provider" />
+        <provider android:authorities="com.selfkit.agenda.provider" />
+        <provider android:authorities="com.selfkit.dusk.provider" />
+        <provider android:authorities="com.selfkit.reflect.provider" />
+    </queries>
+
     <application>
         <provider
             android:name="com.selfkit.sync.SelfkitDataProvider"

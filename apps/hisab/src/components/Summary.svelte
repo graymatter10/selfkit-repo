@@ -12,10 +12,21 @@
 
 {#if o && compact}
   <button type="button" onclick={() => go("insights")} class="card press block w-full px-4 pt-3 pb-3 text-left" aria-label="Open insights">
-    <div class="flex items-baseline gap-2">
-      <span class="text-[13px] font-medium text-muted">{monthName(o.month)}</span>
-      <span class="num text-[24px] leading-tight font-semibold tracking-[-0.6px]">{money(o.spent, main())}</span>
-      <span class="ml-auto text-[13px] text-muted">{#if o.budget > 0}<span class={over ? "font-medium text-danger" : ""}>{over ? `${money(-(o.remaining ?? 0), main())} over` : `${money(o.remaining ?? 0, main())} left`}</span>{:else}Balance <span class="num font-semibold {o.balance < 0 ? 'text-danger' : 'text-ink'}">{money(o.balance, main())}</span>{/if}</span>
+    <!-- Month spent on the left, balance / budget left stacked on the right (never wraps mid-figure). -->
+    <div class="flex items-end gap-3">
+      <div class="min-w-0 flex-1">
+        <div class="text-[12.5px] font-medium text-muted">{monthName(o.month)} · spent</div>
+        <div class="num truncate {money(o.spent, main()).length > 12 ? 'text-[20px]' : 'text-[24px]'} leading-tight font-semibold tracking-[-0.6px]">{money(o.spent, main())}</div>
+      </div>
+      <div class="min-w-0 shrink text-right">
+        {#if o.budget > 0}
+          <div class="text-[12.5px] text-muted">{over ? "Over budget" : "Left"}</div>
+          <div class="num truncate text-[15px] font-semibold {over ? 'text-danger' : 'text-ink'}">{money(over ? -(o.remaining ?? 0) : (o.remaining ?? 0), main())}</div>
+        {:else}
+          <div class="text-[12.5px] text-muted">Balance</div>
+          <div class="num truncate text-[15px] font-semibold {o.balance < 0 ? 'text-danger' : 'text-ink'}">{money(o.balance, main())}</div>
+        {/if}
+      </div>
     </div>
     {#if o.budget > 0}
       <div class="relative mt-2 h-[6px] overflow-hidden rounded-full bg-fill">

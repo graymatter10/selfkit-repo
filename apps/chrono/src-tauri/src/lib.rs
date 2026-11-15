@@ -126,6 +126,37 @@ fn photo_get(state: State<AppState>, id: String) -> Res<String> {
     Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
+#[tauri::command]
+fn photo_export(state: State<AppState>, id: String) -> Res<String> {
+    let (mime, bytes) = notes::load_photo(&state.store.lock().unwrap(), &id).map_err(e)?;
+    export_to_pictures(&id, ext_for(&mime), &bytes)
+}
+
+/// "Save to Pictures" from the photo viewer on desktop (Android saves through
+/// the SelfkitPhotos bridge instead): copy into ~/Pictures/Selfkit/Chrono.
+/// Docs: docs/components/photo-source.md.
+fn export_to_pictures(id: &str, ext: &str, bytes: &[u8]) -> Result<String, String> {
+    let dir = std::env::var_os("SELFKIT_PICTURES_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(|h| std::path::PathBuf::from(h).join("Pictures")))
+        .ok_or("No Pictures folder")?
+        .join("Selfkit")
+        .join("Chrono");
+    std::fs::create_dir_all(&dir).map_err(e)?;
+    let stem: String = id.split('.').next().unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(40).collect();
+    let path = dir.join(format!("Chrono_{stem}.{ext}"));
+    std::fs::write(&path, bytes).map_err(e)?;
+    Ok(path.display().to_string())
+}
+
+fn ext_for(mime: &str) -> &'static str {
+    match mime {
+        "image/webp" => "webp",
+        "image/png" => "png",
+        _ => "jpg",
+    }
+}
+
 #[derive(serde::Serialize)]
 struct Info {
     device: String,
@@ -196,14 +227,16 @@ fn theme_get(state: State<AppState>) -> Res<String> {
 #[tauri::command]
 fn theme_set(state: State<AppState>, mode: String) -> Res<()> {
     use selfkit_core::settings::{Settings, Theme, ThemeMode};
-    let shared = state.shared.lock().unwrap();
-    let mut s = Settings::load(&shared).map_err(e)?;
-    s.theme.mode = match mode.as_str() {
-        "dark" => ThemeMode::Fixed(Theme::SoftDark),
-        "light" => ThemeMode::Fixed(s.theme.light),
-        _ => ThemeMode::System,
-    };
-    s.save(&shared).map_err(e)
+    // Reload + change only the theme (other apps share settings.db).
+    Settings::update(&state.shared.lock().unwrap(), |s| {
+        s.theme.mode = match mode.as_str() {
+            "dark" => ThemeMode::Fixed(Theme::SoftDark),
+            "light" => ThemeMode::Fixed(s.theme.light),
+            _ => ThemeMode::System,
+        };
+    })
+    .map(|_| ())
+    .map_err(e)
 }
 
 /// App preferences (theme) in chrono.db kv (local, not synced).
@@ -411,6 +444,11 @@ mod jni_bridge {
     }
 }
 
+/// Sync for chrono.db + settings.db (photos: `photos` records, files in chrono-photos/).
+fn sync_handle() -> selfkit_core::Result<selfkit_appsync::tauri_cmds::SyncHandle> {
+    selfkit_appsync::tauri_cmds::default_handle("chrono", paths::data_dir())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
@@ -423,6 +461,10 @@ pub fn run() {
             let store = open_store()?;
             let shared = open_shared()?;
             app.manage(AppState { store: Mutex::new(store), shared: Mutex::new(shared) });
+            // Selfkit sync (selfkit-appsync): status, Sync now, settings, conflicts; desktop syncs on open.
+            let sync = sync_handle()?;
+            selfkit_appsync::tauri_cmds::spawn_on_open(app.handle(), &sync);
+            app.manage(sync);
             #[cfg(desktop)]
             {
                 if let (Ok(sz), Some(w)) = (std::env::var("CHRONO_WINDOW_SIZE"), app.get_webview_window("main"))
@@ -438,7 +480,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             day_view, timeline, trends, report, names, info, settings_get, settings_save, pause, resume, prefs_get, prefs_set,
             android_status, android_open, android_import, dev_hooks, sources, note_get, note_save, photo_save,
-            photo_get, theme_get, theme_set, app_changes
+            photo_get, photo_export, theme_get, theme_set, app_changes,
+            selfkit_appsync::tauri_cmds::sync_status, selfkit_appsync::tauri_cmds::sync_now,
+            selfkit_appsync::tauri_cmds::sync_settings_set, selfkit_appsync::tauri_cmds::sync_server_get,
+            selfkit_appsync::tauri_cmds::sync_server_set, selfkit_appsync::tauri_cmds::sync_server_test,
+            selfkit_appsync::tauri_cmds::sync_encryption_setup, selfkit_appsync::tauri_cmds::sync_unlock,
+            selfkit_appsync::tauri_cmds::sync_change_passphrase, selfkit_appsync::tauri_cmds::sync_conflicts,
+            selfkit_appsync::tauri_cmds::sync_resolve, selfkit_appsync::tauri_cmds::sync_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running Chrono");

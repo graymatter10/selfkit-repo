@@ -80,3 +80,6 @@
 .md hr { border: 0; border-top: 1px solid var(--sep); }
 .md img { display: block; max-width: 100%; max-height: 360px; border-radius: 8px; background: var(--fill); }
 .md strong { font-weight: 650; } .md del { color: var(--muted); }
+
+/* Shared Sync screens (ui/src/sync): Agenda's tokens. */
+.sks, .skc { --sync-surface: var(--card); --sync-line: var(--sep); --sync-sunk: var(--fill2); --sync-accent-soft: var(--accent-soft); --sync-on-accent: var(--on-accent); --sync-radius: 12px; }

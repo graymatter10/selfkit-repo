@@ -5,7 +5,7 @@ import { on, showToast } from "@selfkit/ui";
 import { api, type Account, type Category, type Coll, type Prefs, type Snapshot, type Tx } from "./api";
 import { monthIso, todayIso } from "./fmt";
 
-export type Page = "home" | "history" | "insights" | "accounts" | "loans" | "goals" | "recurring" | "categories" | "sms" | "settings" | "more";
+export type Page = "home" | "history" | "insights" | "accounts" | "loans" | "goals" | "recurring" | "categories" | "sms" | "settings" | "more" | "sync" | "conflicts";
 export type Sheet =
   | { kind: "tx"; id: string }
   | { kind: "account"; id?: string }
