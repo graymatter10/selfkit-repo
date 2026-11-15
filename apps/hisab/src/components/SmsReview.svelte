@@ -4,7 +4,7 @@
   import { api, type SmsItem, type Tx } from "../lib/api";
   import { iso, money } from "../lib/fmt";
   import { isAndroid, requestSms, smsAllowed } from "../lib/native";
-  import { accounts, app, defaultAccount, go, rankedCats, refresh, setPrefs } from "../lib/state.svelte";
+  import { accounts, app, defaultAccount, go, main, rankedCats, refresh, setPrefs } from "../lib/state.svelte";
   import { syncSms } from "../lib/sms";
   import CatBadge from "./CatBadge.svelte";
   let { desktop = false }: { desktop?: boolean } = $props();
@@ -78,7 +78,7 @@
     {@const p = picks[s.id]}
     <div class="card fade flex flex-col gap-3 p-4">
       <div class="flex items-baseline justify-between gap-2">
-        <span class="num text-[22px] font-semibold {s.parsed.kind === 'income' ? 'text-accent-ink' : ''}">{s.parsed.kind === "income" ? "+" : "−"}{money(s.parsed.amount, s.parsed.currency || "USD")}</span>
+        <span class="num text-[22px] font-semibold {s.parsed.kind === 'income' ? 'text-accent-ink' : ''}">{s.parsed.kind === "income" ? "+" : "−"}{money(s.parsed.amount, s.parsed.currency || main())}</span>
         <span class="text-[12.5px] text-muted">{s.sender} · {new Date(s.at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
       </div>
       <p class="m-0 line-clamp-3 rounded-[10px] bg-fill2 px-3 py-2 text-[13px] text-ink2">{s.body}</p>

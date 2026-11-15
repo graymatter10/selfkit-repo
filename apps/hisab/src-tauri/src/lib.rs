@@ -311,10 +311,14 @@ fn photo_export(id: String) -> Result<String, String> {
 /// the SelfkitPhotos bridge instead): copy into ~/Pictures/Selfkit/Hisab.
 /// Docs: docs/components/photo-source.md.
 fn export_to_pictures(id: &str, ext: &str, bytes: &[u8]) -> Result<String, String> {
+    // `dirs` is a desktop-only dependency here; Android saves through the bridge.
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let base = dirs::picture_dir().or_else(|| dirs::home_dir().map(|h| h.join("Pictures")));
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let base: Option<std::path::PathBuf> = None;
     let dir = std::env::var_os("SELFKIT_PICTURES_DIR")
         .map(std::path::PathBuf::from)
-        .or_else(dirs::picture_dir)
-        .or_else(|| dirs::home_dir().map(|h| h.join("Pictures")))
+        .or(base)
         .ok_or("No Pictures folder")?
         .join("Selfkit")
         .join("Hisab");
@@ -346,13 +350,16 @@ fn settings_get(state: State<AppState>) -> R<Settings> {
     Ok(st)
 }
 
-/// Save shared settings (shortcuts). The main currency is never changed here
-/// (a stale copy in the UI must not undo it); use `main_currency_set`.
+/// Save Hisab's quick-capture shortcut. Only that field is changed (core
+/// `Settings::update`), so a stale copy can't undo the main currency or other
+/// apps' settings; the main currency changes via `main_currency_set`.
 #[tauri::command]
 fn settings_set(app: AppHandle, state: State<AppState>, settings: Settings) -> R<()> {
-    let mut settings = settings;
-    settings.main_currency = main_currency(&state);
-    settings.save(&state.settings.lock().unwrap()).map_err(e)?;
+    let accel = settings.shortcuts.get("add_expense").cloned().unwrap_or_default();
+    let settings = Settings::update(&state.settings.lock().unwrap(), |s| {
+        s.shortcuts.insert("add_expense".into(), accel);
+    })
+    .map_err(e)?;
     #[cfg(desktop)]
     shortcut::register(&app, &settings);
     let _ = app.emit("settings-changed", &settings);

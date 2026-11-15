@@ -24,7 +24,7 @@ Features: `remote` (Postgres + S3, tokio), `keychain` (OS keychain), `lan` (LAN 
 - `src/keys.rs`: data key wrapped by Argon2id passphrase + HKDF recovery key; `keys.json`.
 - `src/store.rs`: SQLite schema + migrations (`core/001_init`, `core/002_versions`), CRUD, FTS5, tombstones, dirty tracking, server/peer merge rules, conflicts.
 - `src/conflict.rs`: field diff/merge, line diff for long text.
-- `src/settings.rs`: shared settings record (day start, currency, theme, shortcuts).
+- `src/settings.rs`: shared settings record (day start, currency, theme, shortcuts). Apps share `settings.db` on desktop, so write with `Settings::update(store, |s| ...)` (reloads, writes back only the changed fields, keeps unknown ones); never `save` a copy loaded earlier (that overwrote other apps' changes, e.g. the main currency).
 - `src/bundle.rs`: `.skb` export/import (tar inside STREAM).
 - `src/keychain.rs`: OS keychain get/set/delete.
 - `src/sync/mod.rs`: `Remote` trait, record encryption, `sync_once`.

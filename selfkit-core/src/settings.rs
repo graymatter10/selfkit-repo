@@ -85,6 +85,45 @@ impl Settings {
         Ok(())
     }
 
+    /// Change settings safely when several apps share `settings.db`: reload
+    /// the stored record, apply `f`, and write back only the fields `f`
+    /// changed (object fields such as `shortcuts` per key). Other fields keep
+    /// their stored value, including ones this version doesn't know. Use this
+    /// instead of `save` on a copy loaded earlier, which overwrites whatever
+    /// another app changed in the meantime (e.g. the main currency).
+    pub fn update(store: &Store, f: impl FnOnce(&mut Settings)) -> Result<Self> {
+        let raw = store.get(SETTINGS_ID)?.filter(|r| !r.deleted && r.data.is_object()).map(|r| r.data);
+        let before = raw.as_ref().and_then(|d| serde_json::from_value::<Settings>(d.clone()).ok()).unwrap_or_default();
+        let mut after = before.clone();
+        f(&mut after);
+        let (b, a) = (serde_json::to_value(&before)?, serde_json::to_value(&after)?);
+        let mut data = raw.unwrap_or_else(|| b.clone());
+        if let (Some(out), Some(a), Some(b)) = (data.as_object_mut(), a.as_object(), b.as_object()) {
+            for (k, v) in a {
+                if b.get(k) == Some(v) {
+                    continue;
+                }
+                match (out.get_mut(k).and_then(|x| x.as_object_mut()), v.as_object(), b.get(k).and_then(|x| x.as_object())) {
+                    (Some(o), Some(nv), Some(ov)) => {
+                        for (kk, vv) in nv {
+                            if ov.get(kk) != Some(vv) {
+                                o.insert(kk.clone(), vv.clone());
+                            }
+                        }
+                        for kk in ov.keys().filter(|kk| !nv.contains_key(*kk)) {
+                            o.remove(kk);
+                        }
+                    }
+                    _ => {
+                        out.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+        }
+        store.put(COLLECTION, Some(SETTINGS_ID), &data)?;
+        Self::load(store)
+    }
+
     /// Change one shortcut. Rejects unknown actions and accelerators already
     /// used by another action. Empty string = disabled.
     pub fn set_shortcut(&mut self, action: &str, accel: &str) -> std::result::Result<(), String> {
@@ -130,5 +169,31 @@ mod tests {
         st.set_shortcut("add_task", "Ctrl+Alt+T").unwrap();
         st.save(&s).unwrap();
         assert_eq!(Settings::load(&s).unwrap().shortcuts["add_task"], "Ctrl+Alt+T");
+    }
+
+    /// Two apps each hold a copy loaded at their start; each changes its own
+    /// field. With `update`, neither undoes the other (with `save` on the
+    /// stale copy, the second write put the main currency back to USD).
+    #[test]
+    fn update_keeps_other_apps_changes() {
+        let s = Store::open_in_memory(APP, "d", &[]).unwrap();
+        let stale_a = Settings::load(&s).unwrap();
+        let stale_b = Settings::load(&s).unwrap();
+        Settings::update(&s, |x| x.main_currency = "BDT".into()).unwrap();
+        let mut bad = stale_b.clone();
+        bad.set_shortcut("add_task", "Ctrl+Alt+T").unwrap();
+        Settings::update(&s, |x| x.shortcuts.insert("add_task".into(), bad.shortcuts["add_task"].clone()).map(|_| ()).unwrap_or(())).unwrap();
+        Settings::update(&s, |x| x.day_start_min = stale_a.day_start_min + 240).unwrap();
+        let now = Settings::load(&s).unwrap();
+        assert_eq!((now.main_currency.as_str(), now.day_start_min), ("BDT", 240));
+        assert_eq!((now.shortcuts["add_task"].as_str(), now.shortcuts["add_expense"].as_str()), ("Ctrl+Alt+T", "Super+Shift+E"));
+        // The old way: saving a stale whole copy loses the other app's change.
+        bad.save(&s).unwrap();
+        assert_eq!(Settings::load(&s).unwrap().main_currency, "USD");
+        // Unknown fields (newer app version) survive an update.
+        s.put(COLLECTION, Some(SETTINGS_ID), &serde_json::json!({"main_currency":"BDT","future":7})).unwrap();
+        Settings::update(&s, |x| x.day_start_min = 60).unwrap();
+        let d = s.get(SETTINGS_ID).unwrap().unwrap().data;
+        assert_eq!((d["main_currency"].as_str(), d["future"].as_i64(), d["day_start_min"].as_i64()), (Some("BDT"), Some(7), Some(60)));
     }
 }

@@ -1,5 +1,10 @@
 # Decisions (newest first)
 
+## 2026-11-15 — Main currency and shared settings writes
+- Shared settings are written with `Settings::update(store, |s| …)`: reload, change only the fields this app owns, keep the rest. Fixes stale whole-object saves (e.g. Agenda writing an old USD over Hisab's BDT on desktop).
+- Hisab never silently falls back to USD: the last known main currency is kept (Rust state + kv, UI localStorage).
+- When the main currency changes, unused default accounts (no entries, zero opening balance) follow automatically; used accounts are only relabelled after the user says yes (numbers kept, not converted); accounts deliberately set to another currency are left alone. Category budgets are converted with saved rates.
+
 ## 2026-11-15 — Reflect 0.1
 - Amber accent (from the icon); other apps' colours appear only as small source markers.
 - Reflect computes its own numbers from the other apps' raw records (read-only), except Dusk's `dusk_nights` cache; screen-time aggregates are kept in memory and updated incrementally.

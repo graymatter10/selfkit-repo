@@ -42,6 +42,7 @@ export interface Trends {
 export interface Filter { q?: string; kind?: string; category?: string; account?: string; tag?: string; from?: string; to?: string; min?: number; max?: number; limit?: number }
 export interface SmsItem { id: string; sender: string; body: string; at: number; status: string; parsed: { kind: "expense" | "income"; amount: number; currency: string; merchant: string; hint: string } }
 export interface Prefs { theme?: "system" | "light" | "dark"; rank?: "manual" | "used"; account?: string; sms?: boolean; sms_since?: number; notify?: boolean }
+export interface MainChange { old: string; new: string; switched: string[]; used: { id: string; name: string; currency: string; entries: number }[] }
 export interface Settings { day_start_min: number; main_currency: string; theme: unknown; shortcuts: Record<string, string> }
 
 export type Coll = "accounts" | "categories" | "transactions" | "recurring" | "loans" | "goals" | "sms";
@@ -70,6 +71,9 @@ export const api = {
   prefsSet: (prefs: Prefs) => call<void>("prefs_set", { prefs }),
   settingsGet: () => call<Settings>("settings_get"),
   settingsSet: (settings: Settings) => call<void>("settings_set", { settings }),
+  /** Change the global main currency; returns used accounts still in the old one. */
+  mainCurrencySet: (code: string) => call<MainChange>("main_currency_set", { code }),
+  accountRelabel: (id: string, currency: string) => call<number>("account_relabel", { id, currency }),
   closeCapture: () => call<void>("close_capture"),
   reschedule: () => call<void>("reschedule"),
   devHooks: () => call<string | null>("dev_hooks"),

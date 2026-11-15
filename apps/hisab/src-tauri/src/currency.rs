@@ -11,7 +11,7 @@
 //! Docs: docs/apps/hisab/currencies.md.
 
 use selfkit_core::Store;
-use selfkit_core::settings::{COLLECTION, SETTINGS_ID};
+use selfkit_core::settings::{SETTINGS_ID, Settings};
 use serde_json::{Value, json};
 
 use crate::model::{self, ACCOUNTS, LOANS, R, RECURRING, TRANSACTIONS, f, s};
@@ -61,33 +61,57 @@ pub fn set_main(settings: &Store, store: &Store, code: &str, fallback_old: &str)
     let new = valid(code).ok_or_else(|| format!("Unknown currency “{code}”"))?;
     let old = read_main(settings).unwrap_or_else(|| fallback_old.to_string());
     // Change only main_currency; keep every other field exactly as stored.
-    let mut data = settings
-        .get(SETTINGS_ID)
-        .map_err(|e| e.to_string())?
-        .filter(|r| !r.deleted && r.data.is_object())
-        .map(|r| r.data)
-        .unwrap_or_else(|| serde_json::to_value(selfkit_core::settings::Settings::default()).unwrap_or_else(|_| json!({})));
-    data["main_currency"] = json!(new);
-    settings.put(COLLECTION, Some(SETTINGS_ID), &data).map_err(|e| e.to_string())?;
+    Settings::update(settings, |x| x.main_currency = new.clone()).map_err(|e| e.to_string())?;
 
     let mut out = MainChange { old: old.clone(), new: new.clone(), switched: vec![], used: vec![] };
-    if old == new {
+    // Picking the currency it already is (e.g. BDT was set before this fix,
+    // but "Cash" was seeded in USD): offer the accounts still in the shared
+    // first-start default; switch nothing on its own.
+    let same = old == new;
+    if !same {
+        convert_budgets(store, &old, &new)?;
+    }
+    let from = if same { Settings::default().main_currency } else { old };
+    if from == new {
         return Ok(out);
     }
     for a in model::all(store, ACCOUNTS)? {
-        if s(&a, "currency") != old {
+        if s(&a, "currency") != from {
             continue;
         }
         let id = s(&a, "id").to_string();
         let n = uses(store, &id)?;
-        if n == 0 && f(&a, "opening") == 0.0 {
+        if !same && n == 0 && f(&a, "opening") == 0.0 {
             put_currency(store, ACCOUNTS, &a, &new)?;
             out.switched.push(id);
         } else if !model::b(&a, "archived") {
-            out.used.push(json!({"id": id, "name": s(&a, "name"), "currency": old, "entries": n}));
+            out.used.push(json!({"id": id, "name": s(&a, "name"), "currency": from, "entries": n}));
         }
     }
     Ok(out)
+}
+
+/// Category budgets are stored in the main currency: convert them with the
+/// saved rates (left as they are when a rate is missing).
+fn convert_budgets(store: &Store, old: &str, new: &str) -> R<()> {
+    let fx = crate::fx::Fx::load(store)?;
+    let probe = fx.conv(1.0, old, new);
+    if !fx.missing.borrow().is_empty() || probe <= 0.0 {
+        return Ok(());
+    }
+    for c in model::all(store, model::CATEGORIES)? {
+        let b = f(&c, "budget");
+        if b > 0.0 {
+            let id = s(&c, "id").to_string();
+            let mut d = c.clone();
+            if let Some(m) = d.as_object_mut() {
+                m.remove("id");
+                m.insert("budget".into(), json!(model::round2(b * probe)));
+            }
+            store.put(model::CATEGORIES, Some(&id), &d).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 fn put_currency(store: &Store, coll: &str, v: &Value, cur: &str) -> R<()> {
@@ -126,7 +150,7 @@ pub fn relabel_account(store: &Store, id: &str, to: &str) -> R<usize> {
 mod tests {
     use super::*;
     use crate::model::{normalize, seed_defaults};
-    use selfkit_core::settings::{APP, Settings};
+    use selfkit_core::settings::{APP, COLLECTION};
 
     fn stores() -> (Store, Store) {
         (Store::open_in_memory(APP, "d", &[]).unwrap(), Store::open_in_memory("hisab", "d", model::MIGRATIONS).unwrap())
@@ -154,6 +178,17 @@ mod tests {
     }
 
     #[test]
+    fn budgets_follow_the_main_currency() {
+        let (set, st) = stores();
+        crate::fx::save_fetched(&st, "USD", &json!({"BDT": 120.0})).unwrap();
+        let food = st.put(model::CATEGORIES, None, &json!({"name":"Food","kind":"expense","budget":100})).unwrap().id;
+        set_main(&set, &st, "BDT", "USD").unwrap();
+        assert_eq!(f(&model::get(&st, &food).unwrap().unwrap(), "budget"), 12000.0);
+        set_main(&set, &st, "XYZ", "USD").unwrap(); // no rate: kept
+        assert_eq!(f(&model::get(&st, &food).unwrap().unwrap(), "budget"), 12000.0);
+    }
+
+    #[test]
     fn used_accounts_are_offered_not_changed() {
         let (set, st) = stores();
         seed_defaults(&st, "USD").unwrap();
@@ -170,6 +205,23 @@ mod tests {
         let txs = model::all(&st, TRANSACTIONS).unwrap();
         assert!(txs.iter().any(|t| s(t, "currency") == "BDT" && f(t, "amount") == 120.0));
         assert!(txs.iter().any(|t| s(t, "currency") == "EUR"));
+    }
+
+    /// Main was already BDT before this fix, but Cash was seeded in USD and
+    /// used: picking BDT again offers it (nothing changes by itself).
+    #[test]
+    fn repick_same_offers_default_currency_accounts() {
+        let (set, st) = stores();
+        seed_defaults(&st, "USD").unwrap();
+        set_main(&set, &st, "BDT", "USD").unwrap(); // unused Cash switches
+        let usd = st.put(ACCOUNTS, None, &json!({"name":"Old","currency":"USD","opening":0})).unwrap().id;
+        let empty = st.put(ACCOUNTS, None, &json!({"name":"Empty","currency":"USD","opening":0})).unwrap().id;
+        st.put(TRANSACTIONS, None, &json!({"kind":"expense","amount":5,"currency":"USD","account":usd,"date":"2026-11-15"})).unwrap();
+        let ch = set_main(&set, &st, "BDT", "USD").unwrap();
+        assert!(ch.switched.is_empty());
+        let ids: Vec<&str> = ch.used.iter().map(|u| s(u, "id")).collect();
+        assert!(ids.contains(&usd.as_str()) && ids.contains(&empty.as_str()));
+        assert_eq!(s(&model::get(&st, &empty).unwrap().unwrap(), "currency"), "USD", "not changed without asking");
     }
 
     /// A settings record core can't fully parse used to read as "USD".

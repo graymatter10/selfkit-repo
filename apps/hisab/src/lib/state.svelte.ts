@@ -101,7 +101,18 @@ export function resetDraft(keep: Partial<Draft> = {}) {
   writeDraft();
 }
 
-export const main = () => app.snap?.main ?? "USD";
+// Global main currency (shared setting, read by Rust). Before the first
+// snapshot, or if one fails, the last known value is used, never a silent USD
+// (USD is only the shared first-start default, when nothing was ever stored).
+const MAIN_KEY = "hisab.main";
+let lastMain = (() => {
+  try {
+    return localStorage.getItem(MAIN_KEY) || "";
+  } catch {
+    return "";
+  }
+})();
+export const main = () => app.snap?.main || lastMain || "USD";
 export const accounts = () => (app.snap?.accounts ?? []).filter((a) => !a.archived);
 export const accountById = (id: string): Account | undefined => app.snap?.accounts.find((a) => a.id === id);
 export const catById = (id: string): Category | undefined => app.snap?.categories.find((c) => c.id === id);
@@ -122,6 +133,12 @@ export function defaultAccount(): string {
 export async function refresh() {
   try {
     app.snap = await api.snapshot(app.month);
+    if (app.snap.main && app.snap.main !== lastMain) {
+      lastMain = app.snap.main;
+      try {
+        localStorage.setItem(MAIN_KEY, lastMain);
+      } catch {}
+    }
     app.rev++;
     app.error = "";
   } catch (e) {
@@ -148,6 +165,8 @@ export async function init() {
     app.error = String(e);
   }
   on("data-changed", () => refresh());
+  // Main currency changed (here, in the capture popup, or by another app).
+  on("settings-changed", () => refresh());
   on<Prefs>("prefs-changed", (p) => {
     app.prefs = p;
     applyTheme();

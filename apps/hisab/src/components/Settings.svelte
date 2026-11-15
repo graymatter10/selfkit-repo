@@ -2,7 +2,7 @@
   // Settings: theme, main currency, exchange rates (fetch + hand edit),
   // category ranking, loan reminders, SMS import, export, desktop shortcut.
   import { showToast } from "@selfkit/ui";
-  import { api, type Settings } from "../lib/api";
+  import { api, type MainChange, type Settings } from "../lib/api";
   import { isAndroid } from "../lib/native";
   import { fetchRates } from "../lib/rates";
   import { app, go, main, openSheet, refresh, setPrefs } from "../lib/state.svelte";
@@ -19,6 +19,28 @@
     try {
       await api.settingsSet(s);
       settings = s;
+    } catch (e) {
+      showToast(String(e));
+    }
+  }
+  // Main currency: the global default everywhere. Unused accounts that still
+  // had the old default switch with it (in Rust); used ones are offered here.
+  let stale = $state<MainChange["used"]>([]);
+  async function setMain(c: string) {
+    try {
+      const ch = await api.mainCurrencySet(c);
+      if (settings) settings = { ...settings, main_currency: ch.new };
+      stale = ch.used;
+      await refresh();
+    } catch (e) {
+      showToast(String(e));
+    }
+  }
+  async function relabel(id: string) {
+    try {
+      await api.accountRelabel(id, main());
+      stale = stale.filter((x) => x.id !== id);
+      await refresh();
     } catch (e) {
       showToast(String(e));
     }
@@ -103,7 +125,13 @@
   <p class="{h} pt-4">Currencies</p>
   <div class="card overflow-hidden">
     <div class={row}><span class="flex-1 text-[15px]">Main currency</span>
-      <button type="button" class="press text-[15px] font-semibold text-accent" onclick={() => settings && openSheet({ kind: "currency", value: settings.main_currency, onpick: (c) => settings && saveSettings({ ...settings, main_currency: c }) })}>{settings?.main_currency ?? main()}</button></div>
+      <button type="button" class="press text-[15px] font-semibold text-accent" onclick={() => openSheet({ kind: "currency", value: main(), onpick: setMain })}>{main()}</button></div>
+    {#each stale as a (a.id)}
+      <div class="border-b border-sep px-4 py-3 text-[14px]">
+        <p class="m-0 text-ink2">{a.name} is still in {a.currency} ({a.entries} {a.entries === 1 ? "entry" : "entries"}). Switch it to {main()}? The amounts keep their numbers.</p>
+        <div class="mt-2 flex gap-4"><button type="button" class="press font-semibold text-accent" onclick={() => relabel(a.id)}>Switch to {main()}</button><button type="button" class="press text-muted" onclick={() => (stale = stale.filter((x) => x.id !== a.id))}>Keep {a.currency}</button></div>
+      </div>
+    {/each}
     <div class={row}><span class="flex-1 text-[14px] text-muted">Rates updated {fetched}</span>
       <button type="button" disabled={fetching} class="press text-[14px] font-semibold text-accent disabled:opacity-40" onclick={refetch}>{fetching ? "Updating…" : "Update now"}</button></div>
     {#each used as c (c)}

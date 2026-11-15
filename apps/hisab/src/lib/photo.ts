@@ -17,7 +17,7 @@ export function pickImage(): Promise<File | null> {
       input.accept = "image/*";
       if (camera) input.setAttribute("capture", "environment");
       input.onchange = () => resolve(input.files?.[0] ?? null);
-      input.oncancel = () => resolve(null);
+      input.oncancel = () => (cleanCaptures(), resolve(null));
       input.click();
     };
     askPhotoSource({ gallery: () => open(false), camera: () => open(true), cancel: () => resolve(null) });
