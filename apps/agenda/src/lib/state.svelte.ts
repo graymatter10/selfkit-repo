@@ -290,6 +290,7 @@ export function init() {
   // A damaged data file was set aside at startup: say so once.
   guard(api.startupNotice()).then((n) => n && showToast(n, undefined, 15000));
   on("tasks-changed", () => refresh());
+  on("data-changed", () => refresh()); // a sync pass brought new data
   on("focus-changed", () => pollFocus());
   pollFocus();
   // While a session runs, check every second so the end is noticed on time.

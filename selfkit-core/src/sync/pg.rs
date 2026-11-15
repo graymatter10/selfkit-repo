@@ -1,10 +1,16 @@
 //! Postgres [`Remote`] — standard SQL only, works on any Postgres ≥ 12
-//! (Neon, Aiven, self-hosted). TLS via rustls when the server offers it /
-//! `sslmode=require` is set.
+//! (Neon, Aiven, self-hosted). TLS via rustls (webpki roots, hostname checked).
+//! Security: TLS is *required* for every server that isn't on this machine,
+//! whatever the URL says (`sslmode` missing/`prefer` → `require`; `disable` is
+//! refused), so nobody on the network can strip TLS and ask for the password in
+//! clear. Only loopback/Unix-socket servers (the local Docker fakes) may run
+//! without TLS. See docs/security.md.
 
+use std::str::FromStr;
 use std::sync::Arc;
 
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::config::{Host, SslMode};
+use tokio_postgres::{Client, Config, NoTls};
 
 use super::{Remote, RemoteRecord};
 use crate::{Error, Result};
@@ -46,11 +52,44 @@ fn tls() -> tokio_postgres_rustls::MakeRustlsConnect {
     tokio_postgres_rustls::MakeRustlsConnect::new(cfg)
 }
 
+fn is_local_host(h: &Host) -> bool {
+    match h {
+        Host::Tcp(name) => {
+            let n = name.trim_start_matches('[').trim_end_matches(']');
+            n.eq_ignore_ascii_case("localhost") || n.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+        }
+        #[cfg(unix)]
+        Host::Unix(_) => true,
+    }
+}
+
+/// Parse a connection string and apply the TLS policy (see module docs).
+pub fn secure_config(url: &str) -> Result<Config> {
+    let mut cfg = Config::from_str(url).map_err(err)?;
+    let local = !cfg.get_hosts().is_empty() && cfg.get_hosts().iter().all(is_local_host);
+    match cfg.get_ssl_mode() {
+        SslMode::Disable if !local => {
+            return Err(Error::Remote(
+                "insecure postgres: sslmode=disable is only allowed for a server on this machine; remove it (TLS is required)".into(),
+            ));
+        }
+        SslMode::Disable | SslMode::Require => {}
+        _ if local => {}
+        // Prefer (the default) would silently fall back to plaintext if a man in the middle says "no TLS".
+        _ => {
+            cfg.ssl_mode(SslMode::Require);
+        }
+    }
+    Ok(cfg)
+}
+
 impl PgRemote {
-    /// Connect with a standard connection string. `sslmode=disable` uses plain TCP.
+    /// Connect with a standard connection string (URL or key=value). TLS is required for
+    /// non-local servers; `sslmode=disable` (plain TCP) only works for loopback/Unix sockets.
     pub async fn connect(url: &str) -> Result<Self> {
-        let client = if url.contains("sslmode=disable") {
-            let (c, conn) = tokio_postgres::connect(url, NoTls).await.map_err(err)?;
+        let cfg = secure_config(url)?;
+        let client = if cfg.get_ssl_mode() == SslMode::Disable {
+            let (c, conn) = cfg.connect(NoTls).await.map_err(err)?;
             tokio::spawn(async move {
                 if let Err(e) = conn.await {
                     tracing::warn!("postgres connection: {e}");
@@ -58,7 +97,7 @@ impl PgRemote {
             });
             c
         } else {
-            let (c, conn) = tokio_postgres::connect(url, tls()).await.map_err(err)?;
+            let (c, conn) = cfg.connect(tls()).await.map_err(err)?;
             tokio::spawn(async move {
                 if let Err(e) = conn.await {
                     tracing::warn!("postgres connection: {e}");
@@ -123,6 +162,13 @@ impl PgRemote {
     pub async fn server_schema_version(&self) -> Result<i32> {
         let r = self.client.query_one("SELECT COALESCE(MAX(version), 0) FROM sk_schema", &[]).await.map_err(err)?;
         Ok(r.get(0))
+    }
+
+    /// Delete every synced row (all apps). Used once when the user moves from the
+    /// public test key to their own key: the rows can't be read with the new key,
+    /// and every device re-uploads its data after unlocking.
+    pub async fn wipe_records(&self) -> Result<u64> {
+        self.client.execute("DELETE FROM sk_records", &[]).await.map_err(err)
     }
 
     /// Database size in bytes (health screen warns at 80% of the plan limit).
@@ -199,6 +245,57 @@ mod tests {
     use super::*;
     use crate::{Store, crypto::SecretKey, sync::sync_once};
     use serde_json::json;
+
+    #[test]
+    fn tls_policy() {
+        let mode = |u: &str| secure_config(u).map(|c| c.get_ssl_mode());
+        // Remote servers: TLS required, whatever the URL asks for.
+        assert_eq!(mode("postgres://u:p@db.example.com/x").unwrap(), SslMode::Require);
+        assert_eq!(mode("postgres://u:p@db.example.com/x?sslmode=prefer").unwrap(), SslMode::Require);
+        assert_eq!(mode("postgres://u:p@db.example.com/x?sslmode=require").unwrap(), SslMode::Require);
+        assert!(mode("postgres://u:p@db.example.com/x?sslmode=disable").is_err());
+        assert!(mode("host=10.0.0.5 user=u sslmode=disable").is_err());
+        // A mixed host list counts as remote.
+        assert!(mode("host=localhost,db.example.com user=u sslmode=disable").is_err());
+        // Local dev servers (Docker fakes) may run without TLS.
+        assert_eq!(mode("postgres://u:p@127.0.0.1:55432/x").unwrap(), SslMode::Prefer);
+        assert_eq!(mode("postgres://u:p@localhost/x?sslmode=disable").unwrap(), SslMode::Disable);
+        assert_eq!(mode("host=::1 user=u sslmode=disable").unwrap(), SslMode::Disable);
+    }
+
+    /// Attack: a man in the middle answers "no TLS" to the SSLRequest and then asks for
+    /// the password in clear. The client must abort before sending any credentials.
+    #[tokio::test]
+    async fn tls_strip_mitm_gets_no_password() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = l.local_addr().unwrap().port();
+        let mitm = tokio::spawn(async move {
+            let (mut s, _) = l.accept().await.unwrap();
+            let mut got = Vec::new();
+            let mut req = [0u8; 8];
+            if s.read_exact(&mut req).await.is_ok() {
+                got.extend_from_slice(&req);
+                let _ = s.write_all(b"N").await; // "this server has no TLS"
+                // Startup message would follow; ask for a cleartext password.
+                let mut buf = [0u8; 4096];
+                if let Ok(Ok(n)) = tokio::time::timeout(std::time::Duration::from_secs(2), s.read(&mut buf)).await {
+                    got.extend_from_slice(&buf[..n]);
+                    let _ = s.write_all(&[b'R', 0, 0, 0, 8, 0, 0, 0, 3]).await;
+                    if let Ok(Ok(n)) = tokio::time::timeout(std::time::Duration::from_secs(2), s.read(&mut buf)).await {
+                        got.extend_from_slice(&buf[..n]);
+                    }
+                }
+            }
+            got
+        });
+        // The URL names a remote host; hostaddr routes it to our fake server.
+        let url = format!("host=db.example.com hostaddr=127.0.0.1 port={port} user=u password=hunter2-secret dbname=d connect_timeout=5");
+        assert!(PgRemote::connect(&url).await.is_err());
+        let got = mitm.await.unwrap();
+        assert!(!got.windows(7).any(|w| w == b"hunter2"), "password leaked to the MITM");
+        assert_eq!(got.len(), 8, "only the SSLRequest may be sent before TLS is up (no startup message in clear)");
+    }
 
     /// Needs Postgres: `source dev/test.env && cargo test -- --include-ignored`.
     #[tokio::test]

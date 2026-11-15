@@ -2,6 +2,15 @@
 
 App-side sync, shared by every app (and by a future companion app). Status: **built and tested; integrated in Chrono, Dusk, Agenda, Hisab, Reflect** (2026-11-15). Android glue: [android-plugins/selfkit-sync](../../android-plugins/selfkit-sync/README.md). UI: Sync settings section + conflict screen, mockups in the wave-2 design sheets.
 
+## Safety defaults (2026-11-15)
+- **Sync is off after install or upgrade** (`SyncSettings.enabled = false`): no pass, no background job, no LAN, and Sync now does nothing until the user taps **Turn on sync** (or the "Sync this app" switch) on the Sync page. Reason: every test build shares the public test key, so an installed app would otherwise sync real data with any test-key device on the Wi-Fi.
+- With the test key active, the page shows a red "Test key — not private" banner and turning sync on asks a second time ("Set a passphrase" / "Turn on anyway").
+
+## Keys across devices
+- Setup (`setup_encryption`) writes `keys.json` (the data key wrapped by the passphrase and by the recovery key; never the raw key). Every server pass publishes it to `sk_meta.keyfile` (and to S3 `bundles/_keys/keys.json` when S3 is set, the agent's place) when it changed, so `change_passphrase` reaches the other devices too.
+- `unlock` / `unlock_recovery` fetch the newest published `keys.json` (server meta, else S3, else the local copy). Over LAN a locked device can't get it (the LAN channel itself needs the key), so a new device needs the server once, or the key file copied.
+- **From the test key to your own key:** setting up encryption on a device that used the test key resets its sync state (everything is re-uploaded with the new key) and marks `sync/rekey-from-test`. Its next server pass sees the server's key check is the test key's, deletes all `sk_records` rows (`PgRemote::wipe_records`) and claims the server with the new key. Other devices then report "encryption key doesn't match" → Unlock with the passphrase → they reset and re-upload their data. Photos are re-uploaded too (uploaded marks cleared). On Android each app has its own secret store, so each app is unlocked once.
+
 ## What one sync pass does
 1. Gets the data key: secure storage → in test builds, the built-in **test key** (no passphrase prompts). Without a key → "Sync is locked".
 2. Opens the app's DB and the shared `settings` DB (`<data_dir>/<app>.db`, `settings.db`).
@@ -17,7 +26,7 @@ A pass is guarded by an in-process set plus a lock file `<data_dir>/sync/<app>.l
 ```rust
 let cfg = AppSyncConfig::new("agenda", data_dir, secrets);   // + photos, test_key, default_owner, device_name, test_server
 let sync = AppSync::new(cfg)?;
-sync.status().await?            // SyncStatus { headline, owner, unlocked, test_key, last_transport, last_peers, last_error, pending, conflicts, peers, next_auto_at, ... }
+sync.status().await?            // SyncStatus { headline, owner, unlocked, test_key, last_transport, last_peers, last_error, pending (this device's own unsent edits), conflicts, peers, next_auto_at, ... }
 sync.sync_now(Trigger::Manual | Open | Background).await   // SyncOutcome { ok, ran, transport, peers, report, error, note, ... }
 sync.settings() / sync.set_settings(&SyncSettings)          // owner, transport, auto_sync, background_minutes, lan_enabled, lan_peers, device_name
 sync.server_config() / set_server(Some(&ServerConfig)) / test_server(&cfg).await   // Err(plain sentence)
@@ -33,7 +42,8 @@ Headlines: "Synced locally with Linux PC · 2 min ago", "Synced via server · 5 
 - Commands added to each app's handler list (no plugin permissions needed): `sync_status` (status + settings + platform), `sync_now`, `sync_settings_set`, `sync_server_get` (no secrets) / `sync_server_set` / `sync_server_test` (empty password = keep the stored one), `sync_encryption_setup`, `sync_unlock` (passphrase or recovery key), `sync_change_passphrase`, `sync_conflicts`, `sync_resolve`, `sync_log`. After a pass that pulled data, `data-changed` is emitted.
 - Shared UI `ui/src/sync/`: `SyncSettings.svelte` (Sync page), `Conflicts.svelte` (conflict screen), `api.ts`. Neutral styles with `k-` prefixed classes; each app maps its tokens with `.sks, .skc { --sync-accent-soft, --sync-on-accent, --sync-surface, --sync-sunk, --sync-line, --sync-ink, --sync-muted, --sync-danger, --sync-ok, --sync-radius }` (defaults fall back to `--accent`, `--surface`, `--line`, `--ink`, `--muted`, `--danger`).
 - Each app has a Cargo feature `sync-test-key` (default on in test builds) → `selfkit-appsync/test-key`.
-- Desktop: the test key is used when the keychain has no data key or cannot be read.
+- Desktop: the test key is used when the keychain has no data key or cannot be read, only while no `keys.json` exists.
+- Every app registers `tauri_cmds::nav_guard()` (webviews stay on the app's own origins; the Android JS bridges are never handed to an outside page).
 
 ## Read-only mirrors (Reflect on Android)
 `SelfkitMirror` (Kotlin) pulls `content://com.selfkit.<app>.provider/changes` page by page and the JNI methods `mirror_cursor` / `mirror_apply` store the records in `<data_dir>/<app>.db` with `apply_peer` (cursor in kv `mirror.cursor`). Enabled per app with manifest meta-data `com.selfkit.sync.MIRROR` (Reflect: `chrono,hisab,agenda,dusk`); runs on init, in the background job, and from the page via `window.SelfkitSync.mirror(apps)`. Never touches the app's own DB.
@@ -48,7 +58,7 @@ Headlines: "Synced locally with Linux PC · 2 min ago", "Synced via server · 5 
 - Photos: records of collection `photos` with a `file` field; bytes at `<data_dir>/<app>-photos/<file>` (Agenda, Hisab, Chrono already do this). S3 key `blobs/<record id>`, encrypted (STREAM). Local kv `appsync.blob.up.<id>` marks uploaded/downloaded files.
 
 ## Test key
-Feature `test-key` (or `AppSyncConfig.test_key = true`): when no real key is stored, the data key is SHA-256 of a public constant. All test builds share it, so they sync with each other without prompts. It is **not private**: status shows `test_key: true`, and a real `setup_encryption` replaces it. Never ship a release build with it for real data. `test_server` can carry a dev server for the same builds.
+Feature `test-key` (or `AppSyncConfig.test_key = true`): when no real key is stored, the data key is SHA-256 of a public constant. All test builds share it, so they sync with each other without prompts. It is **not private**: status shows `test_key: true` (red banner on the Sync page), and a real `setup_encryption` replaces it. Builds made by the release workflows (`SELFKIT_RELEASE=1` at compile time, `release_build()`) never use it, and a device that has `keys.json` never falls back to it (unreadable secret store = Locked). Locally built / `ci-apk.sh` APKs still have it. See [../security.md](../security.md#test-key-test-builds-only). `test_server` can carry a dev server for the same builds.
 
 ## Plain-language errors
 `explain(&Error)`: cannot reach server, timeout, refused password, missing database, storage refused key / missing bucket, certificate problem, wrong encryption key (server key check or LAN handshake), newer server schema, different Selfkit version on the LAN peer, locked, nothing configured, no PC found, busy. Technical detail goes to `SyncOutcome.detail` and the log.

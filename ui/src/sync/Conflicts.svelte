@@ -53,6 +53,9 @@
     const d = (c.a.deleted ? c.b.data : c.a.data) as Record<string, unknown>;
     return String(d.title ?? d.name ?? d.note ?? d.night ?? d.day ?? d.person ?? label(c.collection));
   };
+  /** Timestamps (`*_at`, UTC ms) as dates; everything else as text. */
+  const fmt = (key: string, v: unknown) =>
+    typeof v === "number" && /(^|_)at$/.test(key) && v > 1e11 ? new Date(v).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : show(v);
   const kindName = (c: ConflictView) => names[c.collection] ?? `${label(c.store)} · ${label(c.collection)}`;
   function toggleLine(key: string, i: number) {
     const s = new Set(lines[key] ?? []);
@@ -82,7 +85,7 @@
 {#snippet tile(side: "a" | "b", key: string, v: unknown, gone: boolean)}
   <button type="button" class="k-pick k-{side}" class:k-sel={picks[key] === side} aria-pressed={picks[key] === side} onclick={() => (picks[key] = side)}>
     <span class="k-tag">{side.toUpperCase()}</span>
-    <span class="k-v" class:k-gone>{gone ? "Removed" : show(v)}</span>
+    <span class="k-v" class:k-gone={gone}>{gone ? "Removed" : fmt(key, v)}</span>
     <span class="k-chk">{#if picks[key] === side}{@render check()}{/if}</span>
   </button>
 {/snippet}
@@ -139,7 +142,7 @@
   {/if}
 {/snippet}
 
-<div class="skc" class:k-phone>
+<div class="skc" class:k-phone={phone}>
   {#if !loaded}
     <p class="k-empty">Loading…</p>
   {:else if !cur}
@@ -201,6 +204,7 @@
   .k-scroll { flex: 1; overflow: auto; padding: 4px 16px 20px; min-height: 0; }
   .k-bar { display: flex; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--line-c); background: var(--surf); align-items: center; }
   .k-phone .k-bar .k-btn { flex: 1; height: 46px; }
+  .k-phone .k-bar { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
   .k-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 12px; color: var(--mut); font-size: 13px; }
   .k-kind { color: var(--mut); font-size: 12.5px; margin-top: 4px; }
   .k-title { font-size: 18px; font-weight: 650; margin: 0 0 12px; overflow-wrap: anywhere; }

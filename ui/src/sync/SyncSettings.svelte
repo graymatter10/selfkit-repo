@@ -13,7 +13,7 @@
   let now = $state(Date.now());
   let busy = $state(false);
   let flash = $state<string | null>(null);
-  let sheet = $state<"" | "server" | "encrypt" | "unlock" | "passphrase" | "log">("");
+  let sheet = $state<"" | "server" | "encrypt" | "unlock" | "passphrase" | "log" | "enable">("");
   let log = $state<SyncOutcome[]>([]);
   let battery = $state(false);
   // forms
@@ -109,6 +109,11 @@
     if (pass1 !== pass2) return void (err = "The two passphrases differ.");
     try { await syncApi.changePassphrase(oldPass, pass1); sheet = ""; flash = "Passphrase changed."; } catch (e) { err = String(e); }
   }
+  async function enableSync() {
+    sheet = "";
+    await saveSettings({ enabled: true });
+    await syncNow();
+  }
   async function openLog() { log = await syncApi.log(); sheet = "log"; }
   const changes = (o: SyncOutcome) => o.report.pulled + o.report.pushed + o.report.photos_up + o.report.photos_down;
   const when = (t: number) => new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -135,11 +140,19 @@
 {/snippet}
 
 {#snippet toggle(on: boolean, lab: string, fn: () => void)}
-  <button type="button" class="k-tg" class:k-on role="switch" aria-checked={on} aria-label={lab} onclick={fn}><span></span></button>
+  <button type="button" class="k-tg" class:k-on={on} role="switch" aria-checked={on} aria-label={lab} onclick={fn}><span></span></button>
 {/snippet}
 
-<div class="sks" class:k-phone>
+<div class="sks" class:k-phone={phone}>
   {#if st}
+    {#if st.test_key}
+      <!-- Security (docs/security.md): the built-in test key is public. Anyone with a test build,
+           on the same Wi-Fi or with access to the server, can read and change data synced with it. -->
+      <div class="k-testkey" role="alert">
+        <strong>Test key — not private.</strong>
+        Set your own passphrase (Encryption, below) before syncing real data. With the public test key, anyone with a Selfkit test build on the same network or with access to your server can read and change synced data.
+      </div>
+    {/if}
     <div class="k-cols">
       <div class="k-col">
         <div class="k-card k-status">
@@ -147,7 +160,10 @@
             <div class="k-ic" class:k-spin={kind === "sync"}>{@render icon(kind)}</div>
             <div class="k-grow"><div class="k-h">{head.title}</div>{#if head.sub}<div class="k-when">{head.sub}</div>{/if}</div>
           </div>
-          {#if st.owner !== "companion"}
+          {#if !st.settings.enabled && st.owner !== "companion"}
+            <p class="k-note">Keeps this app's data the same on your devices: directly on the same Wi-Fi, or through your own server.</p>
+            <div class="k-acts"><button type="button" class="k-btn k-pri" onclick={() => (st!.test_key ? (sheet = "enable") : enableSync())}>Turn on sync</button></div>
+          {:else if st.owner !== "companion"}
             <div class="k-acts">
               <button type="button" class="k-btn k-pri" disabled={busy || !st.unlocked} onclick={syncNow}><span class:k-spin={busy}>{@render icon("sync", 18)}</span> {busy ? "Syncing…" : "Sync now"}</button>
               {#if nextIn && st.settings.auto_sync && st.owner === "app"}<span class="k-next">Next automatic sync in about {nextIn} min</span>
@@ -156,7 +172,6 @@
           {/if}
           {#if st.last_note && !st.last_error}<p class="k-note">{st.last_note}</p>{/if}
           {#if flash}<p class="k-note">{flash}</p>{/if}
-          {#if st.test_key}<p class="k-note k-warn">Test key in use: fine for testing, but not private. Set up encryption for real data.</p>{/if}
         </div>
 
         {#if st.conflicts > 0}
@@ -241,8 +256,10 @@
         <section>
           <h3>Details</h3>
           <div class="k-card k-list">
+            <div class="k-row"><div class="k-grow"><div class="k-t">Sync this app</div><div class="k-s">{st.settings.enabled ? "On: Sync now, on open and in the background" : "Off: nothing leaves this device"}</div></div>
+              {@render toggle(st.settings.enabled, "Sync this app", () => (st!.settings.enabled ? saveSettings({ enabled: false }) : st!.test_key ? (sheet = "enable") : enableSync()))}</div>
             <button type="button" class="k-row k-link k-plain" onclick={openLog}><div class="k-grow"><div class="k-t">Sync log</div><div class="k-s">Last 20 runs, with errors in plain words</div></div>{@render icon("chev", 18)}</button>
-            <div class="k-row"><div class="k-grow"><div class="k-t">This device</div><div class="k-s">{st.device_name}{st.pending ? ` · ${st.pending} change${st.pending === 1 ? "" : "s"} not sent yet` : ""}</div></div></div>
+            <div class="k-row"><div class="k-grow"><div class="k-t">This device</div><div class="k-s">{st.device_name}{st.pending && st.server_configured ? ` · ${st.pending} change${st.pending === 1 ? "" : "s"} not on the server yet` : ""}</div></div></div>
           </div>
         </section>
       </div>
@@ -297,6 +314,10 @@
           <label>Repeat it<input type="password" bind:value={pass2} autocomplete="new-password" /></label>
           {#if err}<p class="k-msg k-bad">{err}</p>{/if}
           <div class="k-dacts"><button type="button" class="k-btn k-pri" onclick={changePass}>Change</button></div>
+        {:else if sheet === "enable"}
+          <div class="k-dh"><h4>Turn on sync with the test key?</h4><button type="button" class="k-x" aria-label="Close" onclick={() => (sheet = "")}>{@render icon("x")}</button></div>
+          <p class="k-hint">This build uses a public test key. Anyone with a Selfkit test build on this Wi-Fi, or with access to your server, could read and change this app's data. Set your own passphrase first if this is real data.</p>
+          <div class="k-dacts"><button type="button" class="k-btn" onclick={openEncrypt}>Set a passphrase</button><button type="button" class="k-btn k-pri" onclick={enableSync}>Turn on anyway</button></div>
         {:else if sheet === "log"}
           <div class="k-dh"><h4>Sync log</h4><button type="button" class="k-x" aria-label="Close" onclick={() => (sheet = "")}>{@render icon("x")}</button></div>
           <div class="k-log">
@@ -354,6 +375,8 @@
   .k-acts { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
   .k-next { color: var(--mut); font-size: 12.5px; flex: 1; min-width: 140px; }
   .k-note { margin: 12px 0 0; font-size: 13px; color: var(--mut); }
+  .k-testkey { margin: 0 0 14px; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--bad); color: var(--bad); font-size: 13.5px; line-height: 1.45; }
+  .k-testkey strong { display: block; font-size: 15px; margin-bottom: 2px; }
   .k-note.k-warn { padding: 10px 12px; border-radius: 12px; background: var(--sunk); color: var(--ink-c); }
   .k-btn { height: 44px; padding: 0 16px; border-radius: 12px; font: inherit; font-weight: 600; border: 1px solid var(--line-c); background: var(--surf); color: var(--ink-c); display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; cursor: pointer; }
   .k-btn.k-pri { background: var(--a); color: var(--on-a); border-color: transparent; }

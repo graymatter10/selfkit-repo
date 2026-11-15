@@ -58,6 +58,7 @@ async fn main() -> ExitCode {
     }
     let mut st = sync.settings();
     st.owner = SyncOwner::App;
+    st.enabled = true;
     if let Some(m) = one("--mode") {
         st.transport = match m.as_str() {
             "lan" => TransportMode::LanOnly,

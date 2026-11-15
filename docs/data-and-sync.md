@@ -25,7 +25,7 @@ sk_records(id TEXT PK, collection TEXT, updated_at BIGINT, device_id TEXT,
            ciphertext BYTEA, rev BIGINT  -- from sequence sk_rev_seq)
 sk_schema(version INT)
 ```
-Ciphertext = XChaCha20-Poly1305 of `{data, tz_offset, deleted, hist}` with AAD `id|collection`. Server migrations: `sync::pg::MIGRATIONS`.
+Ciphertext = XChaCha20-Poly1305 of `{data, tz_offset, deleted, hist, updated_at, device_id}` with AAD `app|id|collection`; the authenticated `updated_at`/`device_id` win over the clear columns (older rows without them fall back). TLS is required for non-local servers (see [security.md](security.md)). Server migrations: `sync::pg::MIGRATIONS`.
 
 ## Sync protocol
 1. **Push:** for each dirty row: `UPDATE … WHERE id=$1 AND rev=$base_rev` (or `INSERT … ON CONFLICT DO NOTHING` when `base_rev=0`). Success → `base_rev = new rev`, `dirty = 0`. Zero rows → conflict.
@@ -54,6 +54,7 @@ Every app syncs through one shared module, [selfkit-appsync](components/selfkit-
 ## Conflicts
 - Two new items on different devices: different UUIDs, both kept.
 - Same item edited on two devices: `conflicts` row; UI offers **Keep A**, **Keep B**, **Merge field by field** (`conflict::merge_fields`), long text gets a line diff (`conflict::line_diff`).
+- Records with per-field clocks (`"_clock": {field: UTC ms}`, kept by `settings::stamp_fields`; the shared settings record uses it) merge automatically: each field comes from the device that changed it last (`Store::field_merge`), so e.g. currency set on one phone and day start on another never conflict. Only a field changed on both sides at the same instant, or a deletion, becomes a normal conflict.
 - Edited on one device, deleted on the other: same screen (`delete_vs_edit`); Keep A over a delete brings the item back everywhere.
 - A conflict that was settled on another device (the incoming version's history contains the other side) is cleared automatically (`Store::clear_superseded_conflict`).
 

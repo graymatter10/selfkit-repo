@@ -40,8 +40,32 @@ fn blob_path(id: &str) -> Result<String> {
     Ok(format!("blobs/{id}"))
 }
 
+/// Security: `http://` (no TLS) is only accepted for a server on this machine (the
+/// local Docker fake). Anything else must be `https://`, so requests, signatures and
+/// encrypted blobs can't be read, replayed or swapped on the network. See docs/security.md.
+pub fn check_endpoint(endpoint: &str) -> Result<()> {
+    let e = endpoint.trim();
+    let Some(rest) = e.get(..7).filter(|p| p.eq_ignore_ascii_case("http://")).map(|_| &e[7..]) else {
+        return Ok(());
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let authority = authority.rsplit_once('@').map(|(_, h)| h).unwrap_or(authority);
+    let host = if let Some(v6) = authority.strip_prefix('[') {
+        v6.split(']').next().unwrap_or("")
+    } else {
+        authority.split(':').next().unwrap_or("")
+    };
+    let local = host.eq_ignore_ascii_case("localhost") || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback());
+    if local {
+        Ok(())
+    } else {
+        Err(Error::Remote(format!("insecure storage endpoint: use https:// for {host} (http:// is only allowed for a server on this machine)")))
+    }
+}
+
 impl BlobStore {
     pub fn new(cfg: S3Config) -> Result<Self> {
+        check_endpoint(&cfg.endpoint)?;
         let bucket = Self::bucket(&cfg)?;
         Ok(Self { bucket, cfg })
     }
@@ -177,6 +201,20 @@ mod tests {
             secret_key: v("SELFKIT_TEST_S3_SECRET"),
             path_style: true,
         }
+    }
+
+    #[test]
+    fn plain_http_only_for_local_endpoints() {
+        for ok in ["https://s3.eu-central-003.backblazeb2.com", "http://127.0.0.1:59000", "http://localhost:9000/", "http://[::1]:9000", "HTTPS://x.example"] {
+            assert!(check_endpoint(ok).is_ok(), "{ok}");
+        }
+        for bad in ["http://s3.example.com", "HTTP://192.168.1.10:9000", "http://localhost.evil.com", "http://user@10.0.0.2:9000/b", "http://127.0.0.1.nip.io"] {
+            assert!(check_endpoint(bad).is_err(), "{bad}");
+        }
+        let mut c = S3Config { endpoint: "http://s3.example.com".into(), bucket: "b".into(), region: "r".into(), access_key: "a".into(), secret_key: "s".into(), path_style: true };
+        assert!(BlobStore::new(c.clone()).is_err());
+        c.endpoint = "https://s3.example.com".into();
+        assert!(BlobStore::new(c).is_ok());
     }
 
     #[tokio::test]

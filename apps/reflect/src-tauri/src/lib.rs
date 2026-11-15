@@ -278,6 +278,7 @@ fn dev_hooks() -> Option<String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(selfkit_appsync::tauri_cmds::nav_guard())
         .setup(|app| {
             #[cfg(mobile)]
             paths::set_data_dir(app.path().app_data_dir()?);

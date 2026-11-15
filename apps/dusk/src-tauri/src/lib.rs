@@ -435,7 +435,7 @@ fn startup_notice(state: State<AppState>) -> Option<String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().plugin(selfkit_appsync::tauri_cmds::nav_guard());
     // Desktop: one instance (a second launch focuses the first, or opens its
     // popup for --rate), so reminders don't fire twice and the shortcut stays
     // registered. Skipped when SELFKIT_DATA_DIR is set (tests run several apps on

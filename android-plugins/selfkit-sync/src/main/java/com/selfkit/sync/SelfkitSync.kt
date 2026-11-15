@@ -117,6 +117,30 @@ object SelfkitSync {
         return !isIgnoringBatteryOptimizations(ctx) && listOf("oppo", "realme", "oneplus", "vivo", "iqoo", "xiaomi", "huawei", "honor").any { m.contains(it) }
     }
 
+    /**
+     * Open the best screen for "Allow background activity". Vendor screens are often
+     * present but not exported (SecurityException), so each candidate is tried in turn.
+     */
+    @SuppressLint("BatteryLife")
+    fun openBatterySettings(ctx: Context): Boolean {
+        val pkg = ctx.packageName
+        val candidates = listOf(
+            Intent().setComponent(ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity")),
+            Intent().setComponent(ComponentName("com.oplus.battery", "com.oplus.powermanager.fuelgaue.PowerUsageModelActivity")),
+            Intent().setComponent(ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")),
+            Intent().setComponent(ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager")),
+            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg")),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg")),
+        )
+        for (i in candidates) {
+            try {
+                ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return true
+            } catch (t: Throwable) { /* not there or not allowed: next */ }
+        }
+        return false
+    }
+
     /** Best screen for "Allow background activity": vendor screen if it exists, else Android's own. */
     @SuppressLint("BatteryLife")
     fun batteryIntent(ctx: Context): Intent {

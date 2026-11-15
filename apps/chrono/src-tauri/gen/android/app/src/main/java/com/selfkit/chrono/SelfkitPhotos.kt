@@ -83,7 +83,8 @@ class SelfkitPhotos(private val act: Activity, private val appName: String) {
         @Suppress("DEPRECATION")
         val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Selfkit/$appName")
         dir.mkdirs()
-        val f = File(dir, name)
+        // Only a bare file name: "../x" must not escape the folder (name comes from the page).
+        val f = File(dir, File(name).name.ifEmpty { "photo" })
         f.writeBytes(bytes)
         MediaScannerConnection.scanFile(act, arrayOf(f.path), arrayOf(mime), null)
       }

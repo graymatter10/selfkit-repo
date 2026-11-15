@@ -45,6 +45,7 @@ fn dev(app: &str, name: &str, key: &SecretKey, server: Option<&ServerConfig>, mo
     let mut s = sync.settings();
     s.transport = mode;
     s.lan_discovery_ms = 0; // CI runners: no broadcast; peers by address
+    s.enabled = true; // sync is off by default after install
     s.lan_peers = peers.iter().map(|p| p.to_string()).collect();
     sync.set_settings(&s).unwrap();
     Dev { sync, _dir: dir, app: app.into(), secrets }
@@ -325,7 +326,8 @@ async fn nothing_configured_and_owner_rules() {
     assert!(!o.ok);
     assert!(o.error.as_deref().unwrap().starts_with("Nothing to sync with yet"), "{o:?}");
     let st = a.sync.status().await.unwrap();
-    assert!(st.headline.starts_with("Waiting to sync · 1 change"), "{}", st.headline);
+    // No server: local changes aren't "waiting for the server", just no connection.
+    assert_eq!(st.headline, "Waiting to sync · no connection");
 
     // Scheduler hook: open only after a minute, background after ~15 min.
     assert!(a.sync.due(Trigger::Manual));
@@ -351,6 +353,13 @@ async fn test_key_unlocks_without_prompt_and_locked_otherwise() {
     cfg.test_key = false;
     cfg.default_owner = SyncOwner::App;
     let s = AppSync::new(cfg.clone()).unwrap();
+    // Off by default: nothing runs until the user turns sync on.
+    let o = s.sync_now(Trigger::Manual).await;
+    assert!(!o.ran && o.note.as_deref() == Some("Sync is off. Turn it on in Sync settings."));
+    assert!(!s.schedule().enabled);
+    let mut st = s.settings();
+    st.enabled = true;
+    s.set_settings(&st).unwrap();
     assert!(s.data_key().unwrap().is_none());
     let o = s.sync_now(Trigger::Manual).await;
     assert!(o.error.unwrap().starts_with("Sync is locked"));

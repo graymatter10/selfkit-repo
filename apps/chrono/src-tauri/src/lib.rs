@@ -451,7 +451,7 @@ fn sync_handle() -> selfkit_core::Result<selfkit_appsync::tauri_cmds::SyncHandle
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
+    let builder = tauri::Builder::default().plugin(selfkit_appsync::tauri_cmds::nav_guard()).plugin(tauri_plugin_notification::init());
     #[cfg(target_os = "android")]
     let builder = builder.plugin(mobile::plugin());
     builder

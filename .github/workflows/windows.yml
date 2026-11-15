@@ -12,12 +12,15 @@ on:
       test: { description: "Run the installer tests", type: boolean, default: true }
   workflow_call:
     inputs:
+      # release.yml sets this: the build ignores the sync test key (docs/security.md).
+      release: { type: boolean, default: false }
       test: { type: boolean, default: true }
       version: { type: string, default: "" }
 concurrency:
   group: windows-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 env:
+  SELFKIT_RELEASE: ${{ inputs.release && '1' || '0' }}
   CARGO_TARGET_DIR: ${{ github.workspace }}/target
   CARGO_BUILD_JOBS: "4"
 jobs:

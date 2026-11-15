@@ -72,7 +72,16 @@ impl RecoveryKey {
     }
 }
 
+/// keys.json can come from the server/S3, so its KDF parameters are untrusted input:
+/// a tampered file must not make a phone allocate gigabytes or spin for hours.
+const MAX_M_KIB: u32 = 256 * 1024;
+const MAX_T: u32 = 16;
+const MAX_P: u32 = 8;
+
 fn argon_kek(pass: &str, salt: &[u8], p: KdfParams) -> Result<SecretKey> {
+    if p.m_kib > MAX_M_KIB || p.t > MAX_T || p.p > MAX_P || p.p == 0 || p.t == 0 {
+        return Err(Error::Format("key file: KDF parameters out of range".into()));
+    }
     let params = Params::new(p.m_kib, p.t, p.p, Some(KEY_LEN)).map_err(|e| Error::Format(e.to_string()))?;
     let mut out = Zeroizing::new([0u8; KEY_LEN]);
     Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
@@ -188,6 +197,15 @@ mod tests {
         let rk2 = kf.rotate_recovery(&data);
         assert!(kf.unlock_recovery(rk.as_str()).is_err());
         assert_eq!(kf.unlock_recovery(rk2.as_str()).unwrap(), data);
+    }
+
+    #[test]
+    fn tampered_kdf_params_are_refused() {
+        let (mut kf, _, _) = KeyFile::create("pw", KdfParams::insecure_fast()).unwrap();
+        if let Envelope::Argon2id { params, .. } = &mut kf.passphrase {
+            params.m_kib = 4 * 1024 * 1024; // 4 GiB
+        }
+        assert!(matches!(kf.unlock_passphrase("pw"), Err(Error::Format(_))));
     }
 
     #[test]

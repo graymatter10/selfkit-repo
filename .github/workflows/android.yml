@@ -12,10 +12,13 @@ on:
   workflow_call:
     inputs:
       app: { type: string, required: true }
+      # release.yml sets this: the build ignores the sync test key (docs/security.md).
+      release: { type: boolean, default: false }
 concurrency:
   group: android-${{ github.ref }}-${{ inputs.app }}
   cancel-in-progress: true
 env:
+  SELFKIT_RELEASE: ${{ inputs.release && '1' || '0' }}
   CARGO_TARGET_DIR: ${{ github.workspace }}/target
   CARGO_BUILD_JOBS: "4"
 jobs:

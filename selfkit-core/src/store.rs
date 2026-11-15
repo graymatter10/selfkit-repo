@@ -426,6 +426,36 @@ impl Store {
         Ok(())
     }
 
+    /// Automatic merge for records that carry per-field clocks (`_clock`, e.g. the
+    /// shared settings): each field comes from the side that changed it last.
+    /// `None` = can't decide (no clocks, a deletion, or a field changed on both
+    /// sides at the same moment) → a normal conflict for the user.
+    pub fn field_merge(local: &Record, remote: &Record) -> Option<Value> {
+        use crate::settings::CLOCK_FIELD;
+        if local.deleted || remote.deleted || local.collection != remote.collection {
+            return None;
+        }
+        let (l, r) = (local.data.as_object()?, remote.data.as_object()?);
+        let (lc, rc) = (l.get(CLOCK_FIELD)?.as_object()?, r.get(CLOCK_FIELD)?.as_object()?);
+        let ts = |c: &serde_json::Map<String, Value>, k: &str| c.get(k).and_then(Value::as_i64).unwrap_or(0);
+        let mut out = serde_json::Map::new();
+        let mut clock = serde_json::Map::new();
+        let keys: std::collections::BTreeSet<&String> = l.keys().chain(r.keys()).filter(|k| k.as_str() != CLOCK_FIELD).collect();
+        for k in keys {
+            let (tl, tr) = (ts(lc, k), ts(rc, k));
+            let v = match (l.get(k), r.get(k)) {
+                (Some(a), Some(b)) if a == b => a.clone(),
+                (a, _) if tl > tr => match a { Some(a) => a.clone(), None => continue },
+                (_, b) if tr > tl => match b { Some(b) => b.clone(), None => continue },
+                _ => return None,
+            };
+            out.insert(k.clone(), v);
+            clock.insert(k.clone(), tl.max(tr).into());
+        }
+        out.insert(CLOCK_FIELD.into(), Value::Object(clock));
+        Some(Value::Object(out))
+    }
+
     /// An open conflict whose other version is now part of an incoming record's
     /// history was settled elsewhere (e.g. the other device resolved it): drop it.
     fn clear_superseded_conflict(&self, inc: &Record) -> Result<()> {
@@ -467,8 +497,12 @@ impl Store {
                 self.clear_superseded_conflict(remote)?;
                 Ok(Applied::Updated)
             }
-            Some(_) => {
+            Some((l, _, _)) => {
                 self.record_conflict(remote, rev, "server")?;
+                if let Some(v) = Self::field_merge(&l, remote) {
+                    self.resolve_conflict(&remote.id, Resolution::Merged(v))?;
+                    return Ok(Applied::Updated);
+                }
                 Ok(Applied::Conflict)
             }
         }
@@ -492,8 +526,12 @@ impl Store {
                 self.clear_superseded_conflict(inc)?;
                 Ok(Applied::Updated)
             }
-            Some((_, _, base)) => {
+            Some((l, _, base)) => {
                 self.record_conflict(inc, base, "peer")?;
+                if let Some(v) = Self::field_merge(&l, inc) {
+                    self.resolve_conflict(&inc.id, Resolution::Merged(v))?;
+                    return Ok(Applied::Updated);
+                }
                 Ok(Applied::Conflict)
             }
         }
@@ -528,23 +566,25 @@ impl Store {
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
         let remote: Record = serde_json::from_str(&remote_json)?;
-        let tx = self.conn.unchecked_transaction()?;
+        // Also called from apply_remote/apply_peer inside a sync transaction.
+        let tx = if self.conn.is_autocommit() { Some(self.conn.unchecked_transaction()?) } else { None };
+        let db = &self.conn;
         // Whatever wins now supersedes the other side's version too, so peers
         // holding it fast-forward instead of conflicting again.
-        tx.execute("UPDATE records SET hist = sk_hist_push(hist, ?2) WHERE id=?1", params![id, remote.ver()])?;
+        db.execute("UPDATE records SET hist = sk_hist_push(hist, ?2) WHERE id=?1", params![id, remote.ver()])?;
         match how {
             Resolution::KeepRemote => {
                 // A peer's version isn't on the server yet, so it must be pushed.
                 let dirty = source == "peer";
                 let mut hist: Vec<String> = remote.hist.clone();
-                let local_hist: String = tx.query_row("SELECT hist FROM records WHERE id=?", [id], |r| r.get(0))?;
+                let local_hist: String = db.query_row("SELECT hist FROM records WHERE id=?", [id], |r| r.get(0))?;
                 for v in serde_json::from_str::<Vec<String>>(&local_hist).unwrap_or_default() {
                     if !hist.contains(&v) {
                         hist.insert(0, v);
                     }
                 }
                 let hist = hist_push(&serde_json::to_string(&hist)?, &remote.ver());
-                tx.execute(
+                db.execute(
                     "UPDATE records SET collection=?2, data=?3, updated_at=?4, tz_offset=?5, device_id=?6, deleted=?7,
                      dirty=?8, base_rev=?9, hist=?10 WHERE id=?1",
                     params![id, remote.collection, remote.data.to_string(), remote.updated_at, remote.tz_offset,
@@ -552,20 +592,22 @@ impl Store {
                 )?;
             }
             Resolution::KeepLocal => {
-                tx.execute(
+                db.execute(
                     "UPDATE records SET base_rev=?2, dirty=1, updated_at=?3, device_id=?4 WHERE id=?1",
                     params![id, remote_rev, time::now_ms(), self.device_id],
                 )?;
             }
             Resolution::Merged(v) => {
-                tx.execute(
+                db.execute(
                     "UPDATE records SET data=?2, base_rev=?3, dirty=1, deleted=0, updated_at=?4, tz_offset=?5, device_id=?6 WHERE id=?1",
                     params![id, v.to_string(), remote_rev, time::now_ms(), time::local_offset_min(), self.device_id],
                 )?;
             }
         }
-        tx.execute("DELETE FROM conflicts WHERE id=?", [id])?;
-        tx.commit()?;
+        db.execute("DELETE FROM conflicts WHERE id=?", [id])?;
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
         Ok(())
     }
 

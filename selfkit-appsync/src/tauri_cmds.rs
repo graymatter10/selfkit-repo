@@ -15,6 +15,45 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::{AppSync, Choice, ConflictView, ServerConfig, SyncOutcome, SyncSettings, SyncStatus, Trigger};
 
+/// Security: keep every webview on the app's own pages. Android exposes Kotlin bridges
+/// (`window.SelfkitSync`, `SelfkitPhotos`, `AgendaFiles`, …) to whatever page the WebView
+/// shows, so a link that slipped through to an outside site would hand those bridges to
+/// it. Outside links open in the system browser (opener plugin) instead.
+/// Add with `.plugin(selfkit_appsync::tauri_cmds::nav_guard())`.
+pub fn nav_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("selfkit-nav-guard")
+        .on_navigation(|_, url| {
+            let ok = allowed_navigation(url);
+            if !ok {
+                tracing::warn!(url = %url, "blocked navigation away from the app");
+            }
+            ok
+        })
+        .build()
+}
+
+/// The app's own origins: `tauri://localhost` (Linux/macOS), `http(s)://tauri.localhost`
+/// (Windows/Android), the asset/IPC hosts, `about:`/`blob:`; plus the dev server
+/// (localhost or a private LAN IP) in debug builds only.
+pub fn allowed_navigation(url: &tauri::Url) -> bool {
+    match url.scheme() {
+        "tauri" | "asset" | "ipc" | "about" | "blob" => true,
+        "http" | "https" => match url.host_str() {
+            Some("tauri.localhost" | "asset.localhost" | "ipc.localhost") => true,
+            // `tauri dev` (debug only): localhost, or the dev machine's LAN IP for phones.
+            Some(h) if cfg!(debug_assertions) => {
+                h == "localhost"
+                    || h.trim_matches(['[', ']']).parse::<std::net::IpAddr>().is_ok_and(|ip| match ip {
+                        std::net::IpAddr::V4(v4) => v4.is_loopback() || v4.is_private(),
+                        std::net::IpAddr::V6(v6) => v6.is_loopback(),
+                    })
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 #[derive(Clone)]
 pub struct SyncHandle(pub Arc<AppSync>);
 
@@ -252,6 +291,23 @@ pub fn default_handle(app: &str, data_dir: std::path::PathBuf) -> selfkit_core::
 /// "on open" through the Kotlin plugin (WorkManager) instead.
 pub fn spawn_on_open(app: &AppHandle, h: &SyncHandle) {
     if cfg!(target_os = "android") {
+        // Passes run in the WorkManager job (JNI), outside this webview's commands:
+        // watch the state file and tell the page when one brought new data.
+        let (app, s) = (app.clone(), h.0.clone());
+        std::thread::spawn(move || {
+            let mut seen = s.state().last.map(|l| l.finished_at).unwrap_or(0);
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                if let Some(l) = s.state().last
+                    && l.finished_at > seen
+                {
+                    seen = l.finished_at;
+                    if l.report.pulled > 0 || l.report.photos_down > 0 {
+                        let _ = app.emit("data-changed", ());
+                    }
+                }
+            }
+        });
         return;
     }
     let (app, s) = (app.clone(), h.0.clone());
@@ -271,5 +327,22 @@ mod tests {
     fn password_is_stripped() {
         assert_eq!(strip_password("postgres://me:hunter2@db.host/selfkit?sslmode=require"), ("postgres://me@db.host/selfkit?sslmode=require".to_string(), true));
         assert_eq!(strip_password("postgres://me@h/db"), ("postgres://me@h/db".to_string(), false));
+    }
+}
+
+#[cfg(test)]
+mod nav_tests {
+    use super::allowed_navigation;
+
+    #[test]
+    fn only_app_pages_are_allowed() {
+        let ok = |u: &str| allowed_navigation(&tauri::Url::parse(u).unwrap());
+        for u in ["tauri://localhost/", "http://tauri.localhost/index.html", "https://tauri.localhost/#/sync", "about:blank", "http://asset.localhost/x.png"] {
+            assert!(ok(u), "{u}");
+        }
+        for u in ["https://evil.example/", "http://tauri.localhost.evil.example/", "file:///data/data/com.selfkit.agenda/files/agenda.db",
+                  "data:text/html,<script>SelfkitSync.runNow()</script>", "javascript:alert(1)", "intent://x#Intent;end"] {
+            assert!(!ok(u), "{u}");
+        }
     }
 }

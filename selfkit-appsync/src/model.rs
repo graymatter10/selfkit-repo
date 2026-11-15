@@ -35,6 +35,9 @@ pub enum TransportMode {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SyncSettings {
+    /// Off after install/upgrade until the user turns it on in the Sync page
+    /// (test builds share a public key, so nothing syncs without consent).
+    pub enabled: bool,
     pub owner: SyncOwner,
     pub transport: TransportMode,
     /// Sync on open and in the background job.
@@ -55,6 +58,7 @@ pub struct SyncSettings {
 impl Default for SyncSettings {
     fn default() -> Self {
         Self {
+            enabled: false,
             owner: SyncOwner::App,
             transport: TransportMode::Auto,
             auto_sync: true,

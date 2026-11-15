@@ -9,7 +9,7 @@
 | [architecture.md](architecture.md) | Repo layout, components, data flow, app ↔ agent |
 | [data-and-sync.md](data-and-sync.md) | Local storage, sync protocol, conflicts, bundles |
 | [lan-sync.md](lan-sync.md) | Server-less encrypted sync on the local network |
-| [security.md](security.md) | Encryption, keys, recovery key, keychains |
+| [security.md](security.md) | Threat model, encryption, keys, TLS/LAN/Android hardening, attack tests, known limits, test key vs release builds |
 | [design-system.md](design-system.md) | Layout, themes A/B/D, tokens, departures |
 | [conventions.md](conventions.md) | Code style, naming, commits, docs |
 | [components/selfkit-core.md](components/selfkit-core.md) | Shared Rust library + code map |

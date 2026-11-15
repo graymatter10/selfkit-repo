@@ -1,6 +1,6 @@
 // App state: which page is open, the data for it (loaded on demand and
 // refreshed every minute while visible), settings, theme.
-import { showToast } from "@selfkit/ui";
+import { on, showToast } from "@selfkit/ui";
 import { api, type Conn, type Health, type Overview, type RSettings, type Review, type Shared, type Sources, type StreakView, type Theme } from "./api";
 
 export type Tab = "today" | "streaks" | "connections" | "week" | "month" | "health" | "settings" | "sync" | "conflicts";
@@ -149,6 +149,7 @@ export async function init() {
     setTimeout(() => { try { b.mirror("chrono,hisab,agenda,dusk"); } catch { /* not available */ } load(); }, 50);
   };
   mirror();
+  on("data-changed", () => load()); // a sync pass brought new data
   setInterval(() => document.visibilityState === "visible" && load(), 60_000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { load(); mirror(); } });
 }

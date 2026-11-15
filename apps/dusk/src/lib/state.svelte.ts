@@ -217,6 +217,7 @@ export async function init() {
   // A damaged data file was set aside at startup: say so once.
   guard(api.startupNotice()).then((n) => n && showToast(n, undefined, 15000));
   on("sleep-changed", () => refresh());
+  on("data-changed", () => refresh()); // a sync pass brought new data
   on<DevicePrefs>("prefs-changed", (p) => ((app.prefs = { ...app.prefs, ...p }), applyTheme()));
   document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState === "visible") {

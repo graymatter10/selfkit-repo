@@ -32,15 +32,18 @@ jobs:
     uses: ./.github/workflows/android.yml
     with:
       app: ${{ matrix.app }}
+      release: true
   windows:
     uses: ./.github/workflows/windows.yml
     with:
       test: ${{ github.event_name == 'push' || inputs.test }}
       version: ${{ inputs.version }}
+      release: true
   linux:
     uses: ./.github/workflows/linux.yml
     with:
       test: ${{ github.event_name == 'push' || inputs.test }}
+      release: true
   publish:
     needs: [android, windows, linux]
     runs-on: ubuntu-latest

@@ -49,6 +49,30 @@ pub struct Settings {
     pub shortcuts: BTreeMap<String, String>,
 }
 
+/// Per-field change clocks inside a record: `"_clock": {field: UTC ms of its last change}`.
+/// Lets two devices that changed *different* fields merge without a conflict
+/// (see `Store::field_merge`); the shared settings record uses it.
+pub const CLOCK_FIELD: &str = "_clock";
+
+/// Set `_clock[field] = now` for every top-level field that differs from `old`
+/// (keeping the old clocks of unchanged fields).
+pub fn stamp_fields(old: Option<&serde_json::Value>, new: &mut serde_json::Value) {
+    let now = crate::time::now_ms();
+    let empty = serde_json::Map::new();
+    let old_obj = old.and_then(|v| v.as_object()).unwrap_or(&empty);
+    let mut clock = old_obj.get(CLOCK_FIELD).and_then(|c| c.as_object()).cloned().unwrap_or_default();
+    let Some(obj) = new.as_object_mut() else { return };
+    for (k, v) in obj.iter() {
+        if k == CLOCK_FIELD {
+            continue;
+        }
+        if old_obj.get(k) != Some(v) || !clock.contains_key(k) {
+            clock.insert(k.clone(), now.into());
+        }
+    }
+    obj.insert(CLOCK_FIELD.into(), serde_json::Value::Object(clock));
+}
+
 /// Quick-capture actions that can have a global shortcut.
 pub const SHORTCUT_ACTIONS: &[&str] = &["add_expense", "add_task", "rate_sleep", "toggle_tracking"];
 
@@ -81,7 +105,16 @@ impl Settings {
     }
 
     pub fn save(&self, store: &Store) -> Result<()> {
-        store.put(COLLECTION, Some(SETTINGS_ID), &serde_json::to_value(self)?)?;
+        let old = store.get(SETTINGS_ID)?.filter(|r| !r.deleted).map(|r| r.data);
+        let mut data = serde_json::to_value(self)?;
+        if let (Some(o), Some(old)) = (data.as_object_mut(), old.as_ref().and_then(|v| v.as_object())) {
+            // Keep fields this version doesn't know.
+            for (k, v) in old {
+                o.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+        }
+        stamp_fields(old.as_ref(), &mut data);
+        store.put(COLLECTION, Some(SETTINGS_ID), &data)?;
         Ok(())
     }
 
@@ -120,6 +153,8 @@ impl Settings {
                 }
             }
         }
+        let old = store.get(SETTINGS_ID)?.filter(|r| !r.deleted).map(|r| r.data);
+        stamp_fields(old.as_ref(), &mut data);
         store.put(COLLECTION, Some(SETTINGS_ID), &data)?;
         Self::load(store)
     }

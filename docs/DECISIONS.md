@@ -1,5 +1,15 @@
 # Decisions (newest first)
 
+## 2026-11-15 — Security hardening (security audit, docs/security.md)
+- Release workflows compile with `SELFKIT_RELEASE=1`, which disables the public sync test key and test server. Reason: `sync-test-key` is in every app's default features, so release installers would have synced real data under a public key. Kept the feature default on for test builds so phone testing still needs no passphrase; flipping the default is the lead's call once the phones have real encryption set up.
+- A device with `keys.json` never falls back to the test key (unreadable secret store → Locked). Reason: a keychain hiccup silently moved a real-data device onto the public key, including its LAN listener.
+- TLS required for every non-local Postgres (missing/`prefer` → `require`, `disable` refused) and https required for non-local S3. Reason: `prefer` let a Wi-Fi MITM strip TLS and ask for the password in clear. Loopback stays plaintext-capable for the Docker fakes.
+- `updated_at`/`device_id` copied into the encrypted record payload and preferred on decrypt (backward compatible). Reason: the clear columns were unauthenticated and feed the merge rules.
+- LAN: 64 KiB cap on the unauthenticated first frame, incremental buffers, 8 inbound sessions max, monotonic beacon timestamps per device. Reason: pre-auth memory DoS and beacon replay redirect.
+- Android: `allowBackup=false` + data extraction rules excluding everything. Reason: plaintext SQLite went to cloud backup / device transfer. Data moves via encrypted sync and bundles instead.
+- Webview navigation guard plugin in every app. Reason: Android JS bridges are exposed to any page the WebView shows.
+- Hisab CSV export neutralizes formula cells; import caps size. Argon2 parameters from a downloaded key file are bounded.
+
 ## 2026-11-15 — Sync in apps, Hisab CSV import, installers
 - Sync is integrated into all five apps through `selfkit-appsync` (shared Tauri commands + shared `ui/src/sync` Sync page and conflict screen; Android plugin bridge). Test builds use the `sync-test-key` feature (on by default) so testing never asks for a passphrase.
 - On Android, Reflect reads read-only mirrors of the other apps' data through their signature-protected ContentProviders (`SelfkitMirror`).

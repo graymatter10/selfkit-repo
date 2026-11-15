@@ -15,6 +15,9 @@ Everything is built in the cloud by `.github/workflows/release.yml`; nothing hea
 4. Wait for the run (~40–60 min; the jobs run in parallel). Check the draft under Releases: file list, notes, checksums.
 5. Publish the draft (GitHub creates the tag on publish for hand-started runs).
 
+## Test key off in release builds
+`release.yml` passes `release: true` to the android/linux/windows workflows, which compile with `SELFKIT_RELEASE=1`: the public sync test key and test server are disabled in those builds (apps still list `sync-test-key` in their default features for test builds). Local and `dev/ci-apk.sh` builds keep the test key. See [security.md](security.md#test-key-test-builds-only).
+
 ## APK signing
 The phones have the apps signed with the local debug key (`$ANDROID_USER_HOME/debug.keystore`, alias `androiddebugkey`), and Android only accepts updates signed with the same key. To have `release.yml` sign, add three repository secrets (Settings → Secrets and variables → Actions):
 - `ANDROID_KEYSTORE_B64`: `base64 -w0 <keystore>`

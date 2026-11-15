@@ -5,6 +5,7 @@
 - **Package names:** `com.selfkit.{app}`; the ContentProvider authority is `com.selfkit.{app}.provider`, protected by a signature-level permission `com.selfkit.permission.SHARE`.
 - **Rust targets:** `aarch64-linux-android`, `x86_64-linux-android` installed.
 - No always-on service: WorkManager for sync/backups, AlarmManager for reminders, UsageStatsManager for Chrono ("Usage access" permission).
+- Security: every app sets `android:allowBackup="false"` + `res/xml/data_extraction_rules.xml` (no cloud backup / device transfer of the plaintext DBs); providers need the signature permission; see [../security.md](../security.md#android).
 - Never run the emulator and the Windows Docker env at the same time.
 
 ## Build and run (Agenda as the example)

@@ -96,12 +96,30 @@ pub fn records(text: &str, delim: char) -> Vec<Vec<String>> {
     out
 }
 
+/// Largest CSV accepted for import (a year of bank statements is well under 1 MB).
+pub const MAX_CSV_BYTES: usize = 16 * 1024 * 1024;
+pub const MAX_CSV_ROWS: usize = 100_000;
+
+/// Undo export's formula guard (`export::neutralize_formula`): `'=…` → `=…`.
+fn unescape_cell(x: String) -> String {
+    match x.strip_prefix('\'') {
+        Some(rest) if rest.starts_with(['=', '+', '-', '@', '\t', '\r']) => rest.to_string(),
+        _ => x,
+    }
+}
+
 pub fn parse(text: &str) -> R<Table> {
+    if text.len() > MAX_CSV_BYTES {
+        return Err("The file is too large to import (16 MB at most)".into());
+    }
     let text = text.trim_start_matches('\u{feff}');
     let d = detect_delimiter(text);
     let mut recs = records(text, d);
     if recs.is_empty() {
         return Err("The file is empty".into());
+    }
+    if recs.len() > MAX_CSV_ROWS + 1 {
+        return Err(format!("The file has too many rows to import ({MAX_CSV_ROWS} at most)"));
     }
     let headers: Vec<String> = recs.remove(0).into_iter().map(|h| h.trim().to_string()).collect();
     let n = headers.len();
@@ -109,7 +127,7 @@ pub fn parse(text: &str) -> R<Table> {
         .into_iter()
         .map(|mut r| {
             r.resize(n.max(r.len()), String::new());
-            r.into_iter().map(|x| x.trim().to_string()).collect()
+            r.into_iter().map(|x| unescape_cell(x.trim().to_string())).collect()
         })
         .collect();
     Ok(Table { delimiter: if d == '\t' { "tab".into() } else { d.to_string() }, headers, rows })
@@ -438,6 +456,14 @@ pub fn import(store: &Store, rows: &[Row], main: &str, batch: &str) -> R<Vec<Str
 mod tests {
     use super::*;
     use crate::model::seed_defaults;
+
+    #[test]
+    fn formula_guard_roundtrip_and_size_cap() {
+        let t = parse("date,note\n2026-01-01,'=SUM(A1)\n2026-01-02,'tis fine\n").unwrap();
+        assert_eq!(t.rows[0][1], "=SUM(A1)");
+        assert_eq!(t.rows[1][1], "'tis fine");
+        assert!(parse(&"x".repeat(MAX_CSV_BYTES + 1)).is_err());
+    }
 
     fn store() -> Store {
         let st = Store::open_in_memory("hisab", "d", model::MIGRATIONS).unwrap();

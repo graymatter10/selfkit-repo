@@ -129,11 +129,22 @@ async fn sync_with(ctx: Arc<Ctx>, key: String, addr: SocketAddr) {
     ctx.busy.lock().unwrap().remove(&key);
 }
 
+/// Inbound sessions handled at once. More connections (a flood from a stranger) are
+/// closed right away instead of each holding a task, a socket and store handles.
+pub const MAX_INBOUND: usize = 8;
+
 async fn accept_loop(ctx: Arc<Ctx>, listener: TcpListener) {
+    let slots = Arc::new(tokio::sync::Semaphore::new(MAX_INBOUND));
     loop {
         let Ok((stream, addr)) = listener.accept().await else { continue };
+        let Ok(permit) = slots.clone().try_acquire_owned() else {
+            tracing::debug!(%addr, "lan: too many inbound connections, dropped");
+            drop(stream);
+            continue;
+        };
         let ctx = ctx.clone();
         tokio::spawn(async move {
+            let _permit = permit;
             let _ = stream.set_nodelay(true);
             let res: Result<SessionReport> = async {
                 let ch = channel::Channel::server(stream, &ctx.keys).await?;
@@ -149,6 +160,19 @@ async fn accept_loop(ctx: Arc<Ctx>, listener: TcpListener) {
                 _ => record(&ctx, &addr.to_string(), &res),
             }
         });
+    }
+}
+
+/// Beacon replay guard: a beacon is only accepted if it is newer than the last one
+/// from the same device. A captured beacon replayed from another machine (to redirect
+/// our sessions to the attacker's address) is ignored once the original was seen.
+fn fresh_beacon(last_ts: &mut HashMap<String, i64>, b: &discovery::Beacon) -> bool {
+    match last_ts.get(&b.device_id) {
+        Some(&t) if b.ts <= t => false,
+        _ => {
+            last_ts.insert(b.device_id.clone(), b.ts);
+            true
+        }
     }
 }
 
@@ -190,6 +214,7 @@ pub async fn serve(cfg: LanConfig, stores: StoreFactory, state: Arc<LanState>) -
 
     let mut tick = tokio::time::interval(BEACON_EVERY);
     let mut last_auto = tokio::time::Instant::now() - ctx.cfg.interval;
+    let mut last_ts: HashMap<String, i64> = HashMap::new();
     loop {
         tokio::select! {
             _ = tick.tick() => {
@@ -199,6 +224,10 @@ pub async fn serve(cfg: LanConfig, stores: StoreFactory, state: Arc<LanState>) -
                 }
             }
             Some((b, from)) = seen_rx.recv() => {
+                if !fresh_beacon(&mut last_ts, &b) {
+                    tracing::debug!(%from, "lan: replayed/stale beacon ignored");
+                    continue;
+                }
                 let addr = SocketAddr::new(from.ip(), b.port);
                 let is_new = {
                     let mut peers = state.peers.lock().unwrap();
@@ -361,5 +390,78 @@ mod tests {
                 && Store::open(&pb, "agenda", "dev-b", &[]).unwrap().count("tasks").unwrap() == 2 { return; }
         }
         panic!("services did not sync");
+    }
+
+    /// Attack: a device on the same Wi-Fi without the data key (or with another one)
+    /// connects to a real service and tries to push a record and pull data. It must
+    /// get nothing and change nothing.
+    #[tokio::test]
+    async fn rogue_peer_with_wrong_key_gets_nothing_and_changes_nothing() {
+        let data_key = SecretKey::generate();
+        let dir = tempfile::tempdir().unwrap();
+        let pb = dir.path().join("b.db");
+        Store::open(&pb, "agenda", "dev-b", &[]).unwrap().put("tasks", None, &json!({"t": "SECRET"})).unwrap();
+        let fb: StoreFactory = { let p = pb.clone(); Arc::new(move || Ok(HashMap::from([("agenda".into(), Store::open(&p, "agenda", "dev-b", &[])?)]))) };
+        let free = || std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let (tcp_b, udp_b) = (free(), free());
+        let cfg = LanConfig {
+            data_key, device_id: "dev-b".into(), device_name: "desk".into(), tcp_port: tcp_b, discovery_port: udp_b,
+            static_peers: vec![], interval: Duration::from_secs(3600),
+        };
+        tokio::spawn(serve(cfg, fb, Arc::new(LanState::default())));
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        for rogue_key in [SecretKey::generate(), SecretKey::from_bytes([0u8; 32])] {
+            let mut rogue = HashMap::from([("agenda".to_string(), Store::open_in_memory("agenda", "dev-0", &[]).unwrap())]);
+            rogue["agenda"].put("tasks", None, &json!({"t": "INJECTED"})).unwrap();
+            let stream = TcpStream::connect(("127.0.0.1", tcp_b)).await.unwrap();
+            let ch = Channel::client(stream, &LanKeys::derive(&rogue_key)).await.unwrap();
+            let r = session::run(ch, Role::Client, "dev-0", "rogue", &mut rogue).await;
+            assert!(r.is_err(), "rogue session must fail");
+            assert_eq!(rogue["agenda"].count("tasks").unwrap(), 1, "rogue received data");
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let b = Store::open(&pb, "agenda", "dev-b", &[]).unwrap();
+        assert_eq!(b.count("tasks").unwrap(), 1, "rogue changed our data");
+        assert!(b.search(None, "INJECTED", 5).unwrap().is_empty());
+    }
+
+    /// Attack: a flood of idle connections must not lock out the real devices forever;
+    /// extra connections are closed at once (MAX_INBOUND), idle ones time out.
+    #[tokio::test]
+    async fn connection_flood_is_capped() {
+        let dir = tempfile::tempdir().unwrap();
+        let pb = dir.path().join("b.db");
+        Store::open(&pb, "agenda", "dev-b", &[]).unwrap();
+        let fb: StoreFactory = { let p = pb.clone(); Arc::new(move || Ok(HashMap::from([("agenda".into(), Store::open(&p, "agenda", "dev-b", &[])?)]))) };
+        let free = || std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let (tcp_b, udp_b) = (free(), free());
+        let cfg = LanConfig {
+            data_key: SecretKey::generate(), device_id: "dev-b".into(), device_name: "desk".into(), tcp_port: tcp_b, discovery_port: udp_b,
+            static_peers: vec![], interval: Duration::from_secs(3600),
+        };
+        tokio::spawn(serve(cfg, fb, Arc::new(LanState::default())));
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let mut idle = Vec::new();
+        for _ in 0..MAX_INBOUND {
+            idle.push(TcpStream::connect(("127.0.0.1", tcp_b)).await.unwrap());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        // One more: closed by the service right away (read returns EOF/reset, not a hang).
+        let mut extra = TcpStream::connect(("127.0.0.1", tcp_b)).await.unwrap();
+        let mut buf = [0u8; 1];
+        let r = tokio::time::timeout(Duration::from_secs(2), extra.read(&mut buf)).await.expect("extra connection must be closed");
+        assert!(matches!(r, Ok(0) | Err(_)));
+    }
+
+    #[test]
+    fn replayed_beacons_are_ignored() {
+        let mut last = HashMap::new();
+        let b = discovery::Beacon { device_id: "dev-a".into(), name: "a".into(), port: 1, ts: 1000 };
+        assert!(fresh_beacon(&mut last, &b));
+        assert!(!fresh_beacon(&mut last, &b), "same beacon again (replay)");
+        assert!(!fresh_beacon(&mut last, &discovery::Beacon { ts: 999, ..b.clone() }), "older beacon");
+        assert!(fresh_beacon(&mut last, &discovery::Beacon { ts: 31_000, ..b.clone() }));
+        assert!(fresh_beacon(&mut last, &discovery::Beacon { device_id: "dev-c".into(), ..b }));
     }
 }

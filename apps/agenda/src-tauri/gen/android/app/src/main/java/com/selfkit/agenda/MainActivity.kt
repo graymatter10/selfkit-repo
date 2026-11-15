@@ -81,7 +81,8 @@ class MainActivity : TauriActivity() {
           } else {
             val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             dir.mkdirs()
-            java.io.File(dir, name).writeText(text)
+            // Bare file name only: "../x" must not escape Downloads.
+            java.io.File(dir, java.io.File(name).name.ifEmpty { "export.txt" }).writeText(text)
           }
           "Downloads/$name"
         } catch (e: Exception) {

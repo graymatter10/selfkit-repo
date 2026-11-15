@@ -22,6 +22,9 @@ const MAGIC: &[u8; 4] = b"SKL1";
 const NONCE: usize = 32;
 /// Largest accepted frame (a batch of 500 records stays far below this).
 pub const MAX_FRAME: usize = 16 * 1024 * 1024;
+/// Largest accepted *first* frame (the hello, a few hundred bytes). Nothing has been
+/// authenticated before it, so a stranger must not make us buffer 16 MiB per connection.
+pub const MAX_FIRST_FRAME: usize = 64 * 1024;
 pub const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Keys derived from the data key for LAN use only.
@@ -129,11 +132,17 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Channel<S> {
             let mut len = [0u8; 4];
             self.r.read_exact(&mut len).await.map_err(io_err)?;
             let len = u32::from_be_bytes(len) as usize;
-            if len > MAX_FRAME {
+            let limit = if self.recv_ctr == 0 { MAX_FIRST_FRAME } else { MAX_FRAME };
+            if len > limit {
                 return Err(Error::Format("lan frame too large".into()));
             }
-            let mut ct = vec![0u8; len];
-            self.r.read_exact(&mut ct).await.map_err(io_err)?;
+            // Grow with the bytes that actually arrive (a peer that announces a big
+            // frame and sends nothing costs no memory), bounded by `len`.
+            let mut ct = Vec::with_capacity(len.min(64 * 1024));
+            (&mut self.r).take(len as u64).read_to_end(&mut ct).await.map_err(io_err)?;
+            if ct.len() != len {
+                return Err(io_err(std::io::ErrorKind::UnexpectedEof.into()));
+            }
             Ok(ct)
         })
         .await?;
@@ -173,5 +182,73 @@ mod tests {
         let mut ch = Channel::client(a, &other).await.unwrap();
         ch.send(&"intruder").await.unwrap();
         assert!(matches!(srv.await.unwrap(), Err(Error::BadKey)));
+    }
+
+    /// Attack: record a client's opening bytes (handshake + first frame) and replay
+    /// them to the server later. The server picks a fresh nonce, so the replay fails.
+    #[tokio::test]
+    async fn captured_session_cannot_be_replayed() {
+        let k = LanKeys::derive(&SecretKey::generate());
+        // Capture: a fake server that answers the handshake and records everything.
+        let (a, mut b) = tokio::io::duplex(1 << 16);
+        let k2 = k.clone();
+        let client = tokio::spawn(async move {
+            let mut ch = Channel::client(a, &k2).await.unwrap();
+            ch.send(&"sync everything").await.unwrap();
+        });
+        let mut captured = vec![0u8; 4 + NONCE];
+        b.read_exact(&mut captured).await.unwrap();
+        b.write_all(MAGIC).await.unwrap();
+        b.write_all(&[7u8; NONCE]).await.unwrap();
+        client.await.unwrap();
+        let mut rest = Vec::new();
+        drop(b.read_to_end(&mut rest).await);
+        captured.extend(rest);
+        // Replay to the real server.
+        let (mut a, b) = tokio::io::duplex(1 << 16);
+        let srv = tokio::spawn(async move {
+            let mut ch = Channel::server(b, &k).await.unwrap();
+            ch.recv::<String>().await
+        });
+        a.write_all(&captured).await.unwrap();
+        assert!(matches!(srv.await.unwrap(), Err(Error::BadKey)));
+    }
+
+    /// Attack: a stranger (no key) connects and announces a huge first frame. It is
+    /// refused at once, without buffering it; a peer announcing a frame and then
+    /// going quiet costs no memory and is cut off by the timeout.
+    #[tokio::test]
+    async fn stranger_cannot_make_us_buffer_big_frames() {
+        let k = LanKeys::derive(&SecretKey::generate());
+        let (mut a, b) = tokio::io::duplex(1 << 16);
+        let srv = tokio::spawn(async move {
+            let mut ch = Channel::server(b, &k).await.unwrap();
+            ch.recv::<String>().await
+        });
+        a.write_all(MAGIC).await.unwrap();
+        a.write_all(&[1u8; NONCE]).await.unwrap();
+        let mut head = [0u8; 4 + NONCE];
+        a.read_exact(&mut head).await.unwrap();
+        a.write_all(&(MAX_FRAME as u32).to_be_bytes()).await.unwrap();
+        let r = tokio::time::timeout(std::time::Duration::from_secs(2), srv).await.expect("must not wait for the body");
+        assert!(matches!(r.unwrap(), Err(Error::Format(m)) if m.contains("too large")));
+    }
+
+    #[tokio::test]
+    async fn truncated_frame_is_an_error() {
+        let k = LanKeys::derive(&SecretKey::generate());
+        let (mut a, b) = tokio::io::duplex(1 << 16);
+        let srv = tokio::spawn(async move {
+            let mut ch = Channel::server(b, &k).await.unwrap();
+            ch.recv::<String>().await
+        });
+        a.write_all(MAGIC).await.unwrap();
+        a.write_all(&[1u8; NONCE]).await.unwrap();
+        let mut head = [0u8; 4 + NONCE];
+        a.read_exact(&mut head).await.unwrap();
+        a.write_all(&1000u32.to_be_bytes()).await.unwrap();
+        a.write_all(&[0u8; 10]).await.unwrap();
+        drop(a);
+        assert!(matches!(srv.await.unwrap(), Err(Error::Remote(_))));
     }
 }

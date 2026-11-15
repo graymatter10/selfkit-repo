@@ -14,9 +14,7 @@ class SelfkitSyncBridge(private val activity: Activity) {
 
     @JavascriptInterface
     fun openBatterySettings() {
-        activity.runOnUiThread {
-            try { activity.startActivity(SelfkitSync.batteryIntent(activity)) } catch (t: Throwable) { }
-        }
+        activity.runOnUiThread { SelfkitSync.openBatterySettings(activity) }
     }
 
     /** Re-apply the periodic job after the sync settings changed (owner, automatic). */

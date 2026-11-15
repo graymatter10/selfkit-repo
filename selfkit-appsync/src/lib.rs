@@ -90,6 +90,13 @@ pub fn default_device_name() -> String {
         .unwrap_or_else(|| "Selfkit device".into())
 }
 
+/// True in builds made by the release workflows (`SELFKIT_RELEASE=1` at compile time,
+/// see .github/workflows/release.yml). Such builds never use the public test key or the
+/// test server, whatever the Cargo features say. See docs/security.md.
+pub fn release_build() -> bool {
+    option_env!("SELFKIT_RELEASE") == Some("1")
+}
+
 /// The public, built-in test key. Anything encrypted with it is NOT private.
 pub fn test_data_key() -> SecretKey {
     let h = sha2::Sha256::digest(b"selfkit-test-key-v1 (public; test builds only, never real data)");
@@ -277,11 +284,19 @@ impl AppSync {
                 let raw = B64.decode(b.trim()).map_err(|_| Error::Format("data key base64".into()))?;
                 Ok(Some((SecretKey::from_slice(&raw)?, false)))
             }
-            // Test builds keep working when secure storage isn't available.
-            Ok(None) | Err(_) if self.cfg.test_key => Ok(Some((test_data_key(), true))),
+            // Test builds keep working when secure storage isn't available, but only
+            // while no real encryption is set up: a device with keys.json whose secure
+            // storage is unreadable is Locked, never silently on the public key.
+            Ok(None) | Err(_) if self.test_key_allowed() => Ok(Some((test_data_key(), true))),
             Ok(None) => Ok(None),
             Err(e) => Err(e),
         }
+    }
+
+    /// The public test key may be used: test build (feature/config), not a release
+    /// build, and no real key file on this device.
+    fn test_key_allowed(&self) -> bool {
+        self.cfg.test_key && !release_build() && !self.encryption_set_up()
     }
 
     pub fn encryption_set_up(&self) -> bool {
@@ -302,34 +317,76 @@ impl AppSync {
         if self.encryption_set_up() {
             return Err(Error::Format("encryption is already set up; unlock instead".into()));
         }
+        let was_test = matches!(self.data_key(), Ok(Some((_, true))));
         let (kf, data, rk) = KeyFile::create(passphrase, params)?;
         kf.save(&self.key_file_path())?;
         self.store_key(&data)?;
+        if was_test {
+            // Data synced so far was encrypted with the public test key: re-upload it all
+            // with the new key, and let the next server pass claim the server.
+            self.reset_for_new_key()?;
+            std::fs::write(model::sync_dir(&self.cfg.data_dir).join("rekey-from-test"), "1")?;
+        }
         Ok(rk.as_str().to_string())
     }
 
-    /// Fetch `keys.json` from S3 (`bundles/_keys/keys.json`, uploaded by the agent) if missing here.
+    /// After a key change: forget server revisions and uploaded-photo marks so the
+    /// next pass re-uploads everything encrypted with the new key.
+    fn reset_for_new_key(&self) -> Result<()> {
+        for store in self.open_stores()?.values() {
+            store.reset_sync_state()?;
+            store.conn().execute("DELETE FROM kv WHERE k LIKE 'appsync.blob.up.%'", [])?;
+        }
+        Ok(())
+    }
+
+    /// Get the newest published `keys.json`: the server (sk_meta, works without S3),
+    /// else S3 (`bundles/_keys/keys.json`, also written by the agent), else the local copy.
     async fn ensure_key_file(&self) -> Result<KeyFile> {
         let p = self.key_file_path();
-        if !p.exists()
-            && let Some(ServerConfig { s3: Some(s3), .. }) = self.server_config()?
-        {
-            let bs = BlobStore::new(s3)?;
-            bs.get_bundle("bundles/_keys/keys.json", &p).await?;
+        if let Some(cfg) = self.server_config()? {
+            let fetched = async {
+                let remote = server::connect(&cfg.pg_url).await?;
+                server::download_keyfile(&remote).await
+            }
+            .await;
+            match fetched {
+                Ok(Some(text)) => {
+                    std::fs::create_dir_all(&self.cfg.data_dir)?;
+                    std::fs::write(&p, text)?;
+                }
+                _ if !p.exists() => {
+                    if let Some(s3) = cfg.s3 {
+                        BlobStore::new(s3)?.get_bundle("bundles/_keys/keys.json", &p).await?;
+                    }
+                }
+                _ => {}
+            }
         }
         KeyFile::load(&p)
     }
 
     pub async fn unlock(&self, passphrase: &str) -> Result<()> {
         let k = self.ensure_key_file().await?.unlock_passphrase(passphrase)?;
-        self.store_key(&k)
+        self.store_new_key(&k)
     }
 
     pub async fn unlock_recovery(&self, recovery_key: &str) -> Result<()> {
         let k = self.ensure_key_file().await?.unlock_recovery(recovery_key)?;
-        self.store_key(&k)
+        self.store_new_key(&k)
     }
 
+    /// Store an unlocked key; when this device was on the test key, re-upload its data.
+    fn store_new_key(&self, k: &SecretKey) -> Result<()> {
+        let was_test = matches!(self.data_key(), Ok(Some((_, true))));
+        self.store_key(k)?;
+        if was_test {
+            self.reset_for_new_key()?;
+        }
+        Ok(())
+    }
+
+    /// Re-wraps the key with the new passphrase; the next server pass publishes it.
     pub fn change_passphrase(&self, old: &str, new: &str) -> Result<()> {
         let mut kf = KeyFile::load(&self.key_file_path())?;
         let k = kf.unlock_passphrase(old)?;
@@ -353,7 +410,7 @@ impl AppSync {
                 };
                 Ok(Some(ServerConfig { pg_url: url, s3 }))
             }
-            _ => Ok(if self.cfg.test_key { self.cfg.test_server.clone() } else { None }),
+            _ => Ok(if self.cfg.test_key && !release_build() { self.cfg.test_server.clone() } else { None }),
         }
     }
 
@@ -403,13 +460,16 @@ impl AppSync {
     pub fn schedule(&self) -> Schedule {
         let s = self.settings();
         let mine = s.owner == SyncOwner::App;
-        Schedule { enabled: mine && s.auto_sync, every_minutes: s.background_minutes.max(15), run_on_open: mine && s.auto_sync }
+        Schedule { enabled: s.enabled && mine && s.auto_sync, every_minutes: s.background_minutes.max(15), run_on_open: s.enabled && mine && s.auto_sync }
     }
 
     /// Should a pass run now for this trigger? Manual always; Open at most once a
     /// minute; Background when the period has (almost) passed.
     pub fn due(&self, trigger: Trigger) -> bool {
         let s = self.settings();
+        if !s.enabled {
+            return false;
+        }
         if trigger == Trigger::Manual {
             return true;
         }
@@ -433,8 +493,14 @@ impl AppSync {
         let now = time::now_ms();
         let (mut pending, mut nconf) = (0, 0);
         if let Ok(stores) = self.open_stores() {
+            let me = self.device_id().unwrap_or_default();
             for store in stores.values() {
-                pending += store.dirty_count().unwrap_or(0);
+                // Only this device's own edits: records received over LAN stay dirty (so they
+                // still reach the server) but aren't "your changes".
+                pending += store
+                    .conn()
+                    .query_row("SELECT count(*) FROM records WHERE dirty=1 AND device_id=?", [&me], |r| r.get::<_, i64>(0))
+                    .unwrap_or(0);
                 nconf += store.conflicts().map(|c| c.len() as i64).unwrap_or(0);
             }
         }
@@ -466,7 +532,7 @@ impl AppSync {
             conflicts: nconf,
             peers,
             headline: String::new(),
-            next_auto_at: (s.owner == SyncOwner::App && s.auto_sync)
+            next_auto_at: (s.enabled && s.owner == SyncOwner::App && s.auto_sync)
                 .then(|| st.last_attempt_at.map(|t| t + s.background_minutes.max(15) as i64 * 60_000))
                 .flatten(),
         };
@@ -479,7 +545,7 @@ impl AppSync {
             status.last_attempt_at = a["last_sync_at"].as_i64().or(status.last_attempt_at);
             status.last_error = a["last_sync_error"].as_str().map(|e| explain(&Error::Remote(e.into())));
         }
-        status.headline = headline(&status, now);
+        status.headline = if s.enabled { headline(&status, now) } else { "Sync is off".into() };
         Ok(status)
     }
 
@@ -501,6 +567,9 @@ impl AppSync {
             finished_at: time::now_ms(),
         };
         let settings = self.settings();
+        if !settings.enabled {
+            return skip("Sync is off. Turn it on in Sync settings.");
+        }
         let mut agent_note = None;
         match settings.owner {
             SyncOwner::Companion => return skip("The Selfkit companion syncs this app."),
@@ -661,7 +730,15 @@ impl AppSync {
         if server_allowed {
             let cfg = server_cfg.expect("checked");
             let remote = server::connect(&cfg.pg_url).await?;
+            let rekey = model::sync_dir(&self.cfg.data_dir).join("rekey-from-test");
+            if rekey.exists() {
+                if server::take_over_from_test_key(&remote, &key).await? {
+                    out.note = Some("Moved to your own key: this device re-uploaded its data. Unlock your other devices with your passphrase.".into());
+                }
+                let _ = std::fs::remove_file(&rekey);
+            }
             server::preflight(&remote, &key).await?;
+            server::upload_keyfile(&remote, cfg.s3.as_ref(), &self.key_file_path()).await?;
             server::sync_records(&remote, &key, &mut stores, &mut out.report).await?;
             out.transport = Some(Transport::Server);
             out.ok = true;
@@ -718,7 +795,7 @@ fn headline(s: &SyncStatus, now: i64) -> String {
     if failed_last {
         let e = s.last_error.clone().unwrap_or_default();
         if e.starts_with("Can't reach") || e.contains("timed out") || e.starts_with("No Selfkit PC") || e.starts_with("Nothing to sync") {
-            return if s.pending > 0 {
+            return if s.pending > 0 && s.server_configured {
                 format!("Waiting to sync · {} change{} saved here", s.pending, if s.pending == 1 { "" } else { "s" })
             } else {
                 "Waiting to sync · no connection".into()
@@ -751,6 +828,25 @@ mod tests {
     #[test]
     fn test_key_is_stable() {
         assert_eq!(test_data_key().as_bytes(), test_data_key().as_bytes());
+    }
+
+    #[test]
+    fn test_key_never_replaces_a_real_key() {
+        // Security: once real encryption is set up (keys.json exists), an empty or
+        // unreadable secret store means Locked, not the public test key.
+        let d = tempfile::tempdir().unwrap();
+        let mut cfg = AppSyncConfig::new("agenda", d.path(), Arc::new(secrets::MemorySecrets::default()));
+        cfg.test_key = true;
+        let s = AppSync::new(cfg).unwrap();
+        if !release_build() {
+            assert!(s.data_key().unwrap().unwrap().1, "test build without keys.json uses the test key");
+        }
+        s.setup_encryption_with("correct horse battery", KdfParams::insecure_fast()).unwrap();
+        let (k, is_test) = s.data_key().unwrap().unwrap();
+        assert!(!is_test);
+        assert_ne!(k.as_bytes(), test_data_key().as_bytes());
+        s.lock().unwrap();
+        assert!(s.data_key().unwrap().is_none(), "locked device must not fall back to the public key");
     }
 
     #[test]

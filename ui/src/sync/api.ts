@@ -7,7 +7,7 @@ export type TransportMode = "auto" | "lan_only" | "server_only";
 export type Transport = "lan" | "server" | "agent";
 
 export interface SyncSettings {
-  owner: Owner; transport: TransportMode; auto_sync: boolean; background_minutes: number;
+  enabled: boolean; owner: Owner; transport: TransportMode; auto_sync: boolean; background_minutes: number;
   lan_enabled: boolean; lan_peers: string[]; lan_discovery_port: number; lan_discovery_ms: number; device_name: string | null;
 }
 export interface SeenPeer { device_id: string; name: string; addr: string; last_seen: number; last_sync: number | null }

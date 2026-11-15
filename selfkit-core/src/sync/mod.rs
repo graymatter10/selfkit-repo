@@ -48,6 +48,13 @@ struct Payload {
     /// Version history, so LAN-received copies don't false-conflict with the server.
     #[serde(default)]
     hist: Vec<String>,
+    /// Authenticated copies of the clear routing fields. The server row's `updated_at`
+    /// and `device_id` are not covered by the AEAD, so a malicious server could rewrite
+    /// them (and with them the version id used by the merge rules). Old rows lack these.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    updated_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    device_id: Option<String>,
 }
 
 fn aad(app: &str, id: &str, collection: &str) -> Vec<u8> {
@@ -55,7 +62,14 @@ fn aad(app: &str, id: &str, collection: &str) -> Vec<u8> {
 }
 
 pub fn encrypt_record(key: &SecretKey, app: &str, r: &Record) -> Result<RemoteRecord> {
-    let p = serde_json::to_vec(&Payload { data: r.data.clone(), tz_offset: r.tz_offset, deleted: r.deleted, hist: r.hist.clone() })?;
+    let p = serde_json::to_vec(&Payload {
+        data: r.data.clone(),
+        tz_offset: r.tz_offset,
+        deleted: r.deleted,
+        hist: r.hist.clone(),
+        updated_at: Some(r.updated_at),
+        device_id: Some(r.device_id.clone()),
+    })?;
     Ok(RemoteRecord {
         id: r.id.clone(),
         app: app.into(),
@@ -74,9 +88,10 @@ pub fn decrypt_record(key: &SecretKey, rr: &RemoteRecord) -> Result<Record> {
         id: rr.id.clone(),
         collection: rr.collection.clone(),
         data: p.data,
-        updated_at: rr.updated_at,
+        // Authenticated values win over the clear server columns.
+        updated_at: p.updated_at.unwrap_or(rr.updated_at),
         tz_offset: p.tz_offset,
-        device_id: rr.device_id.clone(),
+        device_id: p.device_id.unwrap_or_else(|| rr.device_id.clone()),
         deleted: p.deleted,
         hist: p.hist,
     })
@@ -198,6 +213,36 @@ mod tests {
         sync_once(&mut a, &remote, &key).await.unwrap();
         sync_once(&mut b, &remote, &key).await.unwrap();
         assert_eq!(b.count("tasks").unwrap(), 1);
+    }
+
+    /// Attack: a malicious server rewrites the clear metadata (or moves a ciphertext to
+    /// another record id / collection). Tampered ids fail to decrypt; tampered
+    /// timestamps and device ids are ignored in favour of the authenticated copies.
+    #[test]
+    fn server_cannot_rewrite_metadata_or_move_ciphertext() {
+        let key = SecretKey::generate();
+        let s = Store::open_in_memory("agenda", "A", &[]).unwrap();
+        let r = s.put("tasks", None, &json!({"title": "secret"})).unwrap();
+        let rr = encrypt_record(&key, "agenda", &r).unwrap();
+        let forged = RemoteRecord { updated_at: r.updated_at + 9_999_999, device_id: "evil".into(), ..rr.clone() };
+        let got = decrypt_record(&key, &forged).unwrap();
+        assert_eq!((got.updated_at, got.device_id.as_str()), (r.updated_at, "A"));
+        for moved in [
+            RemoteRecord { id: "other-id".into(), ..rr.clone() },
+            RemoteRecord { collection: "notes".into(), ..rr.clone() },
+            RemoteRecord { app: "hisab".into(), ..rr.clone() },
+        ] {
+            assert!(matches!(decrypt_record(&key, &moved), Err(Error::Decrypt)));
+        }
+        let mut flipped = rr.clone();
+        let last = flipped.ciphertext.len() - 1;
+        flipped.ciphertext[last] ^= 1;
+        assert!(matches!(decrypt_record(&key, &flipped), Err(Error::Decrypt)));
+        assert!(matches!(decrypt_record(&SecretKey::generate(), &rr), Err(Error::Decrypt)));
+        // Rows written by older builds (no authenticated copies) still decrypt.
+        let old = serde_json::to_vec(&json!({"data": {"t": 1}, "tz_offset": 0, "deleted": false})).unwrap();
+        let legacy = RemoteRecord { ciphertext: crypto::seal(&key, &old, &aad("agenda", &rr.id, "tasks")), ..rr };
+        assert_eq!(decrypt_record(&key, &legacy).unwrap().updated_at, r.updated_at);
     }
 
     #[tokio::test]
