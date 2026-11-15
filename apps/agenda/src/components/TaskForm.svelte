@@ -223,7 +223,7 @@
         </div>
       </div>
       <input bind:this={galleryEl} type="file" accept="image/*" multiple class="sr" tabindex="-1" aria-hidden="true" onchange={onPhotos} />
-      <input bind:this={cameraEl} type="file" accept="image/*" capture="environment" class="sr" tabindex="-1" aria-hidden="true" onchange={onPhotos} />
+      <input bind:this={cameraEl} type="file" accept="image/*" capture="environment" class="sr" tabindex="-1" aria-hidden="true" onchange={onPhotos} oncancel={cleanCaptures} />
     </div>
 
     <div class="flex flex-col gap-2">
