@@ -89,7 +89,9 @@
   }
   // Same rule as log_set: the effective pair (typed time, else the estimate) must have wake after bed.
   function pairError(): string {
-    if (nap) return "";
+    // A nap end before its start wrapped to "Nap 23h 45m" (P25): naps over midnight are
+    // fine, but one longer than the 6 h limit means the times are the wrong way round.
+    if (nap) return asleep != null && asleep > 360 ? `Woke up must be after you fell asleep (${tdisp(val(a))} → ${tdisp(val(b))}).` : "";
     const x = val(a) || est.a, y = val(b) || est.b;
     if (!x || !y) return "";
     const bm = toMin(x) >= 18 * 60 ? toMin(x) - 1440 : toMin(x);
@@ -208,7 +210,7 @@
   <div class="card px-4 py-1">{@render timeRow("a")}<div class="h-px bg-sep"></div>{@render timeRow("b")}</div>
   <div class="mx-1 mt-2.5 flex text-[13px]">
     <span class="text-muted">{desktop ? `Type ${typeHint} or use the clock` : "Tap a time to pick it on the clock"}</span><span class="flex-1"></span>
-    {#if asleep != null && asleep > 0}<span class="num text-ink2">{nap ? "Nap" : "Asleep"} <b class="text-ink">{dur(asleep)}</b></span>{/if}
+    {#if asleep != null && asleep > 0 && !(nap && asleep > 360)}<span class="num text-ink2">{nap ? "Nap" : "Asleep"} <b class="text-ink">{dur(asleep)}</b></span>{/if}
   </div>
   {#if error}<p role="alert" class="mx-1 mt-2 mb-0 text-[14px] text-danger">{error}</p>{/if}
   {#if !nap}

@@ -72,6 +72,8 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| P25 | Add nap: end before start shows "Woke up must be after you fell asleep" (no wrapped 23h 45m) | `apps/dusk/src/components/Adjust.svelte` | OPPO |
+| P26 | covered by B4 (mirrors on the phone) + L4-10 (neutral text) | — | OPPO |
 | C28 | `install-service` on Windows writes HKCU Run "Selfkit agent" (installer's value + launcher), drops the logon task | `selfkit-agent/src/install.rs` | Windows (untested here) |
 | C29 | Agenda running = comm any case or exe name agenda/agenda.AppImage/agenda_* | `selfkit-agent/src/reminders.rs` | Linux .deb/AppImage |
 | C23 | Chrono and Reflect: single-instance plugin on desktop (Cargo.lock edited by hand: two dependency lines) | `apps/{chrono,reflect}/src-tauri/{Cargo.toml,src/lib.rs}`, `Cargo.lock` | Windows/Linux double launch |
