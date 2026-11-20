@@ -390,6 +390,12 @@ pub fn merge_seeded_duplicates(store: &Store) -> R<usize> {
             if !seeded || used(id) {
                 continue;
             }
+            // Only a seed nobody touched: a renamed, recoloured or budgeted default has a
+            // second version and is the user's now, never merged away (C95).
+            let edited = store.get(id).map_err(|e| e.to_string())?.is_none_or(|r| r.hist.len() > 1);
+            if edited {
+                continue;
+            }
             let twin = list.iter().any(|o| s(o, "id") != id && s(o, "kind") == s(v, "kind") && s(o, "name").eq_ignore_ascii_case(s(v, "name")) && !b(o, "archived"));
             if twin {
                 store.delete(id).map_err(|e| e.to_string())?;
@@ -496,5 +502,13 @@ mod tests {
         assert_eq!(merge_seeded_duplicates(&st).unwrap(), 2);
         assert!(get(&st, "acct-cash").unwrap().is_none() && get(&st, "cat-exp-food").unwrap().is_none());
         assert!(get(&st, "cat-exp-bills").unwrap().is_some());
+        // C95: an edited seeded default (budget set) is kept even with an unused twin.
+        let mut groc = get(&st, "cat-exp-groceries").unwrap().unwrap();
+        groc.as_object_mut().unwrap().remove("id");
+        groc["budget"] = json!(300);
+        st.put(CATEGORIES, Some("cat-exp-groceries"), &groc).unwrap();
+        st.put(CATEGORIES, Some("old-groc"), &json!({"name": s(&groc, "name"), "kind": "expense", "icon": "cart", "color": "#3b8", "budget": 0, "order": 1, "archived": false})).unwrap();
+        assert_eq!(merge_seeded_duplicates(&st).unwrap(), 0);
+        assert_eq!(get(&st, "cat-exp-groceries").unwrap().unwrap()["budget"].as_f64(), Some(300.0));
     }
 }
