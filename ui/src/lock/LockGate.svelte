@@ -14,6 +14,7 @@
   const locked = $derived(!!v?.enabled && !!v?.locked);
   let pin = $state("");
   let msg = $state("");
+  let bioMsg = false; // msg holds a fingerprint error (cleared on the next key press)
   let shake = $state(false);
   let busy = $state(false);
   let waitUntil = $state(0);
@@ -85,6 +86,7 @@
         // A wait is shown by the live countdown line, then "Enter your PIN" again; a fixed
         // "Try again in 30 s." in msg stayed on screen after the wait ended (B5, L7).
         msg = "retry_in_ms" in r && r.retry_in_ms > 0 ? "" : wrongText(r, r.lock.kind);
+        bioMsg = false;
         shake = true;
         setTimeout(() => (shake = false), 420);
         if (fresh) set(r.lock);
@@ -100,7 +102,10 @@
     stopTest();
     const r = await biometricPrompt(`Unlock ${appName}`);
     if (r === "ok") await latest(lockApi.unlockBiometric(), set);
-    else if (r.startsWith("error:")) msg = r.slice(6);
+    // A fingerprint error (e.g. too many tries) is shown until the next key press, so it
+    // can't stay on screen like the old wait text did (B5); a cancel leaves no text.
+    else if (r.startsWith("error:")) { msg = r.slice(6); bioMsg = true; }
+    else if (bioMsg) { msg = ""; bioMsg = false; }
   }
 
   async function doReset() {
@@ -202,6 +207,7 @@
   }
   function onInput() {
     stopTest();
+    if (bioMsg) { msg = ""; bioMsg = false; }
     if (isPin) pin = pin.replace(/\D/g, "");
     if (isPin && v?.pin_len && pin.length === v.pin_len) submit();
   }

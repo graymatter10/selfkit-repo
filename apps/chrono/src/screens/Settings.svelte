@@ -29,7 +29,6 @@
   let batteryTip = $state(false);
   const checkBattery = () => { try { batteryTip = !!syncBridge()?.needsBatteryTip(); } catch { batteryTip = false; } };
   checkBattery();
-  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && checkBattery());
 
   /** Android 13+: alerts need the notification permission; ask when it matters. */
   let notifyBlocked = $state(false);
@@ -44,7 +43,13 @@
   // Alerts / Weekly report are on by default: say when Android blocks them (P23).
   const checkNotify = () => { if (/Android/i.test(navigator.userAgent)) isPermissionGranted().then((g) => (notifyBlocked = !g)).catch(() => {}); };
   checkNotify();
-  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && checkNotify()); // back from Android settings (C93)
+  // Re-check both when coming back from Android settings (C93); removed when Settings closes,
+  // so opening Settings again doesn't stack listeners.
+  $effect(() => {
+    const onVis = () => { if (document.visibilityState === "visible") { checkBattery(); checkNotify(); } };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  });
   function toggle(field: "alerts" | "weekly_report") {
     const n = clone();
     n[field] = !n[field];
