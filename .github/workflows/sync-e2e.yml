@@ -131,7 +131,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        days: ${{ fromJSON(inputs.longrun_days && format('[{0}]', inputs.longrun_days) || '[30, 365]') }}
+        days: ${{ fromJSON(inputs.longrun_days && format('[{0}]', inputs.longrun_days) || '[30, 365, 1096]') }}
     services:
       postgres:
         image: postgres:17

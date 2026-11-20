@@ -195,12 +195,23 @@ struct ORec {
     f: BTreeMap<String, OF>,
     legacy: bool,
     created: String,
+    /// Last user actions on this record (for findings).
+    log: Vec<String>,
 }
 
 #[derive(Default)]
 struct Oracle {
+    /// Device doing the current action (for the record logs).
+    who: String,
     recs: HashMap<String, ORec>,
     by_coll: HashMap<(String, String), Vec<String>>,
+}
+
+fn push_log(r: &mut ORec, s: String) {
+    r.log.push(s);
+    if r.log.len() > 14 {
+        r.log.remove(0);
+    }
 }
 
 impl Oracle {
@@ -210,7 +221,7 @@ impl Oracle {
             self.by_coll.entry((app.into(), coll.into())).or_default().push(id.into());
             self.recs.insert(
                 key.clone(),
-                ORec { id: id.into(), app: app.into(), coll: coll.into(), del: (false, 0), f: BTreeMap::new(), legacy, created: today.into() },
+                ORec { id: id.into(), app: app.into(), coll: coll.into(), del: (false, 0), f: BTreeMap::new(), legacy, created: today.into(), log: vec![] },
             );
         }
         self.recs.get_mut(&key).unwrap()
@@ -294,43 +305,56 @@ impl Oracle {
         let om = old.and_then(Value::as_object).unwrap_or(&empty);
         let nm = new.as_object().unwrap_or(&empty);
         let keys: BTreeSet<&String> = om.keys().chain(nm.keys()).collect();
+        let mut changed = vec![];
         for k in keys {
             let ov = om.get(k).cloned().unwrap_or(Value::Null);
             let nv = nm.get(k).cloned().unwrap_or(Value::Null);
+            if ov != nv {
+                changed.push(k.as_str());
+            }
             Self::field(r, k, &ov, &nv, t, creation);
         }
+        let who = self.who.clone();
+        let r = self.recs.get_mut(&okey(app, id)).unwrap();
+        push_log(r, format!("{who} {} t={t} {changed:?}", if creation { "create" } else { "edit" }));
         if t >= r.del.1 || creation {
             r.del = (false, t.max(r.del.1));
         }
     }
 
     fn set_deleted(&mut self, app: &str, id: &str, del: bool, t: i64) {
-        if let Some(r) = self.recs.get_mut(&okey(app, id))
-            && t >= r.del.1
-        {
-            r.del = (del, t);
+        let who = self.who.clone();
+        if let Some(r) = self.recs.get_mut(&okey(app, id)) {
+            push_log(r, format!("{who} {} t={t}", if del { "delete" } else { "restore" }));
+            if t >= r.del.1 {
+                r.del = (del, t);
+            }
         }
     }
 
-    /// The user settled a conflict: what the device now holds is what they want, with
-    /// the store's own field clocks (a newer edit elsewhere still wins).
-    fn adopt(&mut self, app: &str, rec: &selfkit_core::Record) {
+    /// The user settled a conflict: what the device now holds is what they want. A field
+    /// whose current value the user saw (it is one of the two sides) takes the result now;
+    /// otherwise a newer edit elsewhere still wins (store's field clocks).
+    fn adopt(&mut self, app: &str, rec: &selfkit_core::Record, local: &selfkit_core::Record, remote: &selfkit_core::Record, choice: &str, now: i64) {
+        let who = self.who.clone();
         let Some(r) = self.recs.get_mut(&okey(app, &rec.id)) else { return };
+        push_log(r, format!("{who} resolved {choice} (local del={} {}, remote del={} {}) -> del={} t={now}", local.deleted, local.ver(), remote.deleted, remote.ver(), rec.deleted));
         let exp = Self::expected(r);
         let empty = Map::new();
         let em = exp.as_object().unwrap_or(&empty);
         let am = rec.data.as_object().unwrap_or(&empty);
         let keys: BTreeSet<String> = em.keys().chain(am.keys()).cloned().collect();
         for k in keys {
-            let t = rec.fclock.get(&k).copied().unwrap_or(rec.updated_at);
             let ev = em.get(&k).cloned().unwrap_or(Value::Null);
             let av = am.get(&k).cloned().unwrap_or(Value::Null);
+            let seen = |d: &Value| d.get(&k).cloned().unwrap_or(Value::Null) == ev;
+            let t = if seen(&local.data) || seen(&remote.data) { now } else { rec.fclock.get(&k).copied().unwrap_or(rec.updated_at) };
             if !same_field(r.f.get(&k), &av) {
                 Self::field(r, &k, &ev, &av, t, false);
             }
         }
         if r.del.0 != rec.deleted {
-            r.del = (rec.deleted, rec.updated_at.max(r.del.1));
+            r.del = (rec.deleted, now.max(r.del.1));
         }
     }
 
@@ -434,7 +458,7 @@ fn diff_record(r: &ORec, data: &Value, deleted: bool) -> Vec<(String, String, St
             Some(OF::S(..)) => "field has an older/other value",
             None => "unknown field",
         };
-        let ev = f.map(|f| Oracle::expected(&ORec { id: String::new(), app: String::new(), coll: String::new(), del: (false, 0), f: BTreeMap::from([(k.to_string(), f.clone())]), legacy: false, created: String::new() })[k.as_str()].clone()).unwrap_or(Value::Null);
+        let ev = f.map(|f| Oracle::expected(&ORec { id: String::new(), app: String::new(), coll: String::new(), del: (false, 0), f: BTreeMap::from([(k.to_string(), f.clone())]), legacy: false, created: String::new(), log: vec![] })[k.as_str()].clone()).unwrap_or(Value::Null);
         out.push((kind.to_string(), k.to_string(), short(&ev), short(&av)));
     }
     out
@@ -701,6 +725,7 @@ impl Sim {
     // ---- user writes (each goes to the oracle) ----
 
     fn put(&mut self, i: usize, app: &str, coll: &str, id: Option<&str>, data: Value) -> String {
+        self.o.who = self.devs[i].name.clone();
         tick();
         let d = &self.devs[i];
         let st = d.st(app);
@@ -721,6 +746,7 @@ impl Sim {
         rec.id
     }
     fn del(&mut self, i: usize, app: &str, id: &str, deleted: bool) {
+        self.o.who = self.devs[i].name.clone();
         tick();
         let st = self.devs[i].st(app);
         if deleted { st.delete(id).unwrap() } else { st.restore(id).unwrap() }
@@ -1490,7 +1516,7 @@ impl Sim {
             label.push_str(" · local copy not edited here");
         }
         *self.conflicts.entry(label.clone()).or_default() += 1;
-        let unexpected = matches!(kind, "other (tie?)" | "same content") || (relay && !shared && kind != "delete vs edit");
+        let unexpected = matches!(kind, "other (tie?)" | "same content") || (relay && !shared && !matches!(kind, "delete vs edit" | "legacy (no field clocks)" | "one side from an old build (no field clocks)"));
         if unexpected {
             let note = format!(
                 "device {} source {} local ver {} remote ver {} hist {}/{} fields {:?}",
@@ -1502,6 +1528,8 @@ impl Sim {
 
     fn resolve(&mut self, i: usize, store: &str, c: &selfkit_core::store::Conflict) {
         let pick = self.rng.below(10);
+        let choice_s = if pick < 4 || (self.devs[i].pc && pick < 5) { "keep-a" } else if pick < 8 || self.devs[i].pc { "keep-b" } else { "merge" };
+        self.o.who = self.devs[i].name.clone();
         tick();
         if self.devs[i].pc {
             let how = if pick < 5 { Resolution::KeepLocal } else { Resolution::KeepRemote };
@@ -1536,7 +1564,8 @@ impl Sim {
             self.devs[i].st(store).conn().execute("UPDATE records SET fclock='{}' WHERE id=?", [&rec.id]).unwrap();
         }
         *self.conflicts.entry("(resolved by the user)".into()).or_default() += 1;
-        self.o.adopt(store, &rec);
+        let now = selfkit_core::time::now_ms();
+        self.o.adopt(store, &rec, &c.local, &c.remote, choice_s, now);
     }
 
     async fn resolve_all(&mut self) {
@@ -1653,7 +1682,7 @@ impl Sim {
                 Some((_, data, del)) => {
                     let d = diff_record(r, data, *del);
                     if !d.is_empty() {
-                        todo.push((id.clone(), r.app.clone(), r.coll.clone(), d, Some((data.clone(), *del, r.legacy, r.created.clone()))));
+                        todo.push((id.clone(), r.app.clone(), r.coll.clone(), d, Some((data.clone(), *del, r.legacy, format!("{} | log: {}", r.created, r.log.join("; "))))));
                     }
                 }
             }
