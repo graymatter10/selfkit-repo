@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| L3-3 / C54 | extension shipped with the agent (.deb /usr/share/selfkit-agent/extension, tarball extension/, Windows $INSTDIR\extension); How to add names the real paths; package test checks it | `installer/linux/{build-agent-packages,test-packages}.sh`, `installer/windows/agent.nsi`, `apps/chrono/src/screens/Sources.svelte` | linux.yml + windows.yml |
 | L3-1 / C52 | extension closes the session on onFocusChanged(WINDOW_ID_NONE) | `extension/background.js` | Linux Chromium |
 | L3-2 / C53 | native host reply carries `idle_minutes`; extension applies it with setIdleInterval | `selfkit-agent/src/{chrono_settings,native_host}.rs`, `extension/background.js` | Linux |
 | P17–P20 | Chrono: average window named, short change text (+minutes for big jumps), last use 23:59 past midnight, "N sources this week" | `screens/Today.svelte`, `screens/Trends.svelte`, `App.svelte` | OPPO |

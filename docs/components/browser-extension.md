@@ -48,3 +48,6 @@ Finished sessions wait in `storage.local.queue` until the agent confirms them. A
 - `extension/icons/`: from the Chrono app icon.
 - `extension/test/background.test.js`: bun tests.
 - Agent side: `selfkit-agent/src/native_host.rs`, `install.rs`, `chrono_settings.rs`.
+
+## Shipped with the agent (L3-3)
+The extension folder (without `test/`) is installed with the agent: Linux `.deb` → `/usr/share/selfkit-agent/extension`, tarball → `extension/`, Windows → `%LOCALAPPDATA%\Programs\Selfkit Agent\extension` (agent.nsi). Chrono → Devices and sources → How to add points there; the stable Chrome id comes from `key` in manifest.json.

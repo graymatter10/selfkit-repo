@@ -99,6 +99,10 @@ Section "Selfkit agent" SecAgent
   SetOutPath "$INSTDIR"
   File "/oname=selfkit-agent.exe" "${AGENT_EXE}"
   File "/oname=selfkit-agent-start.exe" "${LAUNCHER_EXE}"
+  ; The browser extension for Chrono's "How to add" (load unpacked) — L3-3.
+  SetOutPath "$INSTDIR\extension"
+  File /r /x test "..\..\extension\*"
+  SetOutPath "$INSTDIR"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   ; Browser native-messaging host for the Chrono extension (manifests in
@@ -189,6 +193,7 @@ Section "Uninstall"
 
   Delete "$INSTDIR\selfkit-agent.exe"
   Delete "$INSTDIR\selfkit-agent-start.exe"
+  RMDir /r "$INSTDIR\extension"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
   DeleteRegKey HKCU "${UNINSTKEY}"

@@ -4,7 +4,8 @@
 # Output: <out>/selfkit-agent_<version>_amd64.deb, <out>/selfkit-agent-<version>-linux-x86_64.tar.gz
 # .deb contents: /usr/bin/selfkit-agent, systemd user unit /usr/lib/systemd/user/selfkit-agent.service
 # (enabled for every user on install, like debhelper does), native-messaging host manifests for
-# Chrome, Chromium and Firefox. Your data (~/.local/share/selfkit) is never part of the package,
+# Chrome, Chromium and Firefox, the browser extension in /usr/share/selfkit-agent/extension
+# (tarball: extension/). Your data (~/.local/share/selfkit) is never part of the package,
 # so remove and purge leave it alone.
 # Docs: docs/platforms/linux.md.
 set -euo pipefail
@@ -51,6 +52,10 @@ done
 mkdir -p "$p/usr/lib/mozilla/native-messaging-hosts"
 firefox_manifest /usr/bin/selfkit-agent > "$p/usr/lib/mozilla/native-messaging-hosts/com.selfkit.agent.json"
 install -Dm644 "$root/selfkit-agent/icons/128x128.png" "$p/usr/share/icons/hicolor/128x128/apps/selfkit-agent.png"
+# The browser extension (load unpacked / temporary add-on), so "How to add" in Chrono
+# points at a folder that exists (L3-3). Tests stay out.
+ext_copy() { mkdir -p "$1"; (cd "$root/extension" && tar --exclude=./test -cf - .) | (cd "$1" && tar -xf -); }
+ext_copy "$p/usr/share/selfkit-agent/extension"
 mkdir -p "$p/usr/share/doc/selfkit-agent"
 cat > "$p/usr/share/doc/selfkit-agent/README" <<'EOF'
 Selfkit agent: background sync, activity tracking for Chrono, backups, Agenda reminders.
@@ -113,6 +118,7 @@ t=$work/selfkit-agent-$ver
 mkdir -p "$t"
 install -m755 "$bin" "$t/selfkit-agent"
 cp "$root/selfkit-agent/dist/selfkit-agent.service" "$t/"
+ext_copy "$t/extension"
 cat > "$t/install.sh" <<'EOF'
 #!/bin/sh
 # Per-user install: ~/.local/bin/selfkit-agent, systemd user unit (enabled + started),
