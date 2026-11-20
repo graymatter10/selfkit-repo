@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| C23 | Chrono and Reflect: single-instance plugin on desktop (Cargo.lock edited by hand: two dependency lines) | `apps/{chrono,reflect}/src-tauri/{Cargo.toml,src/lib.rs}`, `Cargo.lock` | Windows/Linux double launch |
 | L4-12 / C50 | Dusk dark `--seg-on` lighter than the track. C51 (native <select> list follows the GTK theme, white in dark mode) not fixed: needs an in-page listbox or GTK_THEME at start — lead decision | `apps/dusk/src/app.css` | Linux dark |
 | L4-13 / C57 | LAN + Automatic switches off and disabled while sync is off | `ui/src/sync/SyncSettings.svelte` | all apps |
 | L4-11 / C47 | Trends: axis ticks in 12h ("9 pm"), weekly rows "Week of 16 Nov", chart says "last 30 nights" when the span is longer | `RangeChart.svelte`, `TrendsPage.svelte`, `lib/fmt.ts` | Linux 12h |

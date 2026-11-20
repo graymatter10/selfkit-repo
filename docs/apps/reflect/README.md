@@ -2,6 +2,8 @@
 
 Status: **v0.1, usable on Linux and Android** (on a phone Reflect reads read-only mirrors of the other apps through their providers, `SelfkitMirror`). Read-only stats across Chrono, Hisab, Agenda and Dusk: Today, streaks with your own thresholds, connections, weekly and monthly reviews, and the health screen for the agent and sync. Scope: [PLANNING.md](../../PLANNING.md) § Apps → Reflect. Stats rules: [stats.md](stats.md).
 
+Desktop: one instance (`tauri-plugin-single-instance`; a second launch focuses the first window, skipped when `SELFKIT_DATA_DIR` is set), like Agenda/Hisab/Dusk (C23).
+
 Design (2026-11-15, self-reviewed; the user was asleep and asked not to wait for approval): mockup `scratchpad/reflect/reflect-mockup.html` (contact sheets `contact-phone.png`, `contact-desktop.png`, `contact-dark.png`). Warm neutral greys, one amber accent (#a35d10 light / #e7aa5e dark) that matches the icon. App colours only as tiny "● Chrono" markers that say where a number came from. Red only for errors. Inter (bundled), plain sentences, one big number per card, details behind a tap. Targets ≥ 44 px, text ≥ 12 px. Light/dark follow the system unless set (per device).
 
 ## Screens

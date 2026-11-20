@@ -452,6 +452,21 @@ fn sync_handle() -> selfkit_core::Result<selfkit_appsync::tauri_cmds::SyncHandle
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default().plugin(selfkit_appsync::tauri_cmds::nav_guard()).plugin(tauri_plugin_notification::init());
+    // Desktop: one instance (C23): a second launch focuses the first, so two sync passes
+    // or lock screens never race on the same data. Skipped when SELFKIT_DATA_DIR is set
+    // (tests run several apps on separate data dirs), like Agenda.
+    #[cfg(desktop)]
+    let builder = if std::env::var_os("SELFKIT_DATA_DIR").is_none() {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+    } else {
+        builder
+    };
     #[cfg(target_os = "android")]
     let builder = builder.plugin(mobile::plugin());
     builder
