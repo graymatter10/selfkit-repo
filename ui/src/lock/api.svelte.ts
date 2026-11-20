@@ -8,6 +8,8 @@ export interface LockView {
   enabled: boolean; locked: boolean; kind: Kind; pin_len: number; timeout_secs: number;
   biometric: boolean; hide_in_switcher: boolean; failed: number; retry_in_ms: number;
   platform: "android" | "desktop"; can_reset: boolean; test_build: boolean;
+  /** Full path of this app's lock file (desktop "Forgot PIN?" hint). */
+  lock_file: string;
 }
 export type Attempt =
   | { result: "ok" }

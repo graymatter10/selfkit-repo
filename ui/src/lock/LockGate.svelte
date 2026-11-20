@@ -213,7 +213,7 @@
             {#if resetErr}<p class="lk-sub lk-bad">{resetErr}</p>{/if}
             <button type="button" class="lk-btn lk-pri" disabled={!resetSecret} onclick={doReset}>Turn off the lock</button>
           {:else}
-            <p class="lk-hint">{#if android}Without sync encryption set up there is no reset code. The way back is Android Settings → Apps → {appName} → Storage → Clear data, which also deletes anything not synced yet.{:else}Without sync encryption set up there is no reset code. Close {appName} and delete <code>lock/{appName.toLowerCase()}.json</code> in the Selfkit data folder.{/if}</p>
+            <p class="lk-hint">{#if android}Without sync encryption set up there is no reset code. The way back is Android Settings → Apps → {appName} → Storage → Clear data, which also deletes anything not synced yet.{:else}Without sync encryption set up there is no reset code. Close {appName} and delete <code>{v.lock_file}</code>.{/if}</p>
           {/if}
           <button type="button" class="lk-link" onclick={() => { forgot = false; resetErr = ""; }}>Back</button>
         </div>
