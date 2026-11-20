@@ -196,15 +196,20 @@ fn row_to_record(r: &rusqlite::Row) -> rusqlite::Result<Record> {
     })
 }
 
-/// New field clocks after a local edit: fields whose value changed get `now`.
+/// New field clocks after a local edit: fields whose value changed get `now`. A field
+/// without a clock that did not change (record written before field clocks, or by an
+/// older build) gets the old record's `updated_at`, not `now`, so a field merge doesn't
+/// count it as changed on this side (C1).
 fn stamp_clocks(old: Option<&Record>, data: &Value, now: i64) -> std::collections::BTreeMap<String, i64> {
     let mut clock = old.map(|o| o.fclock.clone()).unwrap_or_default();
     let empty = serde_json::Map::new();
     let old_obj = old.and_then(|o| o.data.as_object()).unwrap_or(&empty);
     let new_obj = data.as_object().unwrap_or(&empty);
     for k in old_obj.keys().chain(new_obj.keys()) {
-        if !crate::conflict::opt_eq(old_obj.get(k), new_obj.get(k)) || !clock.contains_key(k) {
+        if !crate::conflict::opt_eq(old_obj.get(k), new_obj.get(k)) {
             clock.insert(k.clone(), now);
+        } else if !clock.contains_key(k) {
+            clock.insert(k.clone(), old.map_or(now, |o| o.updated_at.min(now)));
         }
     }
     clock
@@ -484,8 +489,8 @@ impl Store {
     /// clocks and the last version both share (from `hist`): a field changed on one side
     /// only takes that side; a field changed on both takes the newer change, lists are
     /// combined (`union_lists`). `None` = leave it to the user: a deletion, long text
-    /// changed on both (line merge on the conflict screen), records without clocks
-    /// (written by older builds), or an exact tie.
+    /// changed on both (line merge on the conflict screen), a side without clocks
+    /// (written by an older build), or an exact tie.
     pub fn field_merge(local: &Record, remote: &Record) -> Option<Value> {
         if local.deleted || remote.deleted || local.collection != remote.collection {
             return None;
@@ -494,7 +499,9 @@ impl Store {
         // anyway (each whole record counts as changed at its own time), so the first
         // sync of a new device never shows a settings conflict.
         let settings = local.collection == crate::settings::COLLECTION;
-        if local.fclock.is_empty() && remote.fclock.is_empty() && !settings {
+        // One side without clocks (older build, or an edit made before the upgrade) would
+        // count all its fields as unchanged and lose them silently: ask instead (C2).
+        if (local.fclock.is_empty() || remote.fclock.is_empty()) && !settings {
             return None;
         }
         let (l, r) = (local.data.as_object()?, remote.data.as_object()?);
@@ -739,12 +746,19 @@ impl Store {
     /// Bundle import: insert if missing or older locally ("newer wins"); marked dirty
     /// so it gets pushed. Returns true if written.
     pub fn import_record(&self, r: &Record) -> Result<bool> {
-        let local_ts: Option<i64> =
-            self.conn.query_row("SELECT updated_at FROM records WHERE id=?", [&r.id], |x| x.get(0)).optional()?;
-        if matches!(local_ts, Some(t) if t >= r.updated_at) {
+        let old = self.get(&r.id)?;
+        if matches!(&old, Some(o) if o.updated_at >= r.updated_at) {
             return Ok(false);
         }
-        self.write_local(r)?;
+        // Fields that differ from this device's copy count as changed at the bundle's
+        // time (newer than any shared base), so a later field merge keeps the restored
+        // values instead of seeing them as unchanged (C3). A record new to this device
+        // keeps the bundle's clocks when it has them.
+        let mut rec = r.clone();
+        if old.is_some() || rec.fclock.is_empty() {
+            rec.fclock = stamp_clocks(old.as_ref(), &r.data, r.updated_at);
+        }
+        self.write_local(&rec)?;
         Ok(true)
     }
 
@@ -910,4 +924,55 @@ mod tests {
         assert!(a.dirty(10).unwrap().iter().any(|(r, _)| r.id == r0.id), "peer data must still go to the server");
     }
 
+    fn plain(data: Value, at: i64, clocks: &[(&str, i64)], hist: &[&str]) -> Record {
+        Record {
+            id: "r".into(),
+            collection: "tasks".into(),
+            data,
+            updated_at: at,
+            tz_offset: 0,
+            device_id: "X".into(),
+            deleted: false,
+            hist: hist.iter().map(|h| h.to_string()).collect(),
+            fclock: clocks.iter().map(|(k, t)| (k.to_string(), *t)).collect(),
+        }
+    }
+
+    #[test]
+    fn clockless_record_first_edit_stamps_only_changed_fields() {
+        // C1: a record from before field clocks; editing the title must not mark `due` as changed.
+        let old = plain(json!({"title": "a", "due": "x"}), 100, &[], &["100:A"]);
+        let c = stamp_clocks(Some(&old), &json!({"title": "b", "due": "x"}), 200);
+        assert_eq!((c["title"], c["due"]), (200, 100));
+        // Both devices edit a different field first after upgrading -> both edits survive.
+        let mut local = plain(json!({"title": "phone", "due": "x"}), 200, &[], &["100:A", "200:A"]);
+        local.fclock = stamp_clocks(Some(&old), &local.data, 200);
+        let mut remote = plain(json!({"title": "a", "due": "y"}), 300, &[], &["100:A", "300:B"]);
+        remote.fclock = stamp_clocks(Some(&old), &remote.data, 300);
+        assert_eq!(Store::field_merge(&local, &remote), Some(json!({"title": "phone", "due": "y"})));
+    }
+
+    #[test]
+    fn one_side_without_clocks_is_a_conflict() {
+        // C2: an edit from an older build (no clocks) must not lose to the clocked side.
+        let local = plain(json!({"title": "old build edit", "due": "x"}), 200, &[], &["100:A", "200:A"]);
+        let remote = plain(json!({"title": "a", "due": "y"}), 300, &[("title", 100), ("due", 300)], &["100:A", "300:B"]);
+        assert_eq!(Store::field_merge(&local, &remote), None);
+        assert_eq!(Store::field_merge(&remote, &local), None);
+    }
+
+    #[test]
+    fn imported_fields_count_as_changed() {
+        // C3: restoring an older bundle's values stamps the differing fields with the bundle time.
+        let s = store();
+        let r = s.put("tasks", None, &json!({"title": "now", "due": "x"})).unwrap();
+        let mut b = r.clone();
+        b.data = json!({"title": "restored", "due": "x"});
+        b.updated_at = r.updated_at + 1000;
+        b.fclock.clear();
+        assert!(s.import_record(&b).unwrap());
+        let got = s.get(&r.id).unwrap().unwrap();
+        assert_eq!(got.fclock["title"], b.updated_at);
+        assert_eq!(got.fclock["due"], r.fclock["due"]);
+    }
 }
