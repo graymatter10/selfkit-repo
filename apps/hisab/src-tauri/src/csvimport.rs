@@ -369,7 +369,10 @@ pub fn preview(store: &Store, t: &Table, m: &Mapping, account: &str, main: &str)
         };
         // Date (and time).
         let dv = cell(r, m.date);
-        match parse_date(&dv, &m.date_format) {
+        // Another row format is fine when it can't be misread (month names, year first):
+        // "16 Nov 2026" in a dd/mm/yyyy file was rejected (P36).
+        const UNAMBIGUOUS: &[&str] = &["%Y-%m-%d", "%Y/%m/%d", "%d %b %Y", "%d-%b-%Y", "%d-%b-%y", "%d %B %Y", "%b %d, %Y", "%B %d, %Y"];
+        match parse_date(&dv, &m.date_format).or_else(|| UNAMBIGUOUS.iter().find_map(|f| parse_date(&dv, f))) {
             Some((d, tm)) => {
                 row.date = d.format("%Y-%m-%d").to_string();
                 row.time = tm;
@@ -540,6 +543,12 @@ mod tests {
         assert_eq!(detect_date_format(["04/15/2026", "04/03/2026"].into_iter()), "%m/%d/%Y");
         assert_eq!(detect_date_format(["15 Nov 2026"].into_iter()), "%d %b %Y");
         assert_eq!(parse_date("2026-11-15T14:30:00", "%Y-%m-%d").unwrap().1, "14:30");
+        // P36: a different but unambiguous date in a day-first file is read.
+        let st = store();
+        let t = parse("Date,Description,Amount\n15/11/2026,Bus,-40\n16 Nov 2026,Tea,-15\n").unwrap();
+        let m = guess(&t);
+        let p = preview(&st, &t, &m, &cash(&st), "BDT").unwrap();
+        assert_eq!((p.ok, p.errors, p.rows[1].date.as_str()), (2, 0, "2026-11-16"), "{:?}", p.rows);
     }
 
     /// Hisab's own export round-trips: kinds, categories, accounts, transfers, tags.

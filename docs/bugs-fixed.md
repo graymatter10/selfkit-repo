@@ -72,6 +72,9 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| P35 / C81 | note blurs when the keyboard closes (visualViewport grows), pad comes back | `AddPanel.svelte` | OPPO |
+| P36 / C82 | per-row fallback to unambiguous date formats; row errors wrap; test | `csvimport.rs`, `ImportSheet.svelte` | OPPO |
+| S-5 / C80 | see S-5 above | — | — |
 | L2-17 | covered by the no-number-pad change (d827cf7): the narrow-window panel is ~190 px shorter, the summary above stays visible; retest | — | Linux 800×600 |
 | L2-19 | (a) doc corrected: WebKitGTK can't encode WebP, Linux photos are JPEG; (b) viewer padding symmetric so the photo is centred | `PhotoViewer.svelte`, README | Linux |
 | L4-20 | pending tab opened after Discard | `apps/dusk/src/App.svelte` | Linux |

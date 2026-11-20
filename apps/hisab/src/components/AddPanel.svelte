@@ -19,6 +19,20 @@
   // Phone-only note rules: Enter = keyboard "done" (blur), and the pad hides under the
   // on-screen keyboard. On a computer Enter saves (C31) and the pad stays (C32).
   const phone = /Android/i.test(navigator.userAgent);
+  // Android Back closes the keyboard but leaves the note focused, so neither keyboard
+  // nor pad showed (P35): when the viewport grows back while the note has focus, blur it.
+  let noteEl: HTMLInputElement | undefined = $state();
+  $effect(() => {
+    const vv = window.visualViewport;
+    if (!phone || !vv) return;
+    let last = vv.height;
+    const onResize = () => {
+      if (vv.height > last + 80 && noteFocus && document.activeElement === noteEl) noteEl?.blur();
+      last = vv.height;
+    };
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  });
   function noteKey(e: KeyboardEvent) {
     if (e.key !== "Enter") return;
     if (!phone && canSave) return void (e.preventDefault(), save());
@@ -210,7 +224,7 @@
   <div class="flex items-center gap-1.5">
     <label class="flex h-10 min-w-0 flex-1 items-center rounded-[12px] bg-fill2 px-3">
       <span class="sr">Note</span>
-      <input bind:value={app.draft.note} placeholder={app.draft.kind === "transfer" ? "Note" : "Note, #tag"} enterkeyhint="done" class="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
+      <input bind:this={noteEl} bind:value={app.draft.note} placeholder={app.draft.kind === "transfer" ? "Note" : "Note, #tag"} enterkeyhint="done" class="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
         onfocus={() => (noteFocus = true)} onblur={() => setTimeout(() => (noteFocus = false), 120)} onkeydown={noteKey} />
     </label>
     <label class="press relative flex h-10 shrink-0 items-center gap-1 rounded-[12px] bg-fill2 px-2.5 text-[13px] font-medium {app.draft.date && app.draft.date !== todayIso() ? 'text-accent-ink' : 'text-ink2'}">
