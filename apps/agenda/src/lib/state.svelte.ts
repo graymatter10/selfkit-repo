@@ -280,6 +280,9 @@ export async function saveSettings(s: Settings) {
   await guard(api.saveSettings(s));
 }
 
+/** localStorage key of an unsaved New Task form (TaskForm.svelte, P5). */
+export const NEW_TASK_DRAFT = "agenda.newTaskDraft";
+
 export function init() {
   guard(api.prefs()).then((p) => {
     app.prefs = p ?? {};

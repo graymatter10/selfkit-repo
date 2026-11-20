@@ -24,7 +24,7 @@
   import PhotoViewer from "./components/PhotoViewer.svelte";
   import { PhotoSourceSheet, closePhotoSource } from "./lib/photo-source";
   import { api, type Task } from "./lib/api";
-  import { allTags, app, groups, init, refresh, remove, startFocus, taskById, toggle, counts, type View } from "./lib/state.svelte";
+  import { NEW_TASK_DRAFT, allTags, app, groups, init, refresh, remove, startFocus, taskById, toggle, counts, type View } from "./lib/state.svelte";
   import type { Sort } from "./lib/time";
 
   init();
@@ -44,6 +44,8 @@
   const open = (t: Task) => (app.panel = { kind: "detail", id: t.id });
   const close = () => (app.panel = { kind: "none" });
   const newTask = () => (app.panel = { kind: "new" });
+  // An unsaved New Task from before the app was killed comes back (P5).
+  try { if (localStorage.getItem(NEW_TASK_DRAFT) && !app.demo.title) newTask(); } catch { /* storage unavailable */ }
   const TITLES = { active: "Tasks", all: "All Tasks", done: "Completed", overdue: "Overdue" } as const;
   const VIEW_TITLES: Record<View, string> = { list: "", upcoming: "Upcoming", calendar: "Calendar", board: "Board", history: "History", stats: "Stats" };
   const title = $derived(app.view === "list" ? TITLES[app.filter] : VIEW_TITLES[app.view]);
