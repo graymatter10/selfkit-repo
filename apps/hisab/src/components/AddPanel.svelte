@@ -57,14 +57,34 @@
   // ...and keep shrinking until it really fits the row: with 2 decimals after 10 digits
   // (P12) and wide chips, "1,234,567.8…" was cut under the currency chip (P37).
   let amountRow: HTMLDivElement | undefined = $state();
-  $effect(() => {
-    void app.draft.amount, cur;
+  // WebKitGTK didn't report the overflow of the 13-digit maximum in scrollWidth, so the last
+  // digit was cut (L2-31): also measure where the text really ends, and refit on resize.
+  const overflows = (el: HTMLElement) => {
+    if (el.scrollWidth > el.clientWidth + 1) return true;
+    const box = el.getBoundingClientRect();
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    return r.getBoundingClientRect().right > box.right - 2;
+  };
+  const fit = () => {
     const el = amountRow;
     if (!el) return;
     let px = basePx;
     el.style.setProperty("--amt", `${px}px`);
-    // Reading scrollWidth lays out with the new size at once.
-    while (el.scrollWidth > el.clientWidth + 1 && px > 14) el.style.setProperty("--amt", `${--px}px`);
+    // Measuring lays out with the new size at once.
+    while (overflows(el) && px > 14) el.style.setProperty("--amt", `${--px}px`);
+  };
+  $effect(() => {
+    void app.draft.amount, cur;
+    fit();
+  });
+  $effect(() => {
+    const el = amountRow;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let w = el.clientWidth;
+    const ro = new ResizeObserver(() => { if (el.clientWidth !== w) { w = el.clientWidth; fit(); } });
+    ro.observe(el);
+    return () => ro.disconnect();
   });
 
   $effect(() => {
@@ -159,8 +179,9 @@
       await draftWritten(); // a queued draft write must not land after this Save
       const t = await api.save<Tx>("transactions", data, undefined, { ...emptyDraft(), ...keep, _t: Date.now() });
       resetDraft(keep);
-      // The clicked category tile kept focus (and its ring) after Save (L2-7).
-      if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
+      // The clicked category tile kept focus (and its ring) after Save (L2-7); after Enter in
+      // the note, focus stayed there and the next digits went into the note (L2-30).
+      if (document.activeElement instanceof HTMLButtonElement || document.activeElement === noteEl) (document.activeElement as HTMLElement).blur();
       await refresh();
       const label = dr.kind === "transfer" ? "Moved" : dr.kind === "income" ? "Income saved" : "Saved";
       showToast(`${label} · ${money(t.amount, t.currency)}${dr.kind !== "transfer" ? " · " + catLabel(t) : ""}`, async () => {

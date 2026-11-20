@@ -410,6 +410,11 @@ pub fn preview(store: &Store, t: &Table, m: &Mapping, account: &str, main: &str)
                 err(&mut row, if raw.is_empty() { "No amount".into() } else { format!("Amount “{raw}” not understood") })
             }
         }
+        // Hisab's own format names the kind; anything else there is a typo, not income (L2-29).
+        if m.hisab && !kind_cell.is_empty() && !matches!(kind_cell.as_str(), "expense" | "income" | "transfer") {
+            row.kind.clear();
+            err(&mut row, format!("Type “{}” not understood", cell(r, m.kind)));
+        }
         row.note = cell(r, m.description);
         // Currency: the file's, else the main currency.
         let cv = cell(r, m.currency).to_ascii_uppercase();
@@ -582,6 +587,11 @@ mod tests {
             st.delete(id).unwrap();
         }
         assert_eq!(preview(&st, &t, &m, &cash(&st), "BDT").unwrap().ok, 3);
+        // L2-29: an unknown type in Hisab's format is an error row, not income.
+        let bad = format!("{}2026-11-04,,refund,3.00,USD,360.00,BDT,Cash,,,Food,,,manual\n", csv.lines().next().unwrap().to_string() + "\n");
+        let p3 = preview(&st, &parse(&bad).unwrap(), &m, &cash(&st), "BDT").unwrap();
+        assert_eq!((p3.ok, p3.errors), (0, 1), "{:?}", p3.rows);
+        assert!(p3.rows[0].error.contains("refund"));
     }
 
     #[test]
