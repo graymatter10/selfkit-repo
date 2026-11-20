@@ -369,8 +369,11 @@ pub fn seed_defaults(store: &Store, main: &str) -> R<()> {
     if store.count(CATEGORIES).map_err(|e| e.to_string())? > 0 || store.count(ACCOUNTS).map_err(|e| e.to_string())? > 0 {
         return Ok(());
     }
-    let put = |c: &str, v: Value| store.put(c, None, &v).map(|_| ()).map_err(|e| e.to_string());
-    put(ACCOUNTS, json!({"name": "Cash", "kind": "cash", "currency": main, "explicit_currency": false, "opening": 0, "order": 0, "archived": false}))?;
+    // Fixed ids (`acct-cash`, `cat-exp-food`, `cat-inc-salary`…): a second device seeding
+    // before sync is turned on writes the same records, not a second Cash and a second
+    // set of categories (C19).
+    let put = |c: &str, id: String, v: Value| store.put(c, Some(&id), &v).map(|_| ()).map_err(|e| e.to_string());
+    put(ACCOUNTS, "acct-cash".into(), json!({"name": "Cash", "kind": "cash", "currency": main, "explicit_currency": false, "opening": 0, "order": 0, "archived": false}))?;
     let exp = [
         ("Food", "food", "#d9822b"),
         ("Transport", "car", "#3b82c4"),
@@ -382,11 +385,11 @@ pub fn seed_defaults(store: &Store, main: &str) -> R<()> {
         ("Other", "dot", "#8a8a8e"),
     ];
     for (i, (n, ic, col)) in exp.iter().enumerate() {
-        put(CATEGORIES, json!({"name": n, "kind": "expense", "icon": ic, "color": col, "budget": 0, "order": i, "archived": false}))?;
+        put(CATEGORIES, format!("cat-exp-{}", n.to_lowercase()), json!({"name": n, "kind": "expense", "icon": ic, "color": col, "budget": 0, "order": i, "archived": false}))?;
     }
     let inc = [("Salary", "briefcase", "#4f8a55"), ("Gift", "gift", "#e0719c"), ("Other", "dot", "#8a8a8e")];
     for (i, (n, ic, col)) in inc.iter().enumerate() {
-        put(CATEGORIES, json!({"name": n, "kind": "income", "icon": ic, "color": col, "budget": 0, "order": i, "archived": false}))?;
+        put(CATEGORIES, format!("cat-inc-{}", n.to_lowercase()), json!({"name": n, "kind": "income", "icon": ic, "color": col, "budget": 0, "order": i, "archived": false}))?;
     }
     Ok(())
 }

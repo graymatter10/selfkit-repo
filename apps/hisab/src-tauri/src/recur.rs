@@ -2,7 +2,8 @@
 //! transaction `template`, a frequency (`daily|weekly|monthly|yearly` ×
 //! `interval`), `start`, `next` and optional `end`. `generate` creates every
 //! transaction whose date is ≤ today (source `recurring`) and moves `next` on.
-//! Monthly/yearly items keep the start day, clamped to short months.
+//! Monthly/yearly items keep the start day, clamped to short months. Generated
+//! transactions get the id `rec-<recurring id>-<date>` (same on every device, C18).
 
 use chrono::{Datelike, Duration, NaiveDate};
 use serde_json::{Value, json};
@@ -70,8 +71,14 @@ pub fn generate(store: &Store, main: &str, today: NaiveDate) -> R<usize> {
                 t["note"] = json!(s(&r, "name"));
             }
             let t = model::normalize(TRANSACTIONS, &t, main)?;
-            store.put(TRANSACTIONS, None, &t).map_err(|e| e.to_string())?;
-            made += 1;
+            // Same id on every device (`rec-<item>-<date>`), so two devices generating the
+            // same due item before syncing make one transaction, not two (C18). An existing
+            // one (also a deleted one) is left alone.
+            let id = format!("rec-{}-{}", s(&r, "id"), next.format("%Y-%m-%d"));
+            if store.get(&id).map_err(|e| e.to_string())?.is_none() {
+                store.put(TRANSACTIONS, Some(&id), &t).map_err(|e| e.to_string())?;
+                made += 1;
+            }
             guard += 1;
             next = match next_after(&r, next) {
                 Some(n) => n,
@@ -127,6 +134,16 @@ mod tests {
         assert_eq!(txs.len(), 3);
         assert_eq!(s(&txs[0], "note"), "Netflix");
         assert_eq!(s(&txs[0], "source"), "recurring");
+        // A second device generating the same items before syncing writes the same ids (C18).
+        let st2 = Store::open_in_memory("hisab", "e", &[]).unwrap();
+        st2.put(RECURRING, Some("r1"), &r).unwrap();
+        assert_eq!(generate(&st2, "USD", today).unwrap(), 3);
+        let ids = |st: &Store| {
+            let mut v: Vec<String> = st.list(TRANSACTIONS, 100, 0).unwrap().into_iter().map(|x| x.id).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(ids(&st), ids(&st2));
     }
 
     #[test]
