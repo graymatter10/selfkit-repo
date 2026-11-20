@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| P13 | loan pill text shared (`loanPill`), reminder time in the locale clock (`clockText`); the native date picker look is the system's (not changed) | `lib/fmt.ts`, `Loans.svelte`, `LoanSheet.svelte` | OPPO |
 | L15 | decision: PDF stays Latin-only (Bangla needs font + shaping); export sheet note, README, DECISIONS | `ExportSheet.svelte`, `export.rs`, docs | — |
 | S-3 | "Sync this app" subtitle says "only when you tap Sync now" when Automatic is off | `ui/src/sync/SyncSettings.svelte` | all apps |
 | S-4 | LAN serve skips versions written by the asking peer (no echo); test asserts sent counts | `selfkit-core/src/lan/{session,mod}.rs` | OPPO ↔ Linux (big Chrono) |

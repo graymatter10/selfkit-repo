@@ -99,3 +99,16 @@ export function splitNoteTags(note: string, tags: string[]): { note: string; tag
   }).replace(/[^\S\n]+/g, " ").trim(); // keep line breaks of the editor's multi-line note
   return { note: rest, tags: out };
 }
+
+/** "09:00" → the locale's clock ("9:00 AM" in 12-hour locales), like the native time field (P13). */
+export function clockText(hm: string): string {
+  const [h, m] = hm.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hm;
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString(LOCALE, { hour: "numeric", minute: "2-digit" });
+}
+
+/** Loan status pill text, the same in the list and the detail sheet (P13). */
+export function loanPill(status: string, daysLeft: number | null | undefined): string {
+  if (status === "due_soon" && daysLeft != null) return daysLeft === 0 ? "Due today" : `Due in ${daysLeft}d`;
+  return { overdue: "Overdue", due_soon: "Due soon", ongoing: "Ongoing", finished: "Finished" }[status] ?? status;
+}

@@ -4,7 +4,7 @@
   import OptionalDate from "./OptionalDate.svelte";
   import { showToast } from "@selfkit/ui";
   import { api, type Loan } from "../lib/api";
-  import { daysBetween, money, shortDate, todayIso } from "../lib/fmt";
+  import { clockText, daysBetween, loanPill, money, shortDate, todayIso } from "../lib/fmt";
   import { isAndroid } from "../lib/native";
   import { addPhoto } from "../lib/photo";
   import { app, closeSheet, guardForm, main, openSheet, refresh, removeRec, saveRec, setPrefs } from "../lib/state.svelte";
@@ -156,7 +156,7 @@
         <div class="flex items-center gap-3">
           <span class="flex h-11 w-11 items-center justify-center rounded-full bg-fill text-[17px] font-semibold text-ink2">{loan.person.slice(0, 1).toUpperCase()}</span>
           <div class="min-w-0 flex-1"><div class="truncate text-[17px] font-semibold">{loan.person}</div><div class="truncate text-[13px] text-muted">{loan.title || (loan.direction === "lent" ? "Owes you" : "You owe")}</div></div>
-          <span class="rounded-full px-2.5 py-0.5 text-[12px] font-semibold {STATUS[loan.status][1]}">{STATUS[loan.status][0]}</span>
+          <span class="rounded-full px-2.5 py-0.5 text-[12px] font-semibold {STATUS[loan.status][1]}">{loanPill(loan.status, loan.days_left)}</span>
         </div>
         <div class="mt-4 flex items-baseline justify-between">
           <span class="num text-[28px] font-semibold tracking-[-0.6px]">{money(loan.remaining, loan.currency)}<span class="text-[14px] font-medium text-muted">&nbsp;left of {money(loan.amount, loan.currency)}</span></span>
@@ -164,7 +164,7 @@
         <div class="mt-2 h-[7px] overflow-hidden rounded-full bg-fill"><div class="h-full rounded-full {loan.status === 'overdue' ? 'bg-danger' : 'bg-accent'}" style="width:{(loan.repaid / loan.amount) * 100}%"></div></div>
         <div class="mt-2 flex justify-between text-[13px] {loan.status === 'overdue' ? 'text-danger' : 'text-muted'}"><span>{dueText(loan)}</span><span class="text-muted">given {shortDate(loan.given)}</span></div>
         {#if loan.description}<p class="m-0 mt-3 text-[14px] text-ink2">{loan.description}</p>{/if}
-        {#if loan.due && loan.remind && loan.status !== "finished"}<p class="m-0 mt-2 flex items-center gap-1.5 text-[13px] text-muted"><Ic name="bell" size={14} />Reminder {loan.remind_days ? `${loan.remind_days} day${loan.remind_days > 1 ? "s" : ""} before` : "on the due date"} at {loan.remind_time}</p>{/if}
+        {#if loan.due && loan.remind && loan.status !== "finished"}<p class="m-0 mt-2 flex items-center gap-1.5 text-[13px] text-muted"><Ic name="bell" size={14} />Reminder {loan.remind_days ? `${loan.remind_days} day${loan.remind_days > 1 ? "s" : ""} before` : "on the due date"} at {clockText(loan.remind_time)}</p>{/if}
       </div>
 
       {#if loan.status !== "finished"}
