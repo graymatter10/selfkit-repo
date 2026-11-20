@@ -1,5 +1,9 @@
 # Decisions (newest first)
 
+## 2026-11-21 — Chrono: uninstalled app's missing time (P15)
+- For release: documented limit — time in an Android app that is uninstalled before Chrono's next import can be missing (Android deletes its raw events and only keeps a daily total). Reason: the fix needs new data-model work (untimed sessions) touching Chrono, Reflect and Dusk, too risky in the last batch before release.
+- First post-release item: reconcile from Android's daily totals into untimed sessions (design in PLANNING.md → Chrono → Next).
+
 ## 2026-11-21 — Hisab: no number pad on desktop (user)
 - Hisab on Linux/Windows (main window, narrow windows and the quick-capture popup) has no on-screen number pad; the amount is typed. Reason (user): a pad is for touch; on a computer it wasted space and mouse clicks. Phones keep the pad. The amount shows as an outlined field with a caret and "Type an amount · Enter saves"; the freed height shows more recent entries; the capture popup is 420×390.
 

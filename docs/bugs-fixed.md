@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| P15 / C67 | decision: documented limit now (README + App changes hint), reconcile from daily totals planned first after release (PLANNING.md, DECISIONS) | `docs`, `AppChanges.svelte` | — |
 | C66 (Agenda, Dusk) | Agenda toast when a reminder can't show; Dusk wind-down line says notifications are off | `apps/agenda/src/lib/state.svelte.ts`, `apps/dusk/src/lib/state.svelte.ts`, `SettingsPage.svelte` | OPPO |
 | S-1 / C72 | "Here" pill only while sync + LAN on and last pass OK | `ui/src/sync/SyncSettings.svelte` | OPPO ↔ Linux |
 | S-2 / C73 | partly: "no Selfkit PC found on this network" wording; pending for LAN-only not possible with the current dirty flag (documented) | `selfkit-appsync/src/lib.rs` | OPPO ↔ Linux |
