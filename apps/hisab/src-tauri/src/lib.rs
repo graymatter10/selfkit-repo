@@ -511,6 +511,7 @@ mod reminders {
             .id(id)
             .title(title(l))
             .body(body(l))
+            .icon("ic_stat_hisab") // monochrome wallet, res/drawable/ic_stat_hisab.xml
             .schedule(Schedule::At { date, repeating: false, allow_while_idle: true })
             .show();
         if let Err(err) = r {

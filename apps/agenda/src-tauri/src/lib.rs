@@ -341,6 +341,7 @@ mod reminders {
             .id(id)
             .title(title(t))
             .body(body(t))
+            .icon("ic_stat_agenda") // monochrome checkbox, res/drawable/ic_stat_agenda.xml (P3)
             .schedule(Schedule::At { date, repeating: false, allow_while_idle: true })
             .show();
         if let Err(err) = r {
@@ -400,6 +401,7 @@ mod reminders {
             .id(FOCUS_NOTIFICATION)
             .title(title)
             .body(body)
+            .icon("ic_stat_agenda") // monochrome checkbox, res/drawable/ic_stat_agenda.xml (P3)
             .schedule(Schedule::At { date, repeating: false, allow_while_idle: true })
             .show();
         if let Err(err) = r {

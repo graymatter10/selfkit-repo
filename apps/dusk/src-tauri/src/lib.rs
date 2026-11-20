@@ -343,6 +343,7 @@ mod reminders {
                 .id(BASE_ID + i)
                 .title(&title)
                 .body(&body)
+                .icon("ic_stat_dusk") // monochrome crescent, res/drawable/ic_stat_dusk.xml
                 .schedule(Schedule::At { date, repeating: false, allow_while_idle: true })
                 .show();
             if let Err(err) = r {

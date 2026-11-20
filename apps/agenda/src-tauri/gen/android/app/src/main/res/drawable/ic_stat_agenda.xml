@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome Agenda checkbox for the status bar / reminder notifications (from ui/icons/svg/agenda-monochrome.svg). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeAlpha="0.45" android:strokeWidth="2.2"
+        android:pathData="M7.16,2.5H16.84A4.66,4.66 0,0 1,21.5 7.16V16.84A4.66,4.66 0,0 1,16.84 21.5H7.16A4.66,4.66 0,0 1,2.5 16.84V7.16A4.66,4.66 0,0 1,7.16 2.5z" />
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6"
+        android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M6.62,12.18L10.47,16.03L19.35,6.36" />
+</vector>
