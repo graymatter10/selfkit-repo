@@ -287,7 +287,8 @@ mod tests {
         assert_eq!(category_at(&s, 'a', "WhatsApp", Some("com.whatsapp"), at(MON, 13, 0, 0), 0), "work");
         assert_eq!(category_at(&s, 'a', "WhatsApp", Some("COM.WHATSAPP"), at(MON, 23, 59, 0), 0), "work"); // equal start/end = 24 h
         assert_eq!(category_at(&s, 'a', "WhatsApp", Some("com.whatsapp"), at(MON + 1, 0, 0, 0), 0), "social");
-        assert_eq!(category_at(&s, 'w', "com.whatsapp", None, at(MON, 13, 0, 0), 0), "other");
+        // an app rule never applies to a website of the same name (static category stays)
+        assert_eq!(category_at(&s, 'w', "com.whatsapp", None, at(MON, 13, 0, 0), 0), static_category(&s, 'w', "com.whatsapp", None));
     }
 
     #[test]

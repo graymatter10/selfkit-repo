@@ -1,5 +1,10 @@
 # Decisions (newest first)
 
+## 2026-11-21 — Chrono: Websites screen and time-based categories (user request)
+- New Websites screen (5th phone tab "Sites", desktop rail "Websites") rather than only Trends → Totals → Websites: the user asked for a website view of its own; Trends keeps its tab. Domains only, as the extension stores them ("URL" = domain incl. subdomains), never paths.
+- Time rules live in the synced `chrono_settings.category_rules` (list items with `id`, so the existing field merge combines both devices' lists). Resolution order: enabled matching rule > static `categories` > defaults > other, in one Rust function (`categories::category_at` / `category_pieces`). Reflect and Dusk don't use categories at all (only sessions and excludes), so they needed no change.
+- Rule days are calendar days in the session's own local clock (its `tz_offset`, so DST is handled per session) and not shifted by the day-start setting; an overnight window counts on the day it starts. Reason: "Friday 22:00–02:00" should mean what it says regardless of where the logical day ends.
+- The split is stored in the day cache per item (`Item.rc`) and enabled rules are part of the cache key, instead of resolving categories from raw sessions on every view. Reason: trends over years read cached days; a rule edit is rare and only rebuilds the cache once. Overlapping rules: the more specific domain wins, then list order.
 ## 2026-11-21 — Browser extension: "is the browser in front" from the agent (L3-6)
 - Firefox on X11 never reports losing focus, so website time ran on while other apps were in front. Fix without new browser permissions (privacy first): the native host adds `browser_foreground` from the agent's own foreground tracker; the extension ends and pauses sessions when it is `false`. Without the agent (or on Wayland) Firefox falls back to a 60 s idle threshold. Not chosen: a content script on every site (needs "access all websites").
 

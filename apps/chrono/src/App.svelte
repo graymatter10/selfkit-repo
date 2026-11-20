@@ -22,6 +22,8 @@
   import Timeline from "./screens/Timeline.svelte";
   import Today from "./screens/Today.svelte";
   import Trends from "./screens/Trends.svelte";
+  import Websites from "./screens/Websites.svelte";
+  import RuleSheet from "./components/RuleSheet.svelte";
 
   init();
   let width = $state(window.innerWidth);
@@ -35,7 +37,7 @@
 
   const NAVS: { id: View; name: string; short: string; key: string }[] = [
     { id: "today", name: "Today", short: "Today", key: "T" }, { id: "timeline", name: "Timeline", short: "Timeline", key: "L" },
-    { id: "trends", name: "Trends", short: "Trends", key: "R" }, { id: "report", name: "Weekly report", short: "Report", key: "W" },
+    { id: "trends", name: "Trends", short: "Trends", key: "R" }, { id: "sites", name: "Websites", short: "Sites", key: "S" }, { id: "report", name: "Weekly report", short: "Report", key: "W" },
   ];
   const day = $derived(app.day ?? today());
   const isToday = $derived(day === today());
@@ -49,13 +51,18 @@
       case "today": return isToday ? ["Today", longDay(day)] : [weekdayName(day), dayMonth(day)];
       case "timeline": return ["Timeline", isToday ? longDay(day) : longDay(day)];
       case "trends": return ["Trends", ""];
+      case "sites": return ["Websites", app.web.title];
       case "report": return ["Weekly report", weekRange(weekStart, addDays(weekStart, 6))];
     }
   });
-  const dayNav = $derived(app.view === "today" || app.view === "timeline" || app.view === "report");
-  const canNext = $derived(app.view === "report" ? addDays(weekStart, 7) <= today() : !isToday);
+  const dayNav = $derived(app.view === "today" || app.view === "timeline" || app.view === "report" || app.view === "sites");
+  const canNext = $derived(app.view === "report" ? addDays(weekStart, 7) <= today() : app.view === "sites" ? !!app.web.next : !isToday);
+  const canPrev = $derived(app.view !== "sites" || !!app.web.prev);
   function step(n: number) {
-    if (app.view === "report") app.week = addDays(weekStart, 7 * n);
+    if (app.view === "sites") {
+      const a = n < 0 ? app.web.prev : app.web.next;
+      if (a) app.web.anchor = a >= today() ? null : a;
+    } else if (app.view === "report") app.week = addDays(weekStart, 7 * n);
     else {
       const d = addDays(day, n);
       app.day = d >= today() ? null : d;
@@ -70,6 +77,7 @@
     app.changesOpen = false;
     app.syncOpen = false;
     app.conflictsOpen = false;
+    if (v !== "sites") app.site = null;
     scroller?.scrollTo(0, 0);
   }
   function openSettings() { app.settingsOpen = true; app.sourcesOpen = false; app.changesOpen = false; app.syncOpen = false; app.conflictsOpen = false; }
@@ -83,7 +91,7 @@
   function seeAll() { trendsTab = "apps"; go("trends"); trendsDay = app.day ?? today(); }
 
   // Android Back: one history entry while any layer is open; Back closes the topmost.
-  const layered = $derived(phone && (!!app.photo || !!app.noteDay || app.setup > 0 || app.settingsOpen || app.changesOpen || app.pauseMenu || !!app.day || app.view !== "today"));
+  const layered = $derived(phone && (!!app.rule || !!app.site || !!app.photo || !!app.noteDay || app.setup > 0 || app.settingsOpen || app.changesOpen || app.pauseMenu || !!app.day || app.view !== "today"));
   // Android uses Tauri's back-button event instead (like Agenda/Hisab): the
   // WebView skips history entries re-added without a tap, so after closing an
   // inner layer (photo source sheet, photo viewer) the next Back left the app.
@@ -101,6 +109,7 @@
   });
   function closeTop(): boolean {
     if (closePhotoSource()) return true; // "Add photo" camera/gallery sheet
+    if (app.rule) return void (app.rule = null), true;
     if (app.photo) return void (app.photo = null), true;
     if (app.closeGuard?.()) return true;
     if (app.noteDay) return void (app.noteDay = null), true;
@@ -110,6 +119,7 @@
     if (app.syncOpen) return void (app.syncOpen = false), true;
     if (app.sourcesOpen) return void (app.sourcesOpen = false), true;
     if (app.settingsOpen) return void (app.settingsOpen = false), true;
+    if (app.site && phone) return void (app.site = null), true;
     if (app.day) return void (app.day = null), true;
     if (app.view !== "today") return go("today"), true;
     return false;
@@ -123,12 +133,13 @@
 
   function keys(e: KeyboardEvent) {
     const tag = (e.target as HTMLElement)?.tagName;
-    if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || app.noteDay || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || app.noteDay || app.rule || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "Escape") { if (app.photo || app.pauseMenu || app.changesOpen || app.sourcesOpen || app.syncOpen || app.settingsOpen || app.day) closeTop(); return; }
     const k = e.key.toLowerCase();
     if (k === "t") { go("today"); app.day = null; }
     else if (k === "l") go("timeline");
     else if (k === "r") go("trends");
+    else if (k === "s") go("sites");
     else if (k === "w") go("report");
     else if (k === ",") openSettings();
     else if (k === "n" && (app.view === "today")) app.noteDay = day;
@@ -155,6 +166,9 @@
     if (p.sync) { app.settingsOpen = true; app.syncOpen = true; }
     if (p.conflicts) { app.settingsOpen = true; app.syncOpen = true; app.conflictsOpen = true; }
     if (p.changes) app.changesOpen = true;
+    if (p.period) app.web.period = p.period as typeof app.web.period;
+    if (p.site) app.site = p.site;
+    if (p.rule) app.rule = { rule: { id: "demo", target: p.site ?? "", kind: "domain", category: "work", days: [1, 2, 3, 4, 5], start_min: 540, end_min: 1020, enabled: true }, isNew: !p.site, base: p.site ? "entertainment" : undefined };
     if (p.note) app.noteDay = p.day ? addDays(today(), Number(p.day)) : today();
     if (p.setup) app.setup = Number(p.setup);
     if (p.pause) app.pauseMenu = true;
@@ -184,6 +198,7 @@
     {@render settingsBody()}
   {:else if app.view === "today"}<Today {phone} onseeall={seeAll} onsettings={() => ((app.goalsFocus = true), openSettings())} />
   {:else if app.view === "timeline"}<Timeline {phone} {scroller} />
+  {:else if app.view === "sites"}<Websites {phone} onsources={() => ((app.settingsOpen = true), (app.sourcesOpen = true))} />
   {:else if app.view === "trends"}<Trends {phone} {scroller} initialTab={trendsTab} initialDay={trendsDay} onchanges={() => (app.changesOpen = true)} />
   {:else}<Report {phone} />{/if}
 {/snippet}
@@ -197,8 +212,8 @@
 
 {#snippet dayButtons()}
   {#if dayNav}
-    <button type="button" class="ib {phone ? '' : 'box'}" aria-label={app.view === "report" ? "Previous week" : "Previous day"} onclick={() => step(-1)}><Icon name="left" size={phone ? 22 : 18} /></button>
-    <button type="button" class="ib {phone ? '' : 'box'}" aria-label={app.view === "report" ? "Next week" : "Next day"} disabled={!canNext} onclick={() => step(1)}><Icon name="right" size={phone ? 22 : 18} /></button>
+    <button type="button" class="ib {phone ? '' : 'box'}" aria-label={app.view === "report" ? "Previous week" : app.view === "sites" ? "Previous period" : "Previous day"} disabled={!canPrev} onclick={() => step(-1)}><Icon name="left" size={phone ? 22 : 18} /></button>
+    <button type="button" class="ib {phone ? '' : 'box'}" aria-label={app.view === "report" ? "Next week" : app.view === "sites" ? "Next period" : "Next day"} disabled={!canNext} onclick={() => step(1)}><Icon name="right" size={phone ? 22 : 18} /></button>
   {/if}
 {/snippet}
 
@@ -287,6 +302,7 @@
 {#if app.noteDay}<NoteEditor day={app.noteDay} {phone} />{/if}
 {#if app.setup > 0}<Setup />{/if}
 <PhotoViewer />
+<RuleSheet {phone} />
 <PhotoSourceSheet privateNote="Stays private in Chrono, not in your gallery" />
 <div style="position:fixed;left:50%;transform:translateX(-50%);bottom:{phone ? 96 : 24}px;width:min(420px,calc(100vw - 32px));z-index:95;pointer-events:none"><Toast /></div>
 <!-- App lock: covers everything while locked (ui/src/lock, docs/components/app-lock.md). -->

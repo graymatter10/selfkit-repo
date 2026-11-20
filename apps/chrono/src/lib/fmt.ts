@@ -84,3 +84,24 @@ export function mondayOf(s: string): string {
   const d = parseDay(s);
   return addDays(s, -((d.getDay() + 6) % 7));
 }
+
+const DAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/** "09:30" from minutes after midnight. */
+export const clock = (m: number) => `${String(Math.floor((m % 1440) / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+/** "Mon–Fri", "Weekends", "Every day", "Mon, Wed, Sat" for rule days (1 = Monday). */
+export function ruleDays(days: number[]): string {
+  const d = [...new Set(days)].filter((x) => x >= 1 && x <= 7).sort();
+  if (d.length === 7) return "Every day";
+  if (!d.length) return "No days";
+  if (d.join() === "6,7") return "Weekends";
+  const run = d.length >= 3 && d.every((x, i) => i === 0 || x === d[i - 1] + 1);
+  return run ? `${DAY_SHORT[d[0] - 1]}–${DAY_SHORT[d[d.length - 1] - 1]}` : d.map((x) => DAY_SHORT[x - 1]).join(", ");
+}
+/** "Mon–Fri · 09:00 – 17:00" (+ "(next day)" for overnight windows). */
+export function ruleWhen(r: { days: number[]; start_min: number; end_min: number }): string {
+  const allDay = r.start_min === r.end_min;
+  const t = allDay ? (r.start_min === 0 ? "all day" : `${clock(r.start_min)} for 24 h`) : `${clock(r.start_min)} – ${clock(r.end_min)}${r.end_min < r.start_min ? " (next day)" : ""}`;
+  return `${ruleDays(r.days)} · ${t}`;
+}
+/** Display name for a browser id. */
+export const browserName = (b: string) => ({ chrome: "Chrome", firefox: "Firefox" })[b] ?? b;

@@ -3,7 +3,7 @@ import { on, showToast } from "@selfkit/ui";
 import { api, type AndroidStatus, type ChronoSettings, type Info, type ThemeMode } from "./api";
 import { dur } from "./fmt";
 
-export type View = "today" | "timeline" | "trends" | "report";
+export type View = "today" | "timeline" | "trends" | "sites" | "report";
 
 export const app = $state({
   view: "today" as View,
@@ -26,6 +26,12 @@ export const app = $state({
   /** Settings → Sync page and the conflict screen (shared ui/src/sync). */
   syncOpen: false,
   conflictsOpen: false,
+  /** Websites: period, anchor day (null = today), and the loaded title / neighbours */
+  web: { period: "week" as "day" | "week" | "month", anchor: null as string | null, title: "", prev: null as string | null, next: null as string | null },
+  /** Websites: open site (detail page on phone, right pane on desktop) */
+  site: null as string | null,
+  /** Time-rule form: a rule being added/edited (Websites detail or Settings → Categories) */
+  rule: null as null | { rule: import("./api").CategoryRule; isNew: boolean; base?: string },
   /** Android first-run setup step (0 = closed) */
   setup: 0,
   noteDay: null as string | null,

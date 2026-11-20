@@ -143,9 +143,9 @@ select.chip { appearance: none; border: 0; padding-right: 30px; background-image
 .ta textarea { width: 100%; border: 0; outline: 0; resize: none; background: transparent; }
 .appbar { display: flex; align-items: center; gap: 4px; padding: calc(10px + env(safe-area-inset-top, 26px)) 8px 4px; }
 .appbar .t { font-size: 18px; font-weight: 600; }
-.tabbar { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); background: var(--surface); padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 6px)); }
+.tabbar { flex: none; display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line); background: var(--surface); padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 6px)); }
 .tab { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 550; color: var(--muted); height: 56px; justify-content: center; text-align: center; }
-.tab .ico { width: 56px; height: 30px; border-radius: 15px; display: grid; place-items: center; transition: background 0.15s; }
+.tab .ico { width: 50px; height: 30px; border-radius: 15px; display: grid; place-items: center; transition: background 0.15s; }
 .tab.on { color: var(--ink); } .tab.on .ico { background: var(--accent-soft); color: var(--accent-ink); }
 .statusline { display: flex; align-items: center; gap: 10px; padding: 0 16px 12px 20px; font-size: 14px; color: var(--ink2); }
 .statusline .pz { margin-left: auto; }
@@ -167,6 +167,31 @@ select.chip { appearance: none; border: 0; padding-right: 30px; background-image
 .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--track); color: var(--ink2); font-size: 12px; font-weight: 550; white-space: nowrap; flex: none; }
 .appicon { width: 40px; height: 40px; border-radius: 10px; flex: none; background: var(--track); display: grid; place-items: center; overflow: hidden; }
 .appicon img { width: 100%; height: 100%; display: block; }
+
+/* Websites + time rules (mockup 2026-11-21) */
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 71; max-height: 92vh; overflow-y: auto; background: var(--surface); border-radius: 20px 20px 0 0;
+  padding: 10px 18px calc(18px + env(safe-area-inset-bottom, 6px)); box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18); }
+.sheet .grab { width: 40px; height: 4px; border-radius: 4px; background: var(--faint); margin: 0 auto 12px; }
+.catpick { display: flex; flex-wrap: wrap; gap: 8px; }
+.cp { height: 44px; padding: 0 14px 0 12px; border-radius: 11px; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 550; background: var(--track); color: var(--ink2); }
+.cp.on { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink2); }
+.daychips { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.dc { height: 44px; border-radius: 11px; display: grid; place-items: center; font-weight: 600; font-size: 14px; background: var(--track); color: var(--ink2); text-align: center; }
+.dc.on { background: var(--accent-soft); color: var(--accent-ink); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.lnk2 { color: var(--accent-ink); font-weight: 600; font-size: 13px; min-height: 36px; padding: 0 6px; }
+.rulesub { display: flex; align-items: center; gap: 8px; min-height: 44px; padding-left: 4px; font-size: 13.5px; color: var(--ink2); width: 100%; text-align: left; }
+.rulesub .ln { width: 12px; height: 18px; border-left: 1.5px solid var(--faint); border-bottom: 1.5px solid var(--faint); border-radius: 0 0 0 6px; margin-top: -14px; flex: none; }
+.rulesub.off { opacity: 0.6; }
+.stack { display: flex; height: 8px; border-radius: 8px; overflow: hidden; background: var(--track); gap: 2px; }
+.stack i { display: block; height: 100%; }
+.vb { display: flex; align-items: flex-end; gap: 4px; height: 110px; }
+.vb .c { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; gap: 2px; min-width: 0; }
+.vb .c i { display: block; border-radius: 3px; }
+.vbl { display: flex; gap: 4px; margin-top: 6px; font-size: 12px; color: var(--muted); } .vbl span { flex: 1; text-align: center; min-width: 0; overflow: hidden; }
+.sitemark { width: 36px; height: 36px; border-radius: 10px; background: var(--track); display: grid; place-items: center; font-weight: 650; font-size: 14px; color: var(--ink2); flex: none; text-transform: lowercase; }
+.row.sel { background: var(--raised); box-shadow: inset 3px 0 0 var(--accent); }
+.empty { text-align: center; padding: 34px 18px 26px; }
+.empty .gl { width: 64px; height: 64px; border-radius: 20px; background: var(--track); display: grid; place-items: center; margin: 0 auto 16px; color: var(--muted); }
 
 /* Shared Sync screens (ui/src/sync): Chrono's tokens. */
 .sks, .skc { --sync-accent-soft: var(--accent-soft); --sync-on-accent: var(--on-accent); --sync-sunk: var(--track); --sync-ok: var(--accent-ink); }

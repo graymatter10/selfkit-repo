@@ -14,8 +14,8 @@ All aggregation runs in Rust; the UI only formats.
 - Trends compare the per-day average with the previous period of the same kind; totals compare per day too, so a month in progress is not compared with a full month.
 
 ## Cache
-Table `chrono_daily(day INTEGER, data JSON)` holds one `DayAgg` per local day (items per app/site/device/platform with ms and opens, per-device union, 24 hourly unions, unlocks, pickups, notifications per package, longest, first, last). It is local and never synced.
-- Invalidation: kv `chrono.cache.lseq` remembers the store's change sequence; records changed since then (`lseq` index) mark their days dirty. Changing exclude lists or the day start (kv `chrono.cache.key`) clears the cache.
+Table `chrono_daily(day INTEGER, data JSON)` holds one `DayAgg` per local day (items per app/site/device/platform with ms, opens and `rc` — the share time rules moved to another category, per-device union, 24 hourly unions, unlocks, pickups, notifications per package, longest, first, last). It is local and never synced.
+- Invalidation: kv `chrono.cache.lseq` remembers the store's change sequence; records changed since then (`lseq` index) mark their days dirty. Changing exclude lists, the day start or the enabled time rules (kv `chrono.cache.key`) clears the cache.
 - Missing days are computed in runs of ≤ 31 days with one indexed query each (expression indexes on `$.start` / `$.hour`).
 - Measured with the 240-day seed (~23k records), release build: lifetime trends 55 ms cold, 6 ms warm; year + today + report + timeline ≈ 7 ms. A 365-day run (debug build) took 341 ms cold, 47 ms warm.
 

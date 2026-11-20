@@ -4,7 +4,7 @@
 //! `SELFKIT_DATA_DIR=/tmp/x cargo run -p chrono-app --example seed [-- --days 240] [--theme dark] [--settings-only]`
 
 use chrono::{Duration, Local, TimeZone, Timelike};
-use chrono_lib::settings::{ChronoSettings, Goal};
+use chrono_lib::settings::{CategoryRule, ChronoSettings, Goal};
 use selfkit_core::time;
 use serde_json::json;
 
@@ -62,6 +62,13 @@ fn main() -> selfkit_core::Result<()> {
     set.device_names.insert(phone.clone(), "Pixel".into());
     set.categories.insert("Obsidian".into(), "study".into());
     set.exclude_apps = vec!["keepassxc".into()];
+    // Time rules (Websites / Settings → Categories screenshots): YouTube is Work in office hours,
+    // Telegram is Work late on Fridays (overnight), one rule switched off.
+    set.category_rules = vec![
+        CategoryRule { id: "r-yt".into(), target: "youtube.com".into(), kind: "domain".into(), category: "work".into(), days: vec![1, 2, 3, 4, 5], start_min: 9 * 60, end_min: 17 * 60, enabled: true },
+        CategoryRule { id: "r-tg".into(), target: "Telegram".into(), kind: "app".into(), category: "work".into(), days: vec![5], start_min: 22 * 60, end_min: 2 * 60, enabled: true },
+        CategoryRule { id: "r-rd".into(), target: "reddit.com".into(), kind: "domain".into(), category: "study".into(), days: vec![6, 7], start_min: 10 * 60, end_min: 12 * 60, enabled: false },
+    ];
     set.save(&s)?;
     if args.iter().any(|a| a == "--bench") {
         // cold (empty cache) and warm timings of the heavy screens

@@ -2,8 +2,8 @@
   // Settings: tracking + pause, this phone (Android), goals and limits,
   // alerts, weekly report, never-track lists, categories, devices and
   // sources, appearance. Everything shared lives in `chrono_settings`.
-  import { api, type ChronoSettings, type Goal, type Total } from "../lib/api";
-  import { CATS, ago, catColor, catName, dur, goalName } from "../lib/fmt";
+  import { api, type CategoryRule, type ChronoSettings, type Goal, type Total } from "../lib/api";
+  import { CATS, ago, catColor, catName, dur, goalName, ruleWhen } from "../lib/fmt";
   import { app, guard, isPaused, pause, pauseLabel, refreshAndroid, resume, saveSettings, setTheme } from "../lib/state.svelte";
   import Icon from "../components/Icon.svelte";
   import Seg from "../components/Seg.svelte";
@@ -109,6 +109,23 @@
     const r = names.filter((t) => !ql || t.name.toLowerCase().includes(ql));
     return showAllCats || ql ? r.slice(0, 200) : r.slice(0, 6);
   });
+  // Time rules (category_rules) shown under the name they apply to.
+  const normDom = (d: string) => d.trim().toLowerCase().replace(/^www\./, "");
+  function ruleFits(r: CategoryRule, t: Total): boolean {
+    if (r.kind === "domain") return t.kind === "w" && (normDom(t.name) === r.target || normDom(t.name).endsWith("." + r.target));
+    const x = r.target.toLowerCase();
+    return t.kind === "a" && (t.name.toLowerCase() === x || (t.package ?? "").toLowerCase() === x);
+  }
+  const rules = $derived(s?.category_rules ?? []);
+  const rulesOf = (t: Total) => rules.filter((r) => ruleFits(r, t));
+  /** Rules whose app/site isn't in the list (not used lately, or filtered out by the search). */
+  const looseRules = $derived(rules.filter((r) => !catRows.some((t) => ruleFits(r, t)) && (!q.trim() || r.target.toLowerCase().includes(q.trim().toLowerCase()))));
+  function editRule(r: CategoryRule, base?: string) {
+    app.rule = { rule: JSON.parse(JSON.stringify(r)), isNew: false, base };
+  }
+  function addRule() {
+    app.rule = { rule: { id: `r-${Date.now().toString(36)}`, target: "", kind: "domain", category: "work", days: [1, 2, 3, 4, 5], start_min: 540, end_min: 1020, enabled: true }, isNew: true };
+  }
   const goalDesc = (g: Goal) => `${g.kind === "limit" ? "Limit" : "Goal"} · ${dur(g.minutes * 60000)} a day`;
   const appNames = $derived(names.filter((t) => t.kind === "a").map((t) => t.name));
   const siteNames = $derived(names.filter((t) => t.kind === "w").map((t) => t.name));
@@ -226,6 +243,13 @@
   {/if}
 {/snippet}
 
+{#snippet ruleLine(r: CategoryRule, base: string | undefined, label: string)}
+  <button type="button" class="rulesub" class:off={!r.enabled} onclick={() => editRule(r, base)}>
+    <span class="ln"></span><Icon name="clock" size={15} /><i class="sw" style="width:8px;height:8px;background:{catColor(r.category)}"></i>
+    <span style="flex:1;min-width:0">{label ? `${label} · ` : ""}{catName(r.category)} · {ruleWhen(r)}</span>{#if !r.enabled}<span class="tag">Off</span>{/if}
+  </button>
+{/snippet}
+
 {#snippet catsCard()}
   <div class="card">
     <div class="ch"><h2>Categories</h2><span class="r">used for Focus</span></div>
@@ -235,9 +259,13 @@
         <i class="sw" style="background:{catColor(t.cat)}"></i>
         <select class="chip" value={t.cat} aria-label="Category of {t.name}" onchange={(e) => setCat(t.name, (e.target as HTMLSelectElement).value)}>{#each CATS as c}<option value={c}>{catName(c)}</option>{/each}</select>
       </div>
+      {#each rulesOf(t) as r (r.id)}{@render ruleLine(r, t.cat, r.target !== t.name ? r.target : "")}{/each}
     {/each}
+    {#each looseRules as r (r.id)}{@render ruleLine(r, undefined, r.target)}{/each}
     {#if !q && names.length > 6}<button type="button" class="row" style="min-height:48px;justify-content:center;color:var(--accent-ink);font-weight:600;font-size:14px" onclick={() => (showAllCats = !showAllCats)}>{showAllCats ? "Show fewer" : `Show all ${names.length}`}</button>{/if}
     {#if !names.length}<p class="hint" style="margin:8px 0 0">Apps and websites appear here once they have been used.</p>{/if}
+    <button type="button" class="row" style="min-height:48px;color:var(--accent-ink);font-weight:600;font-size:14px;gap:6px" onclick={addRule}><Icon name="plus" size={15} stroke={2.2} /> Add time rule</button>
+    <p class="hint" style="margin:6px 0 0">A time rule changes an app's or website's category on certain days and hours. It counts in totals, Focus, goals and alerts.</p>
   </div>
 {/snippet}
 

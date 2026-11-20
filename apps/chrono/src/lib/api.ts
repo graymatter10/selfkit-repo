@@ -2,9 +2,22 @@
 import { call } from "@selfkit/ui";
 
 export type Kind = "a" | "w";
-export interface Total { kind: Kind; name: string; package?: string | null; ms: number; opens: number; cat: string; platforms: string[]; prev: number; uninstalled?: number | null }
+export interface Total { kind: Kind; name: string; package?: string | null; ms: number; opens: number; cat: string; platforms: string[]; prev: number; uninstalled?: number | null; rules?: Record<string, number> }
 export interface DeviceTotal { id: string; name: string; platforms: string[]; ms: number; web: boolean }
 export interface Goal { id: string; kind: "limit" | "goal"; scope: "total" | "category" | "app" | "domain"; target: string; minutes: number; enabled: boolean }
+/** Time-based category (chrono_settings.category_rules). days: 1 = Monday … 7 = Sunday; end ≤ start runs into the next day. */
+export interface CategoryRule { id: string; target: string; kind: "app" | "domain"; category: string; days: number[]; start_min: number; end_min: number; enabled: boolean }
+export interface SiteRow { name: string; ms: number; prev: number; cat: string; rules: Record<string, number>; browsers: string[]; devices: string[] }
+export interface WebsitesView {
+  period: "day" | "week" | "month"; from: string; to: string; title: string; total: number; prev_total: number; days: number;
+  cats: Record<string, number>; sites: SiteRow[]; has_any: boolean; prev_anchor: string | null; next_anchor: string | null;
+}
+export interface SiteDay { day: string; label: string; cats: Record<string, number> }
+export interface SiteDetail {
+  name: string; period: string; title: string; ms: number; prev: number; days_counted: number; days: SiteDay[]; hours: number[];
+  cats: Record<string, number>; cat: string; cat_set: boolean; browsers: [string, number][]; devices: [string, number][];
+  rules: CategoryRule[]; goals: Goal[]; excluded: boolean;
+}
 export interface GoalStatus { goal: Goal; used: number; state: "ok" | "near" | "over" | "todo" | "met" }
 export interface DayNote { day: string; text: string; photos: string[]; updated_at: number }
 export interface DayView {
@@ -41,7 +54,7 @@ export interface Source { id: string; name: string; platforms: string[]; last_se
 export interface ChronoSettings {
   paused_until: number | null; exclude_apps: string[]; exclude_domains: string[]; categories: Record<string, string>;
   goals: Goal[]; alerts: boolean; device_names: Record<string, string>; pause_log: [number, number][];
-  weekly_report: boolean; idle_minutes: number | null;
+  weekly_report: boolean; idle_minutes: number | null; category_rules?: CategoryRule[];
 }
 export interface Info { device: string; platform: "linux" | "windows" | "android"; day_start: number; today: string }
 export interface AndroidStatus { supported: boolean; usage?: boolean; notifications?: boolean; last_import?: number | null }
@@ -52,6 +65,8 @@ export const api = {
   timeline: (day?: string) => call<TimelineView>("timeline", { day }),
   trends: (period: Period, anchor?: string) => call<TrendsView>("trends", { period, anchor }),
   report: (anchor?: string) => call<Report>("report", { anchor }),
+  websites: (period: WebsitesView["period"], anchor?: string) => call<WebsitesView>("websites", { period, anchor }),
+  site: (name: string, period: WebsitesView["period"], anchor?: string) => call<SiteDetail>("site", { name, period, anchor }),
   names: () => call<Total[]>("names"),
   sources: () => call<Source[]>("sources"),
   info: () => call<Info>("info"),
