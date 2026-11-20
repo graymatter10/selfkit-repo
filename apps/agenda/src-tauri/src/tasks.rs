@@ -419,7 +419,33 @@ pub fn search(store: &Store, q: &str) -> Result<Vec<TaskView>> {
     if fts.is_empty() {
         return Ok(vec![]);
     }
-    Ok(store.search(Some(TASKS), &fts, 50)?.iter().map(view).collect())
+    // The FTS index covers the whole JSON (keys, ids, "doing"…): keep only tasks whose
+    // own text (title, notes, tags, step titles) has every word as a word prefix (C26).
+    let toks = |s: &str| s.split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty()).map(str::to_lowercase).collect::<Vec<_>>();
+    let words = toks(q);
+    Ok(store
+        .search(Some(TASKS), &fts, 500)?
+        .iter()
+        .map(view)
+        .filter(|t| {
+            let mut text = String::new();
+            for k in ["title", "notes"] {
+                text.push_str(str_of(&t.data, k).unwrap_or(""));
+                text.push(' ');
+            }
+            for v in t.data.get("tags").and_then(Value::as_array).into_iter().flatten() {
+                text.push_str(v.as_str().unwrap_or(""));
+                text.push(' ');
+            }
+            for v in t.data.get("steps").and_then(Value::as_array).into_iter().flatten() {
+                text.push_str(v.get("title").and_then(Value::as_str).unwrap_or(""));
+                text.push(' ');
+            }
+            let have = toks(&text);
+            words.iter().all(|w| have.iter().any(|h| h.starts_with(w.as_str())))
+        })
+        .take(50)
+        .collect())
 }
 
 #[derive(Debug, Serialize)]
@@ -552,6 +578,11 @@ mod tests {
         p.insert("reminder_min".into(), Value::Null);
         assert!(!update(&s, &t.id, &p).unwrap().data.contains_key("reminder_min"));
         assert_eq!(search(&s, "groc").unwrap().len(), 1);
+        assert_eq!(search(&s, "milk").unwrap().len(), 1);
+        // Keys and ids are not task text (C26).
+        assert_eq!(search(&s, "title").unwrap().len(), 0);
+        assert_eq!(search(&s, "inbox").unwrap().len(), 0);
+        assert_eq!(search(&s, "reminder").unwrap().len(), 0);
         assert_eq!(search(&s, "\"(").unwrap().len(), 0);
         assert_ne!(notification_id("a"), notification_id("b"));
         assert!(notification_id("x") >= 0);
