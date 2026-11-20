@@ -13,7 +13,7 @@
   const b = parseWhen(base);
   const fallback = which === "stop" && b ? new Date(b.date.getTime() + 3_600_000) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0);
   const t0 = cur && !cur.allDay ? cur.date : fallback;
-  let day = $state(startOfDay(cur?.date ?? (which === "stop" && b ? b.date : now)));
+  let day = $state(startOfDay(cur?.date ?? t0)); // t0 may roll past midnight (23:50 → tomorrow 00:00)
   let hour = $state(t0.getHours());
   let minute = $state(t0.getMinutes());
   let allDay = $state(!!cur?.allDay);
