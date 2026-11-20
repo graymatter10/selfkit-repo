@@ -46,7 +46,7 @@
     await removeRec(goal.id, `Goal ${goal.name} deleted`);
   }
   const row = "flex min-h-12 items-center gap-3 border-b border-sep px-4 last:border-0";
-  const pct = $derived(goal ? Math.min(1, goal.saved / goal.target) : 0);
+  const pct = $derived(goal ? Math.max(0, Math.min(1, goal.saved / goal.target)) : 0);
 </script>
 
 <SheetFrame title={id ? "Savings goal" : "New goal"} {desktop} right={id ? "Save" : "Add"} onleft={leave} onright={save} rightDisabled={!f.name.trim() || !(Number(f.target) > 0)}>
