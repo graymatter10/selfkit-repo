@@ -223,7 +223,8 @@ fn nap_add(app: AppHandle, state: State<AppState>, night: String, start: String,
             return Err("That nap hasn't ended yet. Enter times up to now.".into());
         }
         for v in compute(&store, n, n + Duration::days(1), false).map_err(e)? {
-            if let (Some(bed), Some(wake)) = (v.bed, v.wake)
+            // Only times the user set count: an estimate can cover a quiet daytime nap (C90).
+            if let Some((bed, wake)) = v.log.as_ref().and_then(|l| Some((l.bed?, l.wake?)))
                 && s < wake
                 && w > bed
             {
