@@ -66,9 +66,23 @@ jobs:
       - name: NSIS
         shell: pwsh
         run: |
-          $m = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
-          if (-not (Test-Path $m)) { choco install nsis -y --no-progress; }
-          if (-not (Test-Path $m)) { throw "makensis not found" }
+          # windows-latest no longer ships NSIS. The Tauri CLI downloaded a full NSIS 3
+          # (with its standard includes and plugins) to %LOCALAPPDATA%\tauri\NSIS in the
+          # previous step; use that, then a system NSIS, then Chocolatey (retried: its feed
+          # times out now and then).
+          function Find-Makensis {
+            $c = @(Get-ChildItem "$env:LOCALAPPDATA\tauri" -Recurse -Filter makensis.exe -ErrorAction SilentlyContinue | ForEach-Object FullName)
+            $c += "${env:ProgramFiles(x86)}\NSIS\makensis.exe", "$env:ProgramFiles\NSIS\makensis.exe"
+            $c | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          }
+          $m = Find-Makensis
+          for ($i = 1; -not $m -and $i -le 3; $i++) {
+            choco install nsis -y --no-progress
+            $m = Find-Makensis
+            if (-not $m) { Start-Sleep 20 }
+          }
+          if (-not $m) { throw "makensis not found" }
+          Write-Host "makensis: $m"
           & $m /VERSION
           "MAKENSIS=$m" >> $env:GITHUB_ENV
       - name: Agent installer + combined Selfkit Setup
