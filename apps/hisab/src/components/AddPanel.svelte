@@ -7,7 +7,7 @@
   import { api, type Tx } from "../lib/api";
   import { LOCALE, money, nowHm, shortDate, splitNoteTags, symbol, todayIso, dayLabel } from "../lib/fmt";
   import { addPhoto } from "../lib/photo";
-  import { accountById, accounts, app, catById, defaultAccount, draftWritten, emptyDraft, openSheet, persistDraft, rankedCats, refresh, resetDraft, main } from "../lib/state.svelte";
+  import { accountById, accounts, app, catById, catLabel, defaultAccount, draftWritten, emptyDraft, openSheet, persistDraft, rankedCats, refresh, resetDraft, main } from "../lib/state.svelte";
   import CategoryRow from "./CategoryRow.svelte";
   import Ic from "./Ic.svelte";
   import NumPad from "./NumPad.svelte";
@@ -135,7 +135,7 @@
       resetDraft(keep);
       await refresh();
       const label = dr.kind === "transfer" ? "Moved" : dr.kind === "income" ? "Income saved" : "Saved";
-      showToast(`${label} · ${money(t.amount, t.currency)}${dr.kind !== "transfer" ? " · " + (catById(t.category)?.name ?? "") : ""}`, async () => {
+      showToast(`${label} · ${money(t.amount, t.currency)}${dr.kind !== "transfer" ? " · " + catLabel(t) : ""}`, async () => {
         await api.remove(t.id);
         await refresh();
         app.draft = { ...app.draft, ...{ amount: String(t.amount), category: dr.category, splits: dr.splits, note: dr.note, photos: dr.photos, date: dr.date, kind: dr.kind, to_account: dr.to_account, currency: dr.currency } };

@@ -158,6 +158,10 @@ let lastMain = (() => {
 export const main = () => app.snap?.main || lastMain || "USD";
 export const accounts = () => (app.snap?.accounts ?? []).filter((a) => !a.archived);
 export const accountById = (id: string): Account | undefined => app.snap?.accounts.find((a) => a.id === id);
+/** Category text of an entry: "Food", or "Food + Bills" for a split (C58). */
+export function catLabel(t: Pick<Tx, "category" | "splits">): string {
+  return t.splits?.length > 1 ? t.splits.map((s) => catById(s.category)?.name ?? "?").join(" + ") : (catById(t.category)?.name ?? "");
+}
 export const catById = (id: string): Category | undefined => app.snap?.categories.find((c) => c.id === id);
 export const txCurrency = (t: Pick<Tx, "currency">) => t.currency || main();
 
