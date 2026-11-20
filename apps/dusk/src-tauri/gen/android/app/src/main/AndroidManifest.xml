@@ -46,5 +46,7 @@
         <!-- Selfkit sync plugin: which app and Rust library (android-plugins/selfkit-sync) -->
         <meta-data android:name="com.selfkit.sync.APP" android:value="dusk" />
         <meta-data android:name="com.selfkit.sync.LIB" android:value="dusk_lib" />
+        <!-- Dusk reads these apps' data on the phone for Connections (read-only copies via their providers). -->
+        <meta-data android:name="com.selfkit.sync.MIRROR" android:value="agenda,hisab" />
     </application>
 </manifest>

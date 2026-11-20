@@ -133,7 +133,7 @@ export function reminderHint(start: string | undefined, mins: number | null | un
 }
 
 /** Next date of a repeat rule (same as Rust's next_occurrence). */
-export function nextOcc(repeat: string, d: Date): Date | null {
+export function nextOcc(repeat: string, d: Date, anchor = d.getDate()): Date | null {
   switch (repeat) {
     case "daily": return addDays(d, 1);
     case "weekly": return addDays(d, 7);
@@ -146,7 +146,7 @@ export function nextOcc(repeat: string, d: Date): Date | null {
       const k = repeat === "monthly" ? 1 : 12;
       const y = d.getFullYear(), m = d.getMonth() + k;
       const last = new Date(y, m + 1, 0).getDate();
-      return new Date(y, m, Math.min(d.getDate(), last), d.getHours(), d.getMinutes());
+      return new Date(y, m, Math.min(anchor, last), d.getHours(), d.getMinutes());
     }
   }
   return null;
@@ -158,10 +158,14 @@ export function occurrences(t: Task, from: Date, to: Date): { day: Date; first: 
   if (!s) return [];
   const out: { day: Date; first: boolean }[] = [];
   let d: Date | null = s.date;
+  // Monthly/yearly repeats return to their day after a short month (Jan 31 → Feb 28 → Mar 31),
+  // like tasks.rs `repeat_anchor` (C21).
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const anchor = t.repeat_day && Math.min(t.repeat_day, last) === d.getDate() ? t.repeat_day : d.getDate();
   for (let i = 0; d && d < to && i < 800; i++) {
     if (d >= from || startOfDay(d).getTime() >= from.getTime()) out.push({ day: startOfDay(d), first: i === 0 });
     if (!t.repeat || t.done_at) break;
-    d = nextOcc(t.repeat, d);
+    d = nextOcc(t.repeat, d, anchor);
   }
   return out;
 }

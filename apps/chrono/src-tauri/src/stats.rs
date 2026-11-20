@@ -696,11 +696,11 @@ impl Engine<'_> {
         v
     }
 
-    pub fn goals(&self, a: &DayAgg) -> Vec<GoalStatus> {
+    pub fn goals(&self, a: &DayAgg, day: i64) -> Vec<GoalStatus> {
         self.set
             .goals
             .iter()
-            .filter(|g| g.enabled)
+            .filter(|g| g.enabled && g.first_day().is_none_or(|f| day >= f))
             .map(|g| {
                 let used = self.goal_used(g, a);
                 let lim = g.minutes * 60_000;
@@ -793,7 +793,7 @@ pub fn day_view(e: &Engine, day: i64, now: i64) -> Result<DayView> {
         cats,
         top,
         devices,
-        goals: e.goals(&a),
+        goals: e.goals(&a, day),
         week_avg,
         week_so_far,
         last_week_same,
@@ -1192,7 +1192,7 @@ pub fn report(e: &Engine, anchor: i64, now: i64) -> Result<Report> {
             let mut kept = vec![None; 7];
             for i in 0..7 {
                 let d = ws + i as i64;
-                if d > today || d < first {
+                if d > today || d < first || g.first_day().is_some_and(|f| d < f) {
                     continue;
                 }
                 let a = get(d).cloned().unwrap_or_default();
@@ -1548,8 +1548,8 @@ mod tests {
             app(&s, "spotify", "linux", b + 20 * H, b + 20 * H + 30 * M, 0);
         }
         let mut set = ChronoSettings::default();
-        set.goals.push(crate::settings::Goal { id: "g".into(), kind: "limit".into(), scope: "category".into(), target: "entertainment".into(), minutes: 20, enabled: true });
-        set.goals.push(crate::settings::Goal { id: "h".into(), kind: "goal".into(), scope: "app".into(), target: "Code".into(), minutes: 60, enabled: true });
+        set.goals.push(crate::settings::Goal { id: "g".into(), kind: "limit".into(), scope: "category".into(), target: "entertainment".into(), minutes: 20, enabled: true, created: None });
+        set.goals.push(crate::settings::Goal { id: "h".into(), kind: "goal".into(), scope: "app".into(), target: "Code".into(), minutes: 60, enabled: true, created: None });
         let e = Engine::new(&s, set, 0, 0);
         let now = t0 + 23 * H;
         let v = day_view(&e, today, now).unwrap();

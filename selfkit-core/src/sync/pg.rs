@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS sk_records (
 CREATE INDEX IF NOT EXISTS sk_records_app_rev ON sk_records(app, rev);
 CREATE TABLE IF NOT EXISTS sk_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 "#,
+), (
+    2,
+    // R-1: ids are only unique per app ("settings" in Chrono, Dusk and Reflect; "n-<date>"
+    // in Dusk and Chrono), so rows are keyed by (app, id).
+    r#"
+ALTER TABLE sk_records DROP CONSTRAINT IF EXISTS sk_records_pkey;
+ALTER TABLE sk_records ADD PRIMARY KEY (app, id);
+"#,
 )];
 
 fn err(e: tokio_postgres::Error) -> Error {
@@ -196,16 +204,16 @@ impl Remote for PgRemote {
                 .query_opt(
                     "INSERT INTO sk_records (id, app, collection, updated_at, device_id, ciphertext, rev)
                      VALUES ($1, $2, $3, $4, $5, $6, nextval('sk_rev_seq'))
-                     ON CONFLICT (id) DO NOTHING RETURNING rev",
+                     ON CONFLICT (app, id) DO NOTHING RETURNING rev",
                     &[&rec.id, &rec.app, &rec.collection, &rec.updated_at, &rec.device_id, &rec.ciphertext],
                 )
                 .await
         } else {
             self.client
                 .query_opt(
-                    "UPDATE sk_records SET app=$2, collection=$3, updated_at=$4, device_id=$5, ciphertext=$6,
+                    "UPDATE sk_records SET collection=$3, updated_at=$4, device_id=$5, ciphertext=$6,
                        rev=nextval('sk_rev_seq')
-                     WHERE id=$1 AND rev=$7 RETURNING rev",
+                     WHERE app=$2 AND id=$1 AND rev=$7 RETURNING rev",
                     &[&rec.id, &rec.app, &rec.collection, &rec.updated_at, &rec.device_id, &rec.ciphertext, &base_rev],
                 )
                 .await
@@ -227,12 +235,12 @@ impl Remote for PgRemote {
         Ok(rows.iter().map(row).collect())
     }
 
-    async fn fetch(&self, id: &str) -> Result<Option<RemoteRecord>> {
+    async fn fetch(&self, app: &str, id: &str) -> Result<Option<RemoteRecord>> {
         let r = self
             .client
             .query_opt(
-                "SELECT id, app, collection, updated_at, device_id, ciphertext, rev FROM sk_records WHERE id=$1",
-                &[&id],
+                "SELECT id, app, collection, updated_at, device_id, ciphertext, rev FROM sk_records WHERE app=$1 AND id=$2",
+                &[&app, &id],
             )
             .await
             .map_err(err)?;

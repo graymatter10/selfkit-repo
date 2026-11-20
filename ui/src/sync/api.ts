@@ -17,7 +17,7 @@ export interface SyncOutcome {
   error: string | null; detail: string | null; note: string | null; started_at: number; finished_at: number;
 }
 export interface SyncStatus {
-  app: string; device_id: string; device_name: string; owner: Owner; running: boolean; unlocked: boolean; test_key: boolean;
+  app: string; device_id: string; device_name: string; owner: Owner; running: boolean; unlocked: boolean; test_key: boolean; secrets_in_file?: boolean;
   encryption_set_up: boolean; server_configured: boolean; photos_configured: boolean;
   last_attempt_at: number | null; last_ok_at: number | null; last_transport: Transport | null; last_peers: string[];
   last_error: string | null; last_note: string | null; pending: number; conflicts: number; peers: SeenPeer[];

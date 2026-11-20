@@ -58,7 +58,7 @@
     <div class="card p-4"><div class="ctitle">Streaks this {kind}</div>
       <div class="mt-1">
         {#each r.kept as k}
-          <div class="flex min-h-11 items-center gap-3 text-[14px]"><span class="min-w-0 flex-1 truncate">{k.name}</span>
+          <div class="flex min-h-11 items-center gap-3 text-[14px]"><span class="min-w-0 flex-1 leading-tight">{k.name}</span>
             {#if kind === "week"}<span class="flex gap-1">{#each k.pattern as p}<i class="h-3 w-3 rounded-[3px] {p === 'k' ? 'bg-accent' : p === 't' ? 'shadow-[inset_0_0_0_1.5px_var(--accent)]' : 'bg-fill'}"></i>{/each}</span>
             {:else}<span class="h-2 w-[30%] overflow-hidden rounded-[4px] bg-fill"><i class="block h-full rounded-[4px] bg-accent" style="width:{k.of ? (k.kept / k.of) * 100 : 0}%"></i></span>{/if}
             <span class="num w-16 text-right text-[13px] text-muted">{k.kept} of {k.of}</span></div>

@@ -143,7 +143,10 @@ function whereLabel(t: Task) {
 async function ensureNotifyPermission(t: { start?: string; reminder_min?: number | null }) {
   if (!t.start || t.reminder_min == null) return;
   try {
-    if (!(await isPermissionGranted())) await requestPermission();
+    if (!(await isPermissionGranted()) && (await requestPermission()) !== "granted") {
+      // Refused: the reminder can't show; say so instead of a silent bell (C66).
+      showToast("Reminders need notifications, which Android blocks for Agenda", undefined, 8000);
+    }
   } catch (e) {
     console.warn("notification permission", e);
   }
@@ -279,6 +282,9 @@ export async function saveSettings(s: Settings) {
   app.settings = s;
   await guard(api.saveSettings(s));
 }
+
+/** localStorage key of an unsaved New Task form (TaskForm.svelte, P5). */
+export const NEW_TASK_DRAFT = "agenda.newTaskDraft";
 
 export function init() {
   guard(api.prefs()).then((p) => {

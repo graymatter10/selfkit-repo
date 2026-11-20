@@ -111,8 +111,10 @@ function writeLocal(): string {
   } catch {}
   return s;
 }
+let dbPending = false;
 function writeDb(s = JSON.stringify({ ...app.draft, _t: Date.now() })) {
   clearTimeout(dbTimer);
+  dbPending = false;
   // Chained, so an older draft can never land after a newer one.
   if (app.ready) dbChain = dbChain.then(() => api.draftSet(JSON.parse(s))).catch(() => {});
 }
@@ -124,10 +126,16 @@ export function persistDraft() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(writeLocal, 120);
   clearTimeout(dbTimer);
+  dbPending = true;
   dbTimer = setTimeout(() => writeDb(), DB_IDLE_MS);
 }
-/** Wait until queued draft writes are in SQLite (Save runs after them). */
-export const draftWritten = () => dbChain;
+/** Wait until queued draft writes are in SQLite (Save runs after them). A write still
+ *  waiting for its idle timer goes now, so it can't fire during Save and land after
+ *  the cleared draft (C10). */
+export const draftWritten = () => {
+  if (dbPending) writeDb();
+  return dbChain;
+};
 // Leaving the app (Back, home, task switch): write now, not after the delay.
 document.addEventListener("visibilitychange", () => document.hidden && writeDraft());
 window.addEventListener("pagehide", () => writeDraft());
@@ -150,6 +158,10 @@ let lastMain = (() => {
 export const main = () => app.snap?.main || lastMain || "USD";
 export const accounts = () => (app.snap?.accounts ?? []).filter((a) => !a.archived);
 export const accountById = (id: string): Account | undefined => app.snap?.accounts.find((a) => a.id === id);
+/** Category text of an entry: "Food", or "Food + Bills" for a split (C58). */
+export function catLabel(t: Pick<Tx, "category" | "splits">): string {
+  return t.splits?.length > 1 ? t.splits.map((s) => catById(s.category)?.name ?? "?").join(" + ") : (catById(t.category)?.name ?? "");
+}
 export const catById = (id: string): Category | undefined => app.snap?.categories.find((c) => c.id === id);
 export const txCurrency = (t: Pick<Tx, "currency">) => t.currency || main();
 
@@ -165,9 +177,15 @@ export function defaultAccount(): string {
   return list.find((a) => a.id === app.prefs.account)?.id ?? list[0]?.id ?? "";
 }
 
+// Snapshot commands run in parallel threads (async), so replies can arrive out of
+// order: only the newest request may update the screen (C7).
+let refreshSeq = 0;
 export async function refresh() {
+  const n = ++refreshSeq;
   try {
-    app.snap = await api.snapshot(app.month);
+    const snap = await api.snapshot(app.month);
+    if (n !== refreshSeq) return;
+    app.snap = snap;
     if (app.snap.main && app.snap.main !== lastMain) {
       lastMain = app.snap.main;
       try {
@@ -177,7 +195,7 @@ export async function refresh() {
     app.rev++;
     app.error = "";
   } catch (e) {
-    app.error = String(e);
+    if (n === refreshSeq) app.error = String(e);
   }
 }
 

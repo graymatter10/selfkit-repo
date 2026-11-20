@@ -213,7 +213,8 @@ fn sources_status(state: State<AppState>) -> Res<SourcesOut> {
             ("chrono".into(), cx.chrono.and_then(|c| c.first).map(model::date_str)),
             ("hisab".into(), cx.hisab.and_then(|h| h.first).map(model::date_str)),
             ("agenda".into(), cx.agenda.and_then(|a| a.first).map(model::date_str)),
-            ("dusk".into(), cx.nights.first().map(|n| n.night.clone())),
+            // First night with real data: the cache also holds empty ("none") nights (L31).
+            ("dusk".into(), cx.nights.iter().find(|n| n.source != "none").map(|n| n.night.clone())),
         ];
         SourcesOut { has: cx.has, found, first, mobile: cfg!(mobile) }
     }))
@@ -277,8 +278,23 @@ fn dev_hooks() -> Option<String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(selfkit_appsync::tauri_cmds::nav_guard())
+    let builder = tauri::Builder::default().plugin(selfkit_appsync::tauri_cmds::nav_guard());
+    // Desktop: one instance (C23): a second launch focuses the first, so two sync passes
+    // or lock screens never race on the same data. Skipped when SELFKIT_DATA_DIR is set
+    // (tests run several apps on separate data dirs), like Agenda.
+    #[cfg(desktop)]
+    let builder = if std::env::var_os("SELFKIT_DATA_DIR").is_none() {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+    } else {
+        builder
+    };
+    builder
         .setup(|app| {
             #[cfg(mobile)]
             paths::set_data_dir(app.path().app_data_dir()?);

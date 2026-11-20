@@ -80,18 +80,26 @@
   const host = (url: string) => { try { return new URL(url.replace(/^postgres(ql)?:/, "http:")).host; } catch { return url; } };
   const dbName = (url: string) => { try { return new URL(url.replace(/^postgres(ql)?:/, "http:")).pathname.slice(1); } catch { return ""; } };
   const here = (t: number) => now - t < 5 * 60000;
+  // "Here" only while sync and LAN are on and the last pass didn't fail; the row kept a
+  // green pill next to "Waiting to sync · no connection" (S-1/C72).
+  const lanLive = $derived(!!st && st.settings.enabled && st.settings.lan_enabled && !(st.last_error && (st.last_attempt_at ?? 0) > (st.last_ok_at ?? 0)));
 
   function openServer() {
     form = { pg_url: srv?.pg_url ?? "", pg_password: "", s3_endpoint: srv?.s3_endpoint ?? "", s3_bucket: srv?.s3_bucket ?? "", s3_region: srv?.s3_region ?? "", s3_access_key: srv?.s3_access_key ?? "", s3_secret: "" };
     formMsg = null;
     sheet = "server";
   }
+  /** Postgres is required; checked before anything reaches secure storage (L4). */
+  const formError = () => (!form.pg_url.trim() ? "Enter the Postgres connection (postgres://…)." : "");
   async function testServer() {
+    if (formError()) return void (formMsg = { ok: false, text: formError() });
+    // (Save with an empty form still removes a saved server, as before.)
     formMsg = { ok: true, text: "Testing…" };
     try { await syncApi.testServer($state.snapshot(form)); formMsg = { ok: true, text: "Connected. Database ready, storage writable." }; }
     catch (e) { formMsg = { ok: false, text: String(e) }; }
   }
   async function saveServer() {
+    if (formError() && !srv?.pg_url) return void (formMsg = { ok: false, text: formError() });
     try { srv = await syncApi.saveServer($state.snapshot(form)); sheet = ""; await load(); }
     catch (e) { formMsg = { ok: false, text: String(e) }; }
   }
@@ -153,12 +161,17 @@
   </svg>
 {/snippet}
 
-{#snippet toggle(on: boolean, lab: string, fn: () => void)}
-  <button type="button" class="k-tg" class:k-on={on} role="switch" aria-checked={on} aria-label={lab} onclick={fn}><span></span></button>
+{#snippet toggle(on: boolean, lab: string, fn: () => void, off = false)}
+  <!-- off: sync itself is off, so this option does nothing yet; shown off and disabled (L4-13). -->
+  <button type="button" class="k-tg" class:k-on={on && !off} role="switch" aria-checked={on && !off} aria-label={lab} disabled={off} onclick={fn}><span></span></button>
 {/snippet}
 
 <div class="sks" class:k-phone={phone}>
   {#if st}
+    {#if st.secrets_in_file}
+      <!-- C80: no system keyring on this desktop; secrets are in a 0600 file (docs/security.md). -->
+      <p class="k-s" style="margin:0 0 10px">No system keyring found — your sync keys are stored in a protected file in the Selfkit data folder. Install a keyring (e.g. GNOME Keyring/KWallet) for extra protection.</p>
+    {/if}
     {#if st.test_key}
       <!-- Security (docs/security.md): the built-in test key is public. Anyone with a test build,
            on the same Wi-Fi or with access to the server, can read and change data synced with it. -->
@@ -202,12 +215,12 @@
         <section>
           <h3>Local sync</h3>
           <div class="k-card k-list">
-            <div class="k-row"><div class="k-grow"><div class="k-t">Sync on the same {phone ? "Wi-Fi" : "network"}</div><div class="k-s">Finds your Selfkit devices on this network</div></div>
-              {@render toggle(st.settings.lan_enabled, "Local sync", () => saveSettings({ lan_enabled: !st!.settings.lan_enabled }))}</div>
+            <div class="k-row"><div class="k-grow"><div class="k-t">Sync on the same {phone ? "Wi-Fi" : "network"}</div><div class="k-s">{st.settings.enabled ? "Finds your Selfkit devices on this network" : "Used when sync is on"}</div></div>
+              {@render toggle(st.settings.lan_enabled, "Local sync", () => saveSettings({ lan_enabled: !st!.settings.lan_enabled }), !st.settings.enabled)}</div>
             {#each st.peers as p (p.device_id)}
               <div class="k-row"><span class="k-mut">{@render icon(/phone|android|oppo|vivo|pixel|samsung/i.test(p.name) ? "phone" : "pc")}</span>
                 <div class="k-grow"><div class="k-t">{p.name}</div><div class="k-s">Seen {ago(now, p.last_seen)}{p.last_sync ? ` · synced ${ago(now, p.last_sync)}` : ""}</div></div>
-                {#if here(p.last_seen)}<span class="k-pill"><span class="k-okdot"></span>Here</span>{/if}</div>
+                {#if here(p.last_seen) && lanLive}<span class="k-pill"><span class="k-okdot"></span>Here</span>{/if}</div>
             {/each}
             {#if !st.peers.length && st.settings.lan_enabled}<div class="k-row"><div class="k-s">No devices seen yet. Your PC needs the Selfkit agent running on the same network.</div></div>{/if}
           </div>
@@ -257,7 +270,7 @@
             <p class="k-hint">{st.platform === "android" ? hasCompanion ? "The Selfkit companion can sync every app for you; this app then steps back." : "The Selfkit companion isn't installed, so this app syncs itself." : "On a PC the Selfkit agent syncs every app, even when they are closed."}</p>
             {#if st.owner === "app"}
               <div class="k-row k-flat"><div class="k-grow"><div class="k-t">Automatic</div><div class="k-s">On open and every {st.settings.background_minutes} minutes</div></div>
-                {@render toggle(st.settings.auto_sync, "Automatic sync", () => saveSettings({ auto_sync: !st!.settings.auto_sync }))}</div>
+                {@render toggle(st.settings.auto_sync, "Automatic sync", () => saveSettings({ auto_sync: !st!.settings.auto_sync }), !st.settings.enabled)}</div>
             {/if}
           </div>
         </section>
@@ -273,7 +286,7 @@
         <section>
           <h3>Details</h3>
           <div class="k-card k-list">
-            <div class="k-row"><div class="k-grow"><div class="k-t">Sync this app</div><div class="k-s">{st.settings.enabled ? "On: Sync now, on open and in the background" : "Off: nothing leaves this device"}</div></div>
+            <div class="k-row"><div class="k-grow"><div class="k-t">Sync this app</div><div class="k-s">{st.settings.enabled ? (st.settings.auto_sync ? "On: Sync now, on open and in the background" : "On: only when you tap Sync now") : "Off: nothing leaves this device"} <!-- S-3 --></div></div>
               {@render toggle(st.settings.enabled, "Sync this app", () => (st!.settings.enabled ? saveSettings({ enabled: false }) : st!.test_key ? (sheet = "enable") : enableSync()))}</div>
             <button type="button" class="k-row k-link k-plain" onclick={openLog}><div class="k-grow"><div class="k-t">Sync log</div><div class="k-s">Last 20 runs, with errors in plain words</div></div>{@render icon("chev", 18)}</button>
             <div class="k-row"><div class="k-grow"><div class="k-t">This device</div><div class="k-s">{st.device_name}{st.pending && st.server_configured ? ` · ${st.pending} change${st.pending === 1 ? "" : "s"} not on the server yet` : ""}</div></div></div>
@@ -408,6 +421,7 @@
   .k-tg span { width: 42px; height: 26px; border-radius: 13px; background: var(--line-c); position: relative; transition: background 0.15s; }
   .k-tg span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 10px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: transform 0.15s; }
   .k-tg.k-on span { background: var(--a); }
+  .k-tg:disabled { opacity: 0.4; cursor: default; }
   .k-tg.k-on span::after { transform: translateX(16px); }
   .k-seg { display: flex; background: var(--sunk); border-radius: 12px; padding: 3px; gap: 3px; }
   .k-seg button { flex: 1; min-height: 38px; border-radius: 9px; font: inherit; font-weight: 550; color: var(--mut); background: none; border: 0; cursor: pointer; font-size: 13.5px; }

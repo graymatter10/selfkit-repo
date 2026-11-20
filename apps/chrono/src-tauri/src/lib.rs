@@ -5,6 +5,7 @@ pub mod alerts;
 pub mod android;
 pub mod categories;
 pub mod notes;
+pub mod recover;
 pub mod settings;
 pub mod stats;
 
@@ -21,6 +22,14 @@ use stats::Engine;
 pub struct AppState {
     store: Mutex<Store>,
     shared: Mutex<Store>,
+    /// A damaged DB was set aside at start (recover.rs): told once to the page (L25).
+    notice: Mutex<Option<String>>,
+}
+
+/// A one-time startup message (damaged data file set aside), or None.
+#[tauri::command]
+fn startup_notice(state: State<AppState>) -> Option<String> {
+    state.notice.lock().unwrap().take()
 }
 
 type Res<T> = Result<T, String>;
@@ -452,15 +461,33 @@ fn sync_handle() -> selfkit_core::Result<selfkit_appsync::tauri_cmds::SyncHandle
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default().plugin(selfkit_appsync::tauri_cmds::nav_guard()).plugin(tauri_plugin_notification::init());
+    // Desktop: one instance (C23): a second launch focuses the first, so two sync passes
+    // or lock screens never race on the same data. Skipped when SELFKIT_DATA_DIR is set
+    // (tests run several apps on separate data dirs), like Agenda.
+    #[cfg(desktop)]
+    let builder = if std::env::var_os("SELFKIT_DATA_DIR").is_none() {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+    } else {
+        builder
+    };
     #[cfg(target_os = "android")]
     let builder = builder.plugin(mobile::plugin());
     builder
         .setup(|app| {
             #[cfg(mobile)]
             paths::set_data_dir(app.path().app_data_dir()?);
-            let store = open_store()?;
-            let shared = open_shared()?;
-            app.manage(AppState { store: Mutex::new(store), shared: Mutex::new(shared) });
+            // A damaged chrono.db / settings.db is set aside and started fresh instead of
+            // failing the setup hook on every start (L25), like Agenda/Hisab/Dusk.
+            let device = paths::device_id()?;
+            let (store, n1) = recover::open(paths::app_db("chrono"), "chrono", &device, stats::MIGRATIONS)?;
+            let (shared, n2) = recover::open(paths::app_db(selfkit_core::settings::APP), selfkit_core::settings::APP, &device, &[])?;
+            app.manage(AppState { store: Mutex::new(store), shared: Mutex::new(shared), notice: Mutex::new(n1.or(n2)) });
             // Selfkit sync (selfkit-appsync): status, Sync now, settings, conflicts; desktop syncs on open.
             let sync = sync_handle()?;
             selfkit_appsync::tauri_cmds::spawn_on_open(app.handle(), &sync);
@@ -481,7 +508,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             day_view, timeline, trends, report, names, info, settings_get, settings_save, pause, resume, prefs_get, prefs_set,
-            android_status, android_open, android_import, dev_hooks, sources, note_get, note_save, photo_save,
+            android_status, android_open, android_import, dev_hooks, startup_notice, sources, note_get, note_save, photo_save,
             photo_get, photo_export, theme_get, theme_set, app_changes,
             selfkit_appsync::tauri_cmds::sync_status, selfkit_appsync::tauri_cmds::sync_now,
             selfkit_appsync::tauri_cmds::sync_settings_set, selfkit_appsync::tauri_cmds::sync_server_get,

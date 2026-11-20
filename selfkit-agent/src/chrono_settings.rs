@@ -19,6 +19,9 @@ pub struct ChronoSettings {
     pub exclude_apps: HashSet<String>,
     /// Lowercase domains; an entry also matches its subdomains.
     pub exclude_domains: Vec<String>,
+    /// Minutes without input that count as "away" (Chrono → Devices and sources); None =
+    /// each writer's default. Handed to the browser extension by the native host (L3-2).
+    pub idle_minutes: Option<i64>,
 }
 
 fn str_list(v: Option<&Value>) -> impl Iterator<Item = String> + '_ {
@@ -36,6 +39,7 @@ impl ChronoSettings {
             paused_until: d.get("paused_until").and_then(Value::as_i64),
             exclude_apps: str_list(d.get("exclude_apps")).collect(),
             exclude_domains: str_list(d.get("exclude_domains")).map(|s| normalize_domain(&s).unwrap_or(s)).collect(),
+            idle_minutes: d.get("idle_minutes").and_then(Value::as_i64).filter(|m| (1..=240).contains(m)),
         }
     }
 

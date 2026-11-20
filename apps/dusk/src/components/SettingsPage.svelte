@@ -2,7 +2,7 @@
   // Settings: goals, wind-down reminder (off until turned on), day start,
   // appearance, data sources. Every row says what it is for.
   import { clock, dur, tdisp, toMin } from "../lib/fmt";
-  import { app, bridge, importUsage, refresh, saveGoals, savePrefs, saveSettings } from "../lib/state.svelte";
+  import { app, bridge, importUsage, notifyBlocked, refresh, saveGoals, savePrefs, saveSettings, saveShortcut } from "../lib/state.svelte";
   import Icon from "./Icon.svelte";
   import Seg from "./Seg.svelte";
   import TimeSheet from "./TimeSheet.svelte";
@@ -34,8 +34,7 @@
     const s = { ...app.settings, shortcuts: { ...app.settings.shortcuts, rate_sleep: shortcut.trim() } };
     const clash = Object.entries(s.shortcuts).find(([k, v]) => k !== "rate_sleep" && v && v.toLowerCase().replace(/\s/g, "") === shortcut.trim().toLowerCase().replace(/\s/g, ""));
     if (clash) return void (shortcutErr = `Already used for ${clash[0].replace("_", " ")}`);
-    shortcutErr = "";
-    await saveSettings(s);
+    shortcutErr = await saveShortcut(s);
   }
   const DAY_STARTS = [0, 60, 120, 180, 240, 300, 360];
 </script>
@@ -52,7 +51,7 @@
         {@render lrow("Sleep goal", "Used for sleep debt")}
         <span class="flex items-center gap-2">
           <button type="button" class="press grid h-11 w-11 place-items-center rounded-[12px] bg-fill text-[18px] font-semibold text-ink2" aria-label="15 minutes less" onclick={() => setGoal(-15)}>−</button>
-          <span class="num w-[66px] text-center font-[650]">{dur(goals.goal_min)}</span>
+          <span class="num w-[76px] text-center font-[650] whitespace-nowrap">{dur(goals.goal_min)}</span>
           <button type="button" class="press grid h-11 w-11 place-items-center rounded-[12px] bg-fill text-[18px] font-semibold text-ink2" aria-label="15 minutes more" onclick={() => setGoal(15)}>+</button>
         </span>
       </div>
@@ -67,7 +66,7 @@
     <h2 class="mx-1 mt-6 mb-2 text-[13.5px] font-[650] text-ink2">Wind-down reminder</h2>
     <div class="card">
       <label class="flex min-h-[60px] items-center gap-3 px-4 py-2 text-[15.5px]">
-        {@render lrow("Remind me to wind down", app.prefs.winddown_on ? `Every day at ${winddownAt}` : `Off · would remind you at ${winddownAt}`)}
+        {@render lrow("Remind me to wind down", app.prefs.winddown_on ? (notifyBlocked.v ? "Notifications are off for Dusk in Android settings" : `Every day at ${winddownAt}`) : `Off · would remind you at ${winddownAt}`)}
         <input type="checkbox" class="sr" checked={app.prefs.winddown_on} onchange={(e) => savePrefs({ ...app.prefs, winddown_on: (e.currentTarget as HTMLInputElement).checked })} />
         <span aria-hidden="true" class="relative inline-block h-7 w-12 shrink-0 rounded-full transition-colors duration-150 {app.prefs.winddown_on ? 'bg-accent' : 'bg-faint'}">
           <span class="absolute top-1 h-5 w-5 rounded-full transition-transform duration-150 {app.prefs.winddown_on ? 'translate-x-6 bg-on-accent' : 'translate-x-1 bg-white'}"></span>
@@ -99,7 +98,7 @@
         <label for="ds" class="flex min-w-0 flex-1 flex-col gap-0.5">New day starts at<small class="text-[13px] text-muted">Sleep before this counts as last night</small></label>
         <select id="ds" class="num h-11 rounded-[12px] bg-fill px-3 text-[15px] outline-none" value={app.settings?.day_start_min ?? 0}
           onchange={(e) => app.settings && saveSettings({ ...app.settings, day_start_min: Number((e.currentTarget as HTMLSelectElement).value) })}>
-          {#each DAY_STARTS as m}<option value={m}>{clock(m)}</option>{/each}
+          {#each DAY_STARTS as m}<option value={m}>{tdisp(clock(m))}</option>{/each}
         </select>
       </div>
       <div class="h-px bg-sep"></div>
@@ -123,7 +122,8 @@
         <div class="h-px bg-sep"></div>
         <div class="flex min-h-[60px] items-center gap-3 px-4 py-2 text-[15.5px]">
           {@render lrow("Tasks and spending", "Agenda, Hisab · for Connections")}
-          <span class="text-[14px] text-muted">{app.sources.agenda || app.sources.hisab ? "Found" : "On computer"}</span>
+          {#if app.sources.agenda && app.sources.hisab}<span class="inline-flex items-center gap-1 font-semibold text-accent"><Icon name="check" size={17} stroke={2.4} />Found</span>
+          {:else}<span class="text-[14px] text-muted">{app.sources.agenda ? "Agenda only" : app.sources.hisab ? "Hisab only" : "Not found"}</span>{/if}
         </div>
       {:else}
         <div class="flex min-h-[60px] items-center gap-3 px-4 py-2 text-[15.5px]">

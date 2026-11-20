@@ -42,7 +42,7 @@
 
   <div class="flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto *:shrink-0 px-4 pt-2 pb-16">
     <div class="flex flex-col gap-1 px-1">
-      <h1 class="m-0 text-[28px] leading-tight font-bold tracking-[-0.5px] {done ? 'text-muted line-through' : ''}">{task.title}</h1>
+      <h1 class="m-0 text-[28px] leading-tight [overflow-wrap:anywhere] font-bold tracking-[-0.5px] {done ? 'text-muted line-through' : ''}">{task.title}</h1>
       <span class="text-[15px] {st.kind === 'overdue' && !done ? 'text-danger' : 'text-muted'}">{st.text || (done ? "Completed" : s ? whenLabel(task, app.now) : "No date")}</span>
     </div>
 
@@ -76,7 +76,7 @@
               class="hl flex min-h-11 w-full items-center gap-3 pl-4 text-left">
               {#if stp.done}<span class="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-accent text-on-accent"><Icon name="check" size={13} stroke={3.2} /></span>
               {:else}<span class="h-[22px] w-[22px] shrink-0 rounded-full border-[1.5px] border-faint"></span>{/if}
-              <span class="flex-1 py-[11px] pr-4 text-[17px] {i === steps.length - 1 ? '' : 'border-b border-sep'} {stp.done ? 'text-muted line-through' : ''}">{stp.title}</span>
+              <span class="min-w-0 flex-1 py-[11px] [overflow-wrap:anywhere] pr-4 text-[17px] {i === steps.length - 1 ? '' : 'border-b border-sep'} {stp.done ? 'text-muted line-through' : ''}">{stp.title}</span>
             </button>
           {/each}
         </div>

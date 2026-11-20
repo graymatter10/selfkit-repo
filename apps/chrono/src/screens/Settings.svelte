@@ -4,11 +4,11 @@
   // sources, appearance. Everything shared lives in `chrono_settings`.
   import { api, type ChronoSettings, type Goal, type Total } from "../lib/api";
   import { CATS, ago, catColor, catName, dur, goalName } from "../lib/fmt";
-  import { app, guard, isPaused, pause, pauseLabel, refreshAndroid, resume, saveSettings, setTheme } from "../lib/state.svelte";
+  import { app, guard, isPaused, pause, pauseLabel, refreshAndroid, resume, saveSettings, setTheme, today } from "../lib/state.svelte";
   import Icon from "../components/Icon.svelte";
   import Seg from "../components/Seg.svelte";
   import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
-  import { syncApi } from "../../../../ui/src/sync/api";
+  import { bridge as syncBridge, syncApi } from "../../../../ui/src/sync/api";
   import LockSettings from "../../../../ui/src/lock/LockSettings.svelte"; // App lock section
   let { phone, onsources, onsync }: { phone: boolean; onsources: () => void; onsync: () => void } = $props();
   let syncLine = $state("");
@@ -24,14 +24,27 @@
   const s = $derived(app.settings);
   const clone = (): ChronoSettings => JSON.parse(JSON.stringify($state.snapshot(app.settings)));
 
+  // Phones that stop background jobs: suggest allowing background activity, like the
+  // Sync page's battery tip; shown only while Chrono isn't exempt (P15, 2026-11-21).
+  let batteryTip = $state(false);
+  const checkBattery = () => { try { batteryTip = !!syncBridge()?.needsBatteryTip(); } catch { batteryTip = false; } };
+  checkBattery();
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && checkBattery());
+
   /** Android 13+: alerts need the notification permission; ask when it matters. */
+  let notifyBlocked = $state(false);
   async function askNotify() {
     try {
-      if (!(await isPermissionGranted())) await requestPermission();
+      if (!(await isPermissionGranted())) notifyBlocked = (await requestPermission()) !== "granted";
+      else notifyBlocked = false;
     } catch (e) {
       console.warn("notification permission", e);
     }
   }
+  // Alerts / Weekly report are on by default: say when Android blocks them (P23).
+  const checkNotify = () => { if (/Android/i.test(navigator.userAgent)) isPermissionGranted().then((g) => (notifyBlocked = !g)).catch(() => {}); };
+  checkNotify();
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && checkNotify()); // back from Android settings (C93)
   function toggle(field: "alerts" | "weekly_report") {
     const n = clone();
     n[field] = !n[field];
@@ -45,7 +58,9 @@
     saveSettings(n);
   }
   function addExclusion(kind: "app" | "site") {
-    const v = (kind === "app" ? addApp : addSite).trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    let v = (kind === "app" ? addApp : addSite).trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    // Sites stored like the agent keeps them: lowercase, no www., no port (L3-10).
+    if (kind === "site") v = v.toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "").replace(/^www\./, "");
     if (!v) return void (adding = "");
     const n = clone();
     const list = kind === "app" ? n.exclude_apps : n.exclude_domains;
@@ -65,13 +80,24 @@
     n.categories[name] = cat;
     saveSettings(n);
   }
+  let goalsEl: HTMLElement | undefined = $state();
+  // From Today's goals card: scroll to this section, and open the form when there are none (P22).
+  $effect(() => {
+    if (!app.goalsFocus || !goalsEl || !s) return;
+    app.goalsFocus = false;
+    setTimeout(() => goalsEl?.scrollIntoView({ block: "start" }), 60);
+    if (!s.goals.length) newGoal();
+  });
   function newGoal() {
-    edit = { id: `g-${Date.now().toString(36)}`, kind: "limit", scope: "category", target: "entertainment", minutes: 60, enabled: true };
+    // `created`: days before it aren't judged (L3-12).
+    edit = { id: `g-${Date.now().toString(36)}`, kind: "limit", scope: "category", target: "entertainment", minutes: 60, enabled: true, created: today() };
     editNew = true;
   }
   function saveGoal() {
     if (!edit) return;
     const g = $state.snapshot(edit) as Goal;
+    // A website target is stored like exclusions and sessions: no scheme, www., port (L3-12).
+    if (g.scope === "domain") g.target = g.target.trim().toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/\/.*$/, "").replace(/:\d+$/, "").replace(/\.$/, "").replace(/^www\./, "");
     if (g.scope === "total") g.target = "";
     if ((g.scope === "app" || g.scope === "domain") && !g.target.trim()) return;
     g.minutes = Math.max(1, Math.round(g.minutes));
@@ -136,6 +162,10 @@
         {#if app.android.notifications}<button type="button" class="ok" style="min-height:44px" onclick={() => api.androidOpen("notifications")}><Icon name="check" size={16} stroke={2.4} /> On</button>{:else}<button type="button" class="btn" onclick={() => (app.setup = 2)}>Turn on</button>{/if}</div>
       <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Last import</div><div class="sb">When you open Chrono and every 15 min in the background</div></div>
         <button type="button" class="muted num" style="font-size:14px;min-height:44px" onclick={refreshAndroid}>{ago(app.android.last_import, app.now)}</button></div>
+      {#if batteryTip}
+        <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Background activity</div><div class="sb">Phones may delay Chrono's background import at night. Allow it to run in the background so no time goes missing.</div></div>
+          <button type="button" class="btn" onclick={() => syncBridge()?.openBatterySettings()}>Allow</button></div>
+      {/if}
     </div>
   {/if}
 {/snippet}
@@ -171,7 +201,7 @@
 {#snippet goalsCard()}
   {#if s}
     <div class="card">
-      <div class="ch" style="margin-bottom:2px"><h2>Goals and limits</h2><button type="button" class="lnk" onclick={newGoal}><Icon name="plus" size={14} stroke={2.2} /> New</button></div>
+      <div class="ch" style="margin-bottom:2px" bind:this={goalsEl}><h2>Goals and limits</h2><button type="button" class="lnk" onclick={newGoal}><Icon name="plus" size={14} stroke={2.2} /> New</button></div>
       {#if edit && editNew}{@render goalForm(edit)}{/if}
       {#each s.goals as g (g.id)}
         {#if edit && !editNew && edit.id === g.id}{@render goalForm(edit)}
@@ -183,8 +213,8 @@
         {/if}
       {/each}
       {#if !s.goals.length && !edit}<p class="hint" style="margin:8px 0 6px">No goals yet. Add a daily limit or a goal.</p>{/if}
-      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Alerts</div><div class="sb">Notify me when a limit is reached or a goal is met</div></div>{@render tg(s.alerts, "Alerts", () => toggle("alerts"))}</div>
-      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Weekly report</div><div class="sb">Ready every Monday morning</div></div>{@render tg(s.weekly_report, "Weekly report", () => toggle("weekly_report"))}</div>
+      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Alerts</div><div class="sb">{s.alerts && notifyBlocked ? "Notifications are off for Chrono in Android settings, so nothing will show" : "Notify me when a limit is reached or a goal is met"}</div></div>{@render tg(s.alerts, "Alerts", () => toggle("alerts"))}</div>
+      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Weekly report</div><div class="sb">{s.weekly_report && notifyBlocked ? "Notifications are off for Chrono in Android settings" : "Ready every Monday morning"}</div></div>{@render tg(s.weekly_report, "Weekly report", () => toggle("weekly_report"))}</div>
     </div>
   {/if}
 {/snippet}

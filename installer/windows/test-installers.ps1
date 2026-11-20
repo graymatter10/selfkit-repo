@@ -118,6 +118,31 @@ function Test-Agent {
   $mf = "$env:LOCALAPPDATA\Selfkit\native-host\com.selfkit.agent.chrome.json"
   Check (Test-Path $mf) "native host manifest"
   if (Test-Path $mf) { Check ((Get-Content $mf -Raw | ConvertFrom-Json).path -eq $exe) "manifest points at the installed exe" }
+  Check (Test-Path "$inst\extension\manifest.json") "browser extension shipped (L3-3)"
+  # One real native-messaging round trip, as a browser would talk to the host (L3-4):
+  # 4-byte little-endian length + JSON in, the same framing out.
+  try {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo $exe, 'native-host chrome-extension://ijiimbgfojojhjlchgbkkhhodifbnami/'
+    $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.CreateNoWindow = $true
+    $hp = [System.Diagnostics.Process]::Start($psi)
+    $msg = [System.Text.Encoding]::UTF8.GetBytes('{"type":"status"}')
+    $hp.StandardInput.BaseStream.Write([BitConverter]::GetBytes([int]$msg.Length), 0, 4)
+    $hp.StandardInput.BaseStream.Write($msg, 0, $msg.Length)
+    $hp.StandardInput.BaseStream.Flush()
+    $len = New-Object byte[] 4
+    $task = $hp.StandardOutput.BaseStream.ReadAsync($len, 0, 4)
+    $replyOk = $false
+    if ($task.Wait(15000) -and $task.Result -eq 4) {
+      $buf = New-Object byte[] ([BitConverter]::ToInt32($len, 0))
+      $got = 0
+      while ($got -lt $buf.Length) { $n = $hp.StandardOutput.BaseStream.Read($buf, $got, $buf.Length - $got); if ($n -le 0) { break }; $got += $n }
+      $reply = [System.Text.Encoding]::UTF8.GetString($buf, 0, $got)
+      $replyOk = $reply -match '"ok":\s*true'
+    }
+    $hp.StandardInput.Close()
+    if (-not $hp.WaitForExit(5000)) { $hp.Kill() }
+    Check $replyOk "native host answers a status message ($reply)"
+  } catch { Check $false "native host round trip: $_" }
   Check (Wait-Until { Agent-Running } 20) "agent started"
   $p = Get-Process selfkit-agent -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($p) { Check ($p.MainWindowHandle -eq 0) "agent runs without a window" }

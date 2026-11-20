@@ -67,6 +67,7 @@ fn boot(state: State<AppState>) -> R<Value> {
     let main = main_currency(&state);
     let store = state.store.lock().unwrap();
     model::seed_defaults(&store, &main)?;
+    let _ = model::merge_seeded_duplicates(&store); // C94
     currency::follow_main(&store, &main)?;
     let made = recur::generate(&store, &main, today())?;
     let prefs = store.kv_get("hisab.prefs").map_err(e)?.and_then(|v| serde_json::from_str::<Value>(&v).ok()).unwrap_or_else(|| json!({}));
@@ -91,7 +92,7 @@ fn snapshot(state: State<AppState>, month: String) -> R<Value> {
         })
     };
     recent.sort_by_key(|v| std::cmp::Reverse(key(v)));
-    recent.truncate(6);
+    recent.truncate(8); // desktop Home shows 8 since it has no number pad (2026-11-21)
     Ok(json!({
         "main": main,
         "today": t.format("%Y-%m-%d").to_string(),
@@ -268,6 +269,11 @@ fn export_dir() -> std::path::PathBuf {
     }
     #[cfg(not(target_os = "android"))]
     if let Some(d) = dirs::download_dir().filter(|d| d.is_dir()) {
+        return d;
+    }
+    // Without xdg-user-dirs (bare i3) download_dir() is None, but ~/Downloads exists (L2-14).
+    #[cfg(not(target_os = "android"))]
+    if let Some(d) = dirs::home_dir().map(|h| h.join("Downloads")).filter(|d| d.is_dir()) {
         return d;
     }
     paths::data_dir().join("exports")
@@ -511,6 +517,7 @@ mod reminders {
             .id(id)
             .title(title(l))
             .body(body(l))
+            .icon("ic_stat_hisab") // monochrome wallet, res/drawable/ic_stat_hisab.xml
             .schedule(Schedule::At { date, repeating: false, allow_while_idle: true })
             .show();
         if let Err(err) = r {
@@ -586,7 +593,7 @@ mod shortcut {
         }
         let r = WebviewWindowBuilder::new(app, "capture", WebviewUrl::App("index.html?view=capture".into()))
             .title("Add expense")
-            .inner_size(420.0, 560.0)
+            .inner_size(420.0, 390.0) // no number pad on desktop (2026-11-21), keyboard only
             .resizable(false)
             .decorations(false)
             .always_on_top(true)

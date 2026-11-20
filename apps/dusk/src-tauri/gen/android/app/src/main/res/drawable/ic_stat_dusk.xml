@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome Dusk crescent + star for the status bar / wind-down notifications (from ui/icons/svg/dusk-monochrome.svg). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M9.55,1.2A9.32,9.32 0,1 0,19.26 13.61A7.98,7.98 0,0 1,9.55 1.2z" />
+    <path android:fillColor="#FFFFFFFF" android:fillAlpha="0.85"
+        android:pathData="M19.35,2.5L19.98,4.02L21.5,4.65L19.98,5.28L19.35,6.8L18.72,5.28L17.2,4.65L18.72,4.02z" />
+</vector>

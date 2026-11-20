@@ -1,5 +1,30 @@
 # Decisions (newest first)
 
+## 2026-11-21 — Desktop without a keyring (C80/S-5)
+- A sync pass treats unreadable secure storage as "no server here", so LAN sync works (on the test key in test builds).
+- Saving the server and encryption key on such a desktop uses a 0600 file in the data folder (`sync/secrets.json`) instead of failing. Reason: the threat model already excludes same-user malware (which can read the plaintext DBs and the keychain); refusing left these users with no sync and no encryption at all. The keychain is always tried first; the agent is unchanged (keychain only).
+
+## 2026-11-21 — Late reminders on ColorOS (P2), Chrono background tip (P15)
+- Agenda reminders can be up to ~2 min late on ColorOS: the app has the exact-alarm permission and the plugin schedules exact alarms, but ColorOS aligns them. Documented (README, Settings hint on Android); `setAlarmClock` with our own scheduler is a post-release item (PLANNING → Agenda/Tickd → Next). Reason: half a day of new Android code in the last batch is too risky for ~1.5 min.
+- Chrono Settings → This phone shows the Sync page's battery tip ("Allow it to run in the background") on phones that stop background jobs, only while Chrono isn't exempt; no forced prompt. Reason: the night-time import gap behind P15; the daily-total reconcile stays post-release.
+
+## 2026-11-21 — Browser extension: "is the browser in front" from the agent (L3-6)
+- Firefox on X11 never reports losing focus, so website time ran on while other apps were in front. Fix without new browser permissions (privacy first): the native host adds `browser_foreground` from the agent's own foreground tracker; the extension ends and pauses sessions when it is `false`. Without the agent (or on Wayland) Firefox falls back to a 60 s idle threshold. Not chosen: a content script on every site (needs "access all websites").
+
+## 2026-11-21 — Hisab PDF export stays Latin-only (L15)
+- The hand-written PDF keeps Helvetica/WinAnsi; Bangla and other scripts print as "?" and the export sheet says to use CSV for them. Reason: readable Bangla needs an embedded font (Noto Sans Bengali subset, ~150–300 KB) *and* OpenType shaping (vowel-sign reordering, conjuncts) — a shaping engine (e.g. rustybuzz) plus CID font writing is too much new code for the last batch before release. Revisit with a PDF library after release.
+
+## 2026-11-21 — Chrono: uninstalled app's missing time (P15)
+- For release: documented limit — time in an Android app that is uninstalled before Chrono's next import can be missing (Android deletes its raw events and only keeps a daily total). Reason: the fix needs new data-model work (untimed sessions) touching Chrono, Reflect and Dusk, too risky in the last batch before release.
+- First post-release item: reconcile from Android's daily totals into untimed sessions (design in PLANNING.md → Chrono → Next).
+
+## 2026-11-21 — Hisab: no number pad on desktop (user)
+- Hisab on Linux/Windows (main window, narrow windows and the quick-capture popup) has no on-screen number pad; the amount is typed. Reason (user): a pad is for touch; on a computer it wasted space and mouse clicks. Phones keep the pad. The amount shows as an outlined field with a caret and "Type an amount · Enter saves"; the freed height shows more recent entries; the capture popup is 420×390.
+
+## 2026-11-20 — Phone mirrors: Dusk nights for Reflect (B2), Agenda/Hisab for Dusk (B4)
+- Reflect on Android gets Dusk's sleep through a read-only copy of Dusk's local `dusk_nights` table: Dusk's provider serves it whole (`/table?name=dusk_nights`, allow-list `SHARED_TABLES` in `selfkit-appsync/src/android.rs`) and `SelfkitMirror` replaces the copy in Reflect's `dusk.db` on each mirror pass. Not chosen: publishing nights as synced records — each device estimates its own nights from its own screen use (phone vs PC), so synced nights would conflict or duplicate across devices; too risky before release. Phone-local only, no sync changes.
+- Dusk on Android mirrors Agenda and Hisab like Reflect (`com.selfkit.sync.MIRROR=agenda,hisab`), so Connections' next-day cards work on the phone. Reason: both apps are usually installed on the same phone; "On computer" read as broken.
+
 ## 2026-11-20 — Sync bug round (QA-U1..U4, R1), Hisab typing lag, laptop limits
 - Numbers compare by value in sync (`conflict::json_eq`: `5000 == 5000.0`) for conflict diffs, `same_content`, field clocks and the field merge. Reason: Rust writes whole numbers as f64, JS as integers, so every such field looked changed (QA-U3).
 - The conflict screen hides bookkeeping fields (`id`, `created_at`, `updated_at`, `tz_offset`) and shows lists/objects as readable items (one per line, title/name or values without ids/timestamps). Reason: users can't decide between raw JSON or epoch numbers (QA-U2/U3).

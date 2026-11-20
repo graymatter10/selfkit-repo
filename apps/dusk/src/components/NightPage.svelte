@@ -25,13 +25,16 @@
     if (end < 0) end = ns.length - 1;
     return ns.slice(Math.max(0, end - 6), end + 1);
   });
+  // Same rule as the stats cards (model.rs `stats`): only nights with a main sleep
+  // count, naps included in their total; nap-only days made the two averages differ (L4-17).
+  const counted = (n: Night) => ["logged", "estimate", "allnighter"].includes(n.source);
   const weekAvg = $derived.by(() => {
-    const w = week.filter((n) => n.asleep_min + n.nap_min > 0);
+    const w = week.filter(counted);
     return w.length ? Math.round(w.reduce((a, n) => a + n.asleep_min + n.nap_min, 0) / w.length) : null;
   });
   const last14 = $derived(dash.nights.slice(-14));
   const avg14 = $derived.by(() => {
-    const w = last14.filter((n) => n.asleep_min + n.nap_min > 0);
+    const w = last14.filter(counted);
     return w.length ? Math.round(w.reduce((a, n) => a + n.asleep_min + n.nap_min, 0) / w.length) : null;
   });
 
@@ -94,7 +97,7 @@
       <div class="flex min-w-0 flex-1 flex-col gap-1">
         <span class="text-[12.5px] text-muted">Woke briefly</span>
         {#if n.source === "estimate" && n.estimate.interruptions > 0}
-          <span class="num text-[19px] font-[650] tracking-[-0.01em]">{plural(n.estimate.interruptions, "time")} <span class="text-[13px] font-medium text-muted">· {n.estimate.awake_min} min</span></span>
+          <span class="num text-[19px] font-[650] tracking-[-0.01em]">{plural(n.estimate.interruptions, "time")} <span class="text-[13px] font-medium whitespace-nowrap text-muted">· {n.estimate.awake_min < 1 ? "< 1" : n.estimate.awake_min} min</span></span>
         {:else}
           <span class="text-[19px] font-[650] tracking-[-0.01em]">{n.source === "estimate" ? "No" : "–"}</span>
         {/if}
@@ -134,7 +137,7 @@
     <div class="flex min-h-[52px] items-center gap-3 px-4 py-1.5">
       <span class="flex w-5 shrink-0 text-ink2"><Icon name="nap" size={18} /></span>
       <span class="{desktop ? 'w-[92px]' : 'w-10'} shrink-0 text-[13.5px] font-[550] text-muted">Nap</span>
-      <span class="num min-w-0 flex-1 truncate text-[15px]">{hmd(nap.bed, nap.tz_offset)}–{hmd(nap.wake, nap.tz_offset)} <span class="text-muted">· {dur(((nap.wake ?? 0) - (nap.bed ?? 0)) / 60000)}</span></span>
+      <span class="num min-w-0 flex-1 text-[15px] [overflow-wrap:anywhere]">{hmd(nap.bed, nap.tz_offset)}–{hmd(nap.wake, nap.tz_offset)} <span class="whitespace-nowrap text-muted">· {dur(((nap.wake ?? 0) - (nap.bed ?? 0)) / 60000)}</span></span>
       <button type="button" class="press -mr-2 grid h-11 w-11 place-items-center rounded-[12px] text-muted" aria-label="Remove nap" onclick={() => deleteNap(nap.id, n.night)}><Icon name="trash" size={18} /></button>
     </div>
     <div class="ml-12 h-px bg-sep"></div>

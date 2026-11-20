@@ -1,5 +1,6 @@
 <script lang="ts">
   // Recurring transaction or subscription.
+  import OptionalDate from "./OptionalDate.svelte";
   import type { Recurring } from "../lib/api";
   import { todayIso } from "../lib/fmt";
   import { accounts, app, closeSheet, defaultAccount, guardForm, main, openSheet, removeRec, saveRec } from "../lib/state.svelte";
@@ -60,7 +61,7 @@
         <select bind:value={f.freq} class="{inp} appearance-none"><option value="daily">day(s)</option><option value="weekly">week(s)</option><option value="monthly">month(s)</option><option value="yearly">year(s)</option></select></label>
       <label class={row}><span class={lbl}>Starts</span><input type="date" bind:value={f.start} class={inp} /></label>
       {#if o}<div class="{row} text-[14px] text-muted"><span class={lbl}>Next</span><span class="ml-auto">{f.next}</span></div>{/if}
-      <label class={row}><span class={lbl}>Ends</span><input type="date" bind:value={f.end} class={inp} /></label>
+      <label class={row}><span class={lbl}>Ends</span><OptionalDate bind:value={f.end} label="Ends" empty="Never" cls={inp} /></label>
       <label class={row}><span class="flex-1 text-[15px] text-ink2">Subscription</span><input type="checkbox" bind:checked={f.subscription} class="h-5 w-5 accent-[var(--accent)]" /></label>
       {#if o}<label class={row}><span class="flex-1 text-[15px] text-ink2">Active</span><input type="checkbox" bind:checked={f.active} class="h-5 w-5 accent-[var(--accent)]" /></label>{/if}
     </div>

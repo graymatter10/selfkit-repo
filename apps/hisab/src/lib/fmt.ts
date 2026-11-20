@@ -86,3 +86,29 @@ export function daysBetween(a: string, b: string) {
 }
 
 export const CURRENCIES = ["USD", "EUR", "GBP", "BDT", "INR", "PKR", "NPR", "LKR", "AED", "SAR", "QAR", "KWD", "MYR", "SGD", "JPY", "CNY", "KRW", "THB", "IDR", "PHP", "TRY", "CAD", "AUD", "NZD", "CHF", "SEK", "NOK", "DKK", "ZAR", "NGN", "KES", "EGP", "BRL", "MXN"];
+
+/** "#tags" in a note become tags (lower-case, added to `tags` without duplicates; letters
+ *  include combining marks, so Bangla "#অফিস" stays whole — L12); the
+ *  note keeps the other words. Same rule on the add screen and in the entry editor (C33). */
+export function splitNoteTags(note: string, tags: string[]): { note: string; tags: string[] } {
+  const out = [...tags];
+  const rest = note.replace(/(^|\s)#([\p{L}\p{M}\p{N}_-]+)/gu, (_, sp, t) => {
+    const tag = t.toLowerCase();
+    if (!out.includes(tag)) out.push(tag);
+    return sp;
+  }).replace(/[^\S\n]+/g, " ").trim(); // keep line breaks of the editor's multi-line note
+  return { note: rest, tags: out };
+}
+
+/** "09:00" → the locale's clock ("9:00 AM" in 12-hour locales), like the native time field (P13). */
+export function clockText(hm: string): string {
+  const [h, m] = hm.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hm;
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString(LOCALE, { hour: "numeric", minute: "2-digit" });
+}
+
+/** Loan status pill text, the same in the list and the detail sheet (P13). */
+export function loanPill(status: string, daysLeft: number | null | undefined): string {
+  if (status === "due_soon" && daysLeft != null) return daysLeft === 0 ? "Due today" : `Due in ${daysLeft}d`;
+  return { overdue: "Overdue", due_soon: "Due soon", ongoing: "Ongoing", finished: "Finished" }[status] ?? status;
+}

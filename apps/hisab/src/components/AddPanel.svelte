@@ -5,9 +5,9 @@
   // change, so Back, a crash or a restart never loses what was typed.
   import { showToast } from "@selfkit/ui";
   import { api, type Tx } from "../lib/api";
-  import { LOCALE, money, nowHm, shortDate, symbol, todayIso, dayLabel } from "../lib/fmt";
+  import { LOCALE, money, nowHm, shortDate, splitNoteTags, symbol, todayIso, dayLabel } from "../lib/fmt";
   import { addPhoto } from "../lib/photo";
-  import { accountById, accounts, app, catById, defaultAccount, draftWritten, emptyDraft, openSheet, persistDraft, rankedCats, refresh, resetDraft, main } from "../lib/state.svelte";
+  import { accountById, accounts, app, catById, catLabel, defaultAccount, draftWritten, emptyDraft, openSheet, persistDraft, rankedCats, refresh, resetDraft, main } from "../lib/state.svelte";
   import CategoryRow from "./CategoryRow.svelte";
   import Ic from "./Ic.svelte";
   import NumPad from "./NumPad.svelte";
@@ -16,6 +16,28 @@
   let { compact = false, onsaved }: { compact?: boolean; onsaved?: (t: Tx) => void } = $props();
   let menu = $state<"" | "account" | "to">("");
   let noteFocus = $state(false);
+  // Phone-only note rules: Enter = keyboard "done" (blur), and the pad hides under the
+  // on-screen keyboard. On a computer Enter saves (C31) and the pad stays (C32).
+  const phone = /Android/i.test(navigator.userAgent);
+  // Android Back closes the keyboard but leaves the note focused, so neither keyboard
+  // nor pad showed (P35): when the viewport grows back while the note has focus, blur it.
+  let noteEl: HTMLInputElement | undefined = $state();
+  $effect(() => {
+    const vv = window.visualViewport;
+    if (!phone || !vv) return;
+    let last = vv.height;
+    const onResize = () => {
+      if (vv.height > last + 80 && noteFocus && document.activeElement === noteEl) noteEl?.blur();
+      last = vv.height;
+    };
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  });
+  function noteKey(e: KeyboardEvent) {
+    if (e.key !== "Enter") return;
+    if (!phone && canSave) return void (e.preventDefault(), save());
+    (e.currentTarget as HTMLInputElement).blur();
+  }
   let busy = $state(false);
   let shake = $state(false);
 
@@ -28,9 +50,21 @@
   const splitIds = $derived(app.draft.splits.map((s) => s.category));
   const canSave = $derived(amountNum > 0 && !busy);
   // Long amounts shrink so "9,999,999,999.99" fits next to the chips on a 360 dp phone.
-  const amountPx = $derived.by(() => {
+  const basePx = $derived.by(() => {
     const n = display(app.draft.amount).length;
     return compact ? (n > 12 ? 22 : n > 9 ? 27 : 34) : (n > 12 ? 25 : n > 9 ? 31 : 40);
+  });
+  // ...and keep shrinking until it really fits the row: with 2 decimals after 10 digits
+  // (P12) and wide chips, "1,234,567.8…" was cut under the currency chip (P37).
+  let amountRow: HTMLDivElement | undefined = $state();
+  $effect(() => {
+    void app.draft.amount, cur;
+    const el = amountRow;
+    if (!el) return;
+    let px = basePx;
+    el.style.setProperty("--amt", `${px}px`);
+    // Reading scrollWidth lays out with the new size at once.
+    while (el.scrollWidth > el.clientWidth + 1 && px > 14) el.style.setProperty("--amt", `${--px}px`);
   });
 
   $effect(() => {
@@ -48,7 +82,8 @@
     else if (/^\d$/.test(k)) {
       const [, frac] = a.split(".");
       if (frac !== undefined && frac.length >= 2) return;
-      if (a.replace(".", "").length >= 10) return;
+      // Up to 10 whole digits plus 2 decimals (decimals after 10 digits were dropped, P12).
+      if (frac === undefined && a.length >= 10) return;
       a = a === "0" ? k : a + k;
     }
     app.draft.amount = a;
@@ -104,11 +139,7 @@
       return;
     }
     // "#tags" in the note become tags.
-    const tags = [...dr.tags];
-    const note = dr.note.replace(/(^|\s)#([\p{L}\p{N}_-]+)/gu, (_, sp, t) => {
-      tags.push(t.toLowerCase());
-      return sp;
-    }).replace(/\s+/g, " ").trim();
+    const { note, tags } = splitNoteTags(dr.note, dr.tags);
     const data: Partial<Tx> = {
       kind: dr.kind, amount: amountNum, currency: cur, date: dr.date || todayIso(), time: dr.time || (dr.date === todayIso() || !dr.date ? nowHm() : ""),
       account: acct?.id ?? "", note, tags, photos: dr.photos, source: "manual",
@@ -128,9 +159,11 @@
       await draftWritten(); // a queued draft write must not land after this Save
       const t = await api.save<Tx>("transactions", data, undefined, { ...emptyDraft(), ...keep, _t: Date.now() });
       resetDraft(keep);
+      // The clicked category tile kept focus (and its ring) after Save (L2-7).
+      if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
       await refresh();
       const label = dr.kind === "transfer" ? "Moved" : dr.kind === "income" ? "Income saved" : "Saved";
-      showToast(`${label} · ${money(t.amount, t.currency)}${dr.kind !== "transfer" ? " · " + (catById(t.category)?.name ?? "") : ""}`, async () => {
+      showToast(`${label} · ${money(t.amount, t.currency)}${dr.kind !== "transfer" ? " · " + catLabel(t) : ""}`, async () => {
         await api.remove(t.id);
         await refresh();
         app.draft = { ...app.draft, ...{ amount: String(t.amount), category: dr.category, splits: dr.splits, note: dr.note, photos: dr.photos, date: dr.date, kind: dr.kind, to_account: dr.to_account, currency: dr.currency } };
@@ -159,11 +192,12 @@
 
   <!-- Amount, currency, account -->
   <div class="flex items-end gap-2 px-1">
-    <div class="min-w-0 flex-1 {shake ? 'animate-[shake_.3s]' : ''}">
-      <div class="num flex items-baseline gap-1 truncate {app.draft.amount ? 'text-ink' : 'text-faint'} {app.draft.kind === 'income' && app.draft.amount ? 'text-accent-ink' : ''}" aria-live="polite" aria-label="Amount">
+    <div class="min-w-0 flex-1 {shake ? 'animate-[shake_.3s]' : ''} {phone ? '' : 'rounded-[14px] px-2 py-1.5 shadow-[inset_0_0_0_2px_var(--accent)]'}">
+      <div bind:this={amountRow} class="num flex items-baseline gap-1 overflow-hidden whitespace-nowrap {app.draft.amount ? 'text-ink' : 'text-faint'} {app.draft.kind === 'income' && app.draft.amount ? 'text-accent-ink' : ''}" aria-live="polite" aria-label="Amount">
         <span class="text-[22px] font-medium text-muted">{symbol(cur)}</span>
-        <span class="leading-none font-semibold tracking-[-1px]" style="font-size: {amountPx}px">{display(app.draft.amount)}</span>
+        <span class="leading-none font-semibold tracking-[-1px]" style="font-size: var(--amt, {basePx}px)">{display(app.draft.amount)}</span>{#if !phone}<span class="amt-caret" aria-hidden="true"></span>{/if}
       </div>
+      {#if !phone}<div class="mt-0.5 text-[12px] text-muted">{app.draft.amount ? "Enter saves · Backspace deletes · Delete clears" : "Type an amount · Enter saves"}</div>{/if}
     </div>
     <div class="flex shrink-0 flex-col items-end gap-1 pb-0.5">
       <div class="flex items-center gap-1">
@@ -202,8 +236,8 @@
   <div class="flex items-center gap-1.5">
     <label class="flex h-10 min-w-0 flex-1 items-center rounded-[12px] bg-fill2 px-3">
       <span class="sr">Note</span>
-      <input bind:value={app.draft.note} placeholder={app.draft.kind === "transfer" ? "Note" : "Note, #tag"} enterkeyhint="done" class="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
-        onfocus={() => (noteFocus = true)} onblur={() => setTimeout(() => (noteFocus = false), 120)} onkeydown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()} />
+      <input bind:this={noteEl} bind:value={app.draft.note} placeholder={app.draft.kind === "transfer" ? "Note" : "Note, #tag"} enterkeyhint="done" class="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
+        onfocus={() => (noteFocus = true)} onblur={() => setTimeout(() => (noteFocus = false), 120)} onkeydown={noteKey} />
     </label>
     <label class="press relative flex h-10 shrink-0 items-center gap-1 rounded-[12px] bg-fill2 px-2.5 text-[13px] font-medium {app.draft.date && app.draft.date !== todayIso() ? 'text-accent-ink' : 'text-ink2'}">
       <Ic name="calendar" size={16} />{!app.draft.date || app.draft.date === todayIso() ? "Today" : dayLabel(app.draft.date).replace(/^\w+, /, "") || shortDate(app.draft.date)}
@@ -223,7 +257,8 @@
     </p>
   {/if}
 
-  {#if !noteFocus || compact}
+  <!-- Number pad on phones only; computers type the amount (user, 2026-11-21). -->
+  {#if phone && (!noteFocus || compact)}
     <NumPad onkey={key} {compact} />
   {/if}
   <button type="button" disabled={!canSave} onclick={save}
@@ -233,5 +268,8 @@
 </div>
 
 <style>
+  /* Desktop amount "field": a blinking caret after the number (keyboard entry, no pad). */
+  .amt-caret { display: inline-block; width: 2px; height: 0.9em; margin-left: 2px; align-self: center; background: var(--accent); animation: amt-blink 1s steps(1) infinite; }
+  @keyframes amt-blink { 50% { opacity: 0; } }
   @keyframes -global-shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 </style>

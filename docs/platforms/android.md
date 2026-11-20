@@ -22,3 +22,6 @@ adb exec-out screencap -p > shot.png
 - `tauri android init` regenerates `gen/android`; re-apply: icons (`apps/<app>/icons/android/mipmap-*` → `res/mipmap-*`, plus `mipmap-anydpi-v26/ic_launcher*.xml` and `values/ic_launcher_background.xml`) and `android:windowSoftInputMode="adjustResize"` on the activity.
 - Keyboard: the phone layout sizes itself to `visualViewport.height`, so the header stays visible and quick add sits above the keyboard (Android 15+ is edge-to-edge).
 - Verified 2026-11-15 on the API 37 emulator: launch, quick add with parsing, detail sheet.
+
+## Resources looked up by name (2026-11-21, P3)
+Release builds run R8 with resource shrinking (`optimization { enable = true }` in `app/build.gradle.kts`), which removes resources nothing references from code or XML. Anything found only by name at run time — the notification small icons `ic_stat_<app>` that `tauri-plugin-notification` resolves with `getIdentifier` — must be listed in `res/raw/selfkit_keep.xml` (`tools:keep`), or the plugin falls back to Android's generic "i".

@@ -24,6 +24,17 @@ pub struct Goal {
     pub minutes: i64,
     #[serde(default = "yes")]
     pub enabled: bool,
+    /// Logical day the goal was added ("YYYY-MM-DD"); days before it aren't judged
+    /// (L3-12). Missing on older goals = always existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+}
+
+impl Goal {
+    /// First day (day index) the goal counts for.
+    pub fn first_day(&self) -> Option<i64> {
+        self.created.as_deref().and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()).map(crate::stats::day_of_date)
+    }
 }
 
 fn yes() -> bool {
@@ -72,6 +83,12 @@ pub fn norm_domain(d: &str) -> String {
     let d = d.trim().to_lowercase();
     let d = d.split("://").last().unwrap_or(&d).to_string();
     let d = d.split('/').next().unwrap_or("").to_string();
+    // No port and no trailing dot, like the agent's normalize_domain (L3-10).
+    let d = match d.rsplit_once(':') {
+        Some((h, p)) if !h.contains(':') && !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()) => h.to_string(),
+        _ => d,
+    };
+    let d = d.trim_end_matches('.').to_string();
     d.strip_prefix("www.").map(str::to_string).unwrap_or(d)
 }
 
@@ -161,6 +178,8 @@ mod tests {
 
     #[test]
     fn domains_and_pause() {
+        assert_eq!(norm_domain("https://WWW.Example.org/path"), "example.org"); // L3-10
+        assert_eq!(norm_domain("sub.test.localhost:8765"), "sub.test.localhost");
         assert!(domain_matches("mail.google.com", "google.com"));
         assert!(domain_matches("www.Google.com", "google.com"));
         assert!(!domain_matches("notgoogle.com", "google.com"));

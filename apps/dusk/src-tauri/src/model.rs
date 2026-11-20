@@ -644,6 +644,12 @@ struct Spec<'a> {
     available: bool,
 }
 
+/// Text for a link whose source app isn't here. Phones read Agenda/Hisab copies too
+/// since B4, so the old "(on your computer)" wording was wrong on both (L4-10).
+pub fn not_found(src: &str) -> String {
+    format!("{src} wasn't found on this device. Install or open {src} to see this link.")
+}
+
 fn connect(pairs: Vec<(f64, f64, i64)>, sp: Spec, finding: impl Fn(f64, f64, u8) -> String) -> Connection {
     let r = pearson(&pairs.iter().map(|p| p.0).collect::<Vec<_>>(), &pairs.iter().map(|p| p.1).collect::<Vec<_>>());
     let hi: Vec<&(f64, f64, i64)> = pairs.iter().filter(|p| p.0 >= sp.split).collect();
@@ -653,7 +659,7 @@ fn connect(pairs: Vec<(f64, f64, i64)>, sp: Spec, finding: impl Fn(f64, f64, u8)
     let enough = sp.available && r.is_some() && ga.len() >= 3 && gb.len() >= 3;
     let st = if enough { strength(r) } else { 0 };
     let text = if !sp.available {
-        format!("Shows up where Dusk can read {} (on your computer).", sp.src)
+        not_found(sp.src)
     } else if !enough {
         format!("Not enough data yet ({} so far).", count(pairs.len(), sp.per))
     } else {
@@ -1066,7 +1072,7 @@ mod tests {
         assert_eq!((c.groups[0].avg, c.groups[1].avg), (Some(2.0), Some(5.0)));
         let none = sleep_vs_next_day(&ns, &BTreeMap::new(), 0, "money", "$", false);
         assert_eq!((none.pairs, none.available, none.enough), (0, false, false));
-        assert_eq!(none.finding, "Shows up where Dusk can read Hisab (on your computer).");
+        assert_eq!(none.finding, "Hisab wasn't found on this device. Install or open Hisab to see this link.");
         let few = late_use_vs_quality(&ns[..4], "Chrono");
         assert!(!few.enough && few.finding.starts_with("Not enough data"));
     }

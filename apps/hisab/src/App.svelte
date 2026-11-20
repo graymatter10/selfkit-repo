@@ -120,6 +120,11 @@
       else if (app.pages.length > 1) back();
       return;
     }
+    // Ctrl+, opens Settings from every page; a plain "," is the decimal point on Home (L2-6).
+    if (desktop && (e.ctrlKey || e.metaKey) && e.key === "," && !app.sheets.length) {
+      e.preventDefault();
+      return void go("settings");
+    }
     if (typing || app.sheets.length || e.ctrlKey || e.metaKey || e.altKey) return;
     if (page() === "home") {
       if (/^[0-9]$/.test(e.key) || e.key === "." || e.key === ",") return void panel?.key(e.key === "," ? "." : e.key);

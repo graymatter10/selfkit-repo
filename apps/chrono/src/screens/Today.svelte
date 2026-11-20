@@ -20,16 +20,21 @@
   });
   const past = $derived(!!v && !v.today);
   const mins = $derived(v ? Math.round(v.screen / 60000) : 0);
+  // `week_avg` = the 7 days before the day on screen, so each day has its own; the text
+  // says which window it is (three "daily averages" disagreed with no hint — P17).
   const sentence = $derived.by(() => {
     if (!v) return null;
     const avg = v.week_avg, diff = v.screen - avg;
     if (avg <= 0) return { lead: v.screen > 0 ? "Your first days with Chrono" : "Nothing recorded yet", rest: "" };
     const usual = Math.abs(diff) <= avg * 0.15;
-    if (v.today && diff < 0 && !usual) return { lead: "So far today", rest: `Your daily average is ${dur(avg)}.` };
+    if (v.today && diff < 0 && !usual) return { lead: "So far today", rest: `Your average over the 7 days before is ${dur(avg)}.` };
     const lead = usual ? "About a usual day for you" : diff < 0 ? "A quieter day" : "A busier day";
     return { lead, amount: `${dur(Math.abs(diff))} ${diff >= 0 ? "more" : "less"}`, avg: dur(avg) };
   });
-  const phoneRows = $derived(v ? [["Screen turned on", `${v.pickups} times`], ["Unlocked", `${v.unlocks} times`], ["Notifications", `${v.notifications}`]] : []);
+  const times = (n: number) => `${n} ${n === 1 ? "time" : "times"}`; // "1 time" (C37)
+  // A session running past midnight ends at the next day's 00:00: show 23:59 (P19).
+  const lastUse = (first: number | null, last: number | null) => (last != null && first != null && last > first && hm(last) === "00:00" ? hm(last - 60000) : hm(last));
+  const phoneRows = $derived(v ? [["Screen turned on", times(v.pickups)], ["Unlocked", times(v.unlocks)], ["Notifications", `${v.notifications}`]] : []);
   const weekDiff = $derived(v ? v.week_so_far - v.last_week_same : 0);
 </script>
 
@@ -39,12 +44,12 @@
       <div class="ch"><h2>{past ? "Screen time" : "Screen time today"}</h2><span class="r">all devices</span></div>
       <div class="big num">{Math.floor(mins / 60)}<small>h</small>{String(mins % 60).padStart(2, "0")}<small>min</small></div>
       {#if sentence}
-        <div class="say">{sentence.lead}{#if sentence.amount}{" — "}<b>{sentence.amount}</b> than your daily average ({sentence.avg}).{:else}.{sentence.rest ? " " + sentence.rest : ""}{/if}</div>
+        <div class="say">{sentence.lead}{#if sentence.amount}{" — "}<b>{sentence.amount}</b> than your average over the 7 days before ({sentence.avg}).{:else}.{sentence.rest ? " " + sentence.rest : ""}{/if}</div>
       {/if}
       <div style="margin-top:18px"><DayRibbon strip={v.strip} from={v.day_start} to={v.day_end} /></div>
       <div class="facts">
         <div><div class="v num">{hm(v.first)}</div><div class="l">First use</div></div>
-        <div><div class="v num">{hm(v.last)}</div><div class="l">Last use</div></div>
+        <div><div class="v num">{lastUse(v.first, v.last)}</div><div class="l">Last use</div></div>
         <div><div class="v num">{v.longest ? dur(v.longest[1]) : "–"}</div><div class="l" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Longest{v.longest ? ` · ${v.longest[0]}` : ""}</div></div>
       </div>
     </div>

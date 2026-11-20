@@ -4,7 +4,8 @@
 //! `title, notes, severity 1–5 (Low, Minor, Medium, High, Critical),
 //!  start ("YYYY-MM-DDTHH:MM" local, or "YYYY-MM-DD" = all day), stop (same format),
 //!  reminder_min (minutes before start; absent = off), repeat
-//!  ("daily"|"weekdays"|"weekly"|"monthly"|"yearly"), list, steps [{id,title,done}],
+//!  ("daily"|"weekdays"|"weekly"|"monthly"|"yearly"; repeat_day = day of month a
+//!  monthly/yearly task returns to after a short month clamped it), list, steps [{id,title,done}],
 //!  tags [lowercase words], stage ("doing" = Board column Doing; absent = To do),
 //!  photos [photo record ids], done_at (UTC ms), created_at, last_done_at,
 //!  last_completion (id of the `completions` record written when it was last completed)`.
@@ -300,7 +301,10 @@ fn log_completion(store: &Store, task_id: &str, d: &Map<String, Value>, now: Nai
     if let Some(t) = d.get("tags") {
         c.insert("tags".into(), t.clone());
     }
-    Ok(store.put(COMPLETIONS, None, &Value::Object(c))?.id)
+    // One id per task occurrence (its start), so the same occurrence completed on two
+    // devices before syncing is one history entry, not two (C30).
+    let id = format!("c-{task_id}-{}", str_of(d, "start").unwrap_or("none"));
+    Ok(store.put(COMPLETIONS, Some(&id), &Value::Object(c))?.id)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -310,18 +314,61 @@ pub struct Completion {
     pub data: Map<String, Value>,
 }
 
-/// Completed-task history, newest first.
+/// Completed-task history, newest first. A done task without its completion record
+/// (done by an older build, an .ics import, or a sync merge that kept another device's
+/// `last_completion`) is listed from the task itself (`task-<id>`), so History and Stats
+/// match the Done list (P4).
 pub fn history(store: &Store) -> Result<Vec<Completion>> {
     let mut v: Vec<Completion> = store
         .list(COMPLETIONS, u32::MAX, 0)?
         .into_iter()
         .map(|r| Completion { id: r.id, data: r.data.as_object().cloned().unwrap_or_default() })
         .collect();
+    let at = |d: &Map<String, Value>| d.get("done_at").and_then(Value::as_i64);
+    for t in store.list(TASKS, u32::MAX, 0)? {
+        let d = normalize(t.data.as_object().cloned().unwrap_or_default());
+        let Some(done) = at(&d) else { continue };
+        let linked = str_of(&d, "last_completion").is_some_and(|c| v.iter().any(|x| x.id == c));
+        if linked || v.iter().any(|x| str_of(&x.data, "task") == Some(t.id.as_str()) && at(&x.data).is_some_and(|a| (a - done).abs() < 60_000)) {
+            continue;
+        }
+        let mut c = Map::new();
+        c.insert("task".into(), json!(t.id));
+        c.insert("title".into(), d.get("title").cloned().unwrap_or(json!("")));
+        c.insert("done_at".into(), json!(done));
+        if let Some(tz) = d.get("tz_offset_min") {
+            c.insert("tz_offset_min".into(), tz.clone());
+        } else {
+            c.insert("tz_offset_min".into(), json!(t.tz_offset));
+        }
+        if let Some(tags) = d.get("tags") {
+            c.insert("tags".into(), tags.clone());
+        }
+        v.push(Completion { id: format!("task-{}", t.id), data: c });
+    }
     v.sort_by_key(|c| std::cmp::Reverse(c.data.get("done_at").and_then(Value::as_i64).unwrap_or(0)));
     Ok(v)
 }
 
-fn next_occurrence(repeat: &str, from: NaiveDate) -> Option<NaiveDate> {
+/// `months` after `from`, on day `anchor` clamped to that month's length (Jan 31 →
+/// Feb 28 → Mar 31, not Mar 28; Feb 29 yearly → Feb 28 → Feb 29 in leap years — C21).
+fn add_months_on(from: NaiveDate, months: u32, anchor: u32) -> Option<NaiveDate> {
+    let first = from.with_day(1)?.checked_add_months(Months::new(months))?;
+    let last = (first.checked_add_months(Months::new(1))? - Duration::days(1)).day();
+    first.with_day(anchor.clamp(1, last))
+}
+
+/// The day of month a monthly/yearly task repeats on: `repeat_day` (kept when a short
+/// month clamped the start) while the start still matches it, else the start's day.
+fn repeat_anchor(d: &Map<String, Value>, start: NaiveDate) -> u32 {
+    let last = add_months_on(start, 0, 31).map_or(31, |x| x.day());
+    match d.get("repeat_day").and_then(Value::as_u64).map(|x| x as u32) {
+        Some(a) if (1..=31).contains(&a) && a.min(last) == start.day() => a,
+        _ => start.day(),
+    }
+}
+
+fn next_occurrence(repeat: &str, from: NaiveDate, anchor: u32) -> Option<NaiveDate> {
     Some(match repeat {
         "daily" => from + Duration::days(1),
         "weekly" => from + Duration::days(7),
@@ -332,8 +379,8 @@ fn next_occurrence(repeat: &str, from: NaiveDate) -> Option<NaiveDate> {
             }
             d
         }
-        "monthly" => from.checked_add_months(Months::new(1))?,
-        "yearly" => from.checked_add_months(Months::new(12))?,
+        "monthly" => add_months_on(from, 1, anchor)?,
+        "yearly" => add_months_on(from, 12, anchor)?,
         _ => return None,
     })
 }
@@ -357,8 +404,9 @@ pub fn toggle(store: &Store, id: &str, now: NaiveDateTime) -> Result<TaskView> {
     d.insert("last_completion".into(), json!(cid));
     d.remove("stage");
     if let (Some(rep), Some((start, all_day))) = (repeat, start) {
+        let anchor = repeat_anchor(&d, start.date());
         let mut next = start.date();
-        while let Some(n) = next_occurrence(&rep, next) {
+        while let Some(n) = next_occurrence(&rep, next, anchor) {
             next = n;
             if next > today {
                 break;
@@ -371,6 +419,11 @@ pub fn toggle(store: &Store, id: &str, now: NaiveDateTime) -> Result<TaskView> {
             d.insert("start".into(), json!(fmt_when(start + shift, all_day)));
             if let Some((stop, sad)) = str_of(&d, "stop").and_then(parse_when) {
                 d.insert("stop".into(), json!(fmt_when(stop + shift, sad)));
+            }
+            if next.day() != anchor && matches!(rep.as_str(), "monthly" | "yearly") {
+                d.insert("repeat_day".into(), json!(anchor));
+            } else {
+                d.remove("repeat_day");
             }
             d.insert("last_done_at".into(), json!(time::now_ms()));
             if let Some(Value::Array(steps)) = d.get_mut("steps") {
@@ -394,7 +447,35 @@ pub fn search(store: &Store, q: &str) -> Result<Vec<TaskView>> {
     if fts.is_empty() {
         return Ok(vec![]);
     }
-    Ok(store.search(Some(TASKS), &fts, 50)?.iter().map(view).collect())
+    // The FTS index covers the whole JSON (keys, ids, "doing"…): keep only tasks whose
+    // own text (title, notes, tags, step titles) has every word as a word prefix (C26).
+    // Split on spaces and punctuation only: combining marks (Bangla vowel signs, virama)
+    // aren't alphanumeric and used to cut words into loose fragments (C89).
+    let toks = |s: &str| s.split(|c: char| c.is_whitespace() || (c.is_ascii_punctuation() && c != '-')).filter(|t| !t.is_empty()).map(str::to_lowercase).collect::<Vec<_>>();
+    let words = toks(q);
+    Ok(store
+        .search(Some(TASKS), &fts, 2000)?
+        .iter()
+        .map(view)
+        .filter(|t| {
+            let mut text = String::new();
+            for k in ["title", "notes"] {
+                text.push_str(str_of(&t.data, k).unwrap_or(""));
+                text.push(' ');
+            }
+            for v in t.data.get("tags").and_then(Value::as_array).into_iter().flatten() {
+                text.push_str(v.as_str().unwrap_or(""));
+                text.push(' ');
+            }
+            for v in t.data.get("steps").and_then(Value::as_array).into_iter().flatten() {
+                text.push_str(v.get("title").and_then(Value::as_str).unwrap_or(""));
+                text.push(' ');
+            }
+            let have = toks(&text);
+            words.iter().all(|w| have.iter().any(|h| h.starts_with(w.as_str())))
+        })
+        .take(50)
+        .collect())
 }
 
 #[derive(Debug, Serialize)]
@@ -505,6 +586,16 @@ mod tests {
         assert!(!t.data.contains_key("done_at"));
         let m = create(&s, NewTask { start: Some("2026-11-30".into()), repeat: Some("monthly".into()), ..nt("rent") }).unwrap();
         assert_eq!(toggle(&s, &m.id, today).unwrap().data["start"], "2026-12-30");
+        // Month-end anchor survives a short month (C21): Jan 31 → Feb 28 → Mar 31.
+        let e = create(&s, NewTask { start: Some("2027-01-31".into()), repeat: Some("monthly".into()), ..nt("card bill") }).unwrap();
+        let jan = NaiveDate::from_ymd_opt(2027, 1, 31).unwrap().and_hms_opt(12, 0, 0).unwrap();
+        let e = toggle(&s, &e.id, jan).unwrap();
+        assert_eq!((e.data["start"].as_str(), e.data["repeat_day"].as_u64()), (Some("2027-02-28"), Some(31)));
+        let e = toggle(&s, &e.id, NaiveDate::from_ymd_opt(2027, 2, 28).unwrap().and_hms_opt(12, 0, 0).unwrap()).unwrap();
+        assert_eq!((e.data["start"].as_str(), e.data.contains_key("repeat_day")), (Some("2027-03-31"), false));
+        let y = create(&s, NewTask { start: Some("2028-02-29".into()), repeat: Some("yearly".into()), ..nt("leap") }).unwrap();
+        let y = toggle(&s, &y.id, NaiveDate::from_ymd_opt(2028, 2, 29).unwrap().and_hms_opt(12, 0, 0).unwrap()).unwrap();
+        assert_eq!(y.data["start"], "2029-02-28");
         let once = create(&s, nt("once")).unwrap();
         assert!(toggle(&s, &once.id, today).unwrap().data.contains_key("done_at"));
     }
@@ -517,6 +608,15 @@ mod tests {
         p.insert("reminder_min".into(), Value::Null);
         assert!(!update(&s, &t.id, &p).unwrap().data.contains_key("reminder_min"));
         assert_eq!(search(&s, "groc").unwrap().len(), 1);
+        assert_eq!(search(&s, "milk").unwrap().len(), 1);
+        // Keys and ids are not task text (C26).
+        assert_eq!(search(&s, "title").unwrap().len(), 0);
+        assert_eq!(search(&s, "inbox").unwrap().len(), 0);
+        assert_eq!(search(&s, "reminder").unwrap().len(), 0);
+        // C89: Bangla words stay whole (vowel signs/virama aren't separators).
+        create(&s, nt("বাজার করা")).unwrap();
+        create(&s, nt("বই পড়া")).unwrap();
+        assert_eq!(search(&s, "বাজার").unwrap().len(), 1);
         assert_eq!(search(&s, "\"(").unwrap().len(), 0);
         assert_ne!(notification_id("a"), notification_id("b"));
         assert!(notification_id("x") >= 0);
@@ -572,5 +672,10 @@ mod tests {
         let r = toggle(&s, &r.id, now).unwrap();
         assert!(!r.data.contains_key("done_at"));
         assert_eq!(history(&s).unwrap().len(), 2);
+        // A done task without a completion record still shows (P4).
+        s.put(TASKS, Some("old"), &json!({"title": "done elsewhere", "done_at": 1_763_200_000_000_i64})).unwrap();
+        let h = history(&s).unwrap();
+        assert_eq!(h.len(), 3);
+        assert!(h.iter().any(|c| c.id == "task-old" && c.data["title"] == "done elsewhere"));
     }
 }

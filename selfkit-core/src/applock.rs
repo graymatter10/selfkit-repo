@@ -222,6 +222,11 @@ impl AppLock {
         Self { path, file, locked }
     }
 
+    /// The lock file (`<data_dir>/lock/<app>.json`).
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     pub fn file(&self) -> &LockFile {
         &self.file
     }
@@ -285,6 +290,12 @@ impl AppLock {
             }
             return Ok(Attempt::Ok);
         }
+        self.record_failure(now)
+    }
+
+    /// Count a wrong attempt (this lock's secret, or another secret checked by the
+    /// caller such as "Forgot PIN?"'s passphrase — C6) and start the wait it earns.
+    pub fn record_failure(&mut self, now: i64) -> Result<Attempt> {
         self.file.failed = self.file.failed.saturating_add(1);
         let secs = backoff_secs(self.file.failed);
         self.file.retry_at = if secs > 0 { now + (secs as i64) * 1000 } else { 0 };

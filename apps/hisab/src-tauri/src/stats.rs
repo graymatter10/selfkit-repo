@@ -361,6 +361,14 @@ pub fn overview(d: &Data, month: &str, today: NaiveDate) -> Value {
         .filter(|c| s(c, "kind") == "expense" && !b(c, "archived"))
         .map(|c| f(c, "budget"))
         .sum();
+    // Only spending in categories that have a budget counts against it: bills in an
+    // un-budgeted category made "Over budget" (L2-12).
+    let by_cat = by_category(d, "expense", |x| x.starts_with(month));
+    let budgeted_spent: f64 = by_cat
+        .iter()
+        .filter(|c| d.categories.iter().any(|k| s(k, "id") == s(c, "id") && !b(k, "archived") && f(k, "budget") > 0.0))
+        .map(|c| f(c, "amount"))
+        .sum();
     let (_, last) = month_bounds(month).unwrap_or((today, today));
     let elapsed = if month_of(today) == month { today.day() } else if month < month_of(today).as_str() { last.day() } else { 0 };
     json!({
@@ -370,12 +378,13 @@ pub fn overview(d: &Data, month: &str, today: NaiveDate) -> Value {
         "income": round2(cur.income),
         "balance": round2(cur.income - cur.spent),
         "budget": round2(budget),
-        "remaining": if budget > 0.0 { json!(round2(budget - cur.spent)) } else { Value::Null },
+        "budget_spent": round2(budgeted_spent),
+        "remaining": if budget > 0.0 { json!(round2(budget - budgeted_spent)) } else { Value::Null },
         "prev_spent": round2(prev.spent),
         "days_in_month": last.day(),
         "days_elapsed": elapsed,
         "net_worth": round2(net_worth_at(d, None)),
-        "by_category": by_category(d, "expense", |x| x.starts_with(month)),
+        "by_category": by_cat,
         "missing_rates": d.missing(),
     })
 }
@@ -512,7 +521,17 @@ pub fn filter_tx(d: &Data, flt: &Filter) -> Vec<Value> {
             hay.push_str(&name_of(&d.accounts, s(t, "account")));
             hay.push(' ');
             hay.push_str(&name_of(&d.accounts, s(t, "to_account")));
-            q.split_whitespace().all(|w| hay.contains(w.trim_start_matches('#')))
+            q.split_whitespace().all(|w| {
+                // An amount as the list shows it ("1,234.50", "৳1,234.50") matches by value (L2-16).
+                let num = w.trim_matches(|c: char| !c.is_ascii_digit() && c != '.' && c != ',' && c != '-').replace(',', "");
+                if num.chars().any(|c| c.is_ascii_digit())
+                    && let Ok(n) = num.parse::<f64>()
+                    && (amt.abs() - n.abs()).abs() < 0.005
+                {
+                    return true;
+                }
+                hay.contains(w.trim_start_matches('#'))
+            })
         })
         .map(|t| {
             let mut v = t.clone();
@@ -580,6 +599,20 @@ mod tests {
     }
 
     #[test]
+    fn unbudgeted_spending_leaves_the_budget_alone() {
+        // L2-12: bills in a category without a budget made "Over budget".
+        let (st, today) = data();
+        for (c, id, v) in [
+            (CATEGORIES, "bills", json!({"name":"Bills"})),
+            (TRANSACTIONS, "t7", json!({"kind":"expense","amount":5000,"date":"2026-11-07","account":"cash","category":"bills"})),
+        ] {
+            st.put(c, Some(id), &normalize(c, &v, "USD").unwrap()).unwrap();
+        }
+        let o = overview(&Data::load(&st, "USD").unwrap(), "2026-11", today);
+        assert_eq!((f(&o, "budget"), f(&o, "remaining")), (250.0, 190.0));
+    }
+
+    #[test]
     fn trends_and_networth() {
         let (st, today) = data();
         let d = Data::load(&st, "USD").unwrap();
@@ -622,6 +655,7 @@ mod tests {
         assert_eq!(s(&all[0], "id"), "t5", "newest date first");
         let q = |f0: Filter| filter_tx(&d, &f0).iter().map(|v| s(v, "id").to_string()).collect::<Vec<_>>();
         assert_eq!(q(Filter { q: "lunch".into(), ..Default::default() }), vec!["t1"]);
+        assert_eq!(q(Filter { q: "$20.00".into(), ..Default::default() }), vec!["t1"], "amount as shown (L2-16)");
         assert_eq!(q(Filter { q: "#work".into(), ..Default::default() }), vec!["t1"]);
         assert_eq!(q(Filter { category: "bus".into(), ..Default::default() }), vec!["t5", "t2"]);
         assert_eq!(q(Filter { account: "bk".into(), ..Default::default() }), vec!["t4", "t2"]);

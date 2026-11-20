@@ -62,6 +62,6 @@
       {/each}
       {#if !shown.length}<p class="hint" style="margin:12px 0 4px">No app changes recorded yet. Chrono compares the apps on your phone each time it imports (when you open it and every 15 minutes).</p>{/if}
     </div>
-    <p class="hint" style="margin:0 4px">Removed apps keep their name, icon and history. "Removed" is the time Chrono noticed it, within about 15 minutes.</p>
+    <p class="hint" style="margin:0 4px">Removed apps keep their name, icon and history. "Removed" is the time Chrono noticed it, within about 15 minutes. Time used in an app after Chrono's last import before you removed it may be missing: Android deletes those details and keeps only a daily total (P15).</p>
   </div>
 {/if}

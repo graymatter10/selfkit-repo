@@ -4,7 +4,7 @@ Settings → Calendar file (.ics): **Export Tasks…** (optionally including com
 
 - Desktop export writes `agenda-YYYY-MM-DD.ics` to the Downloads folder (`AGENDA_EXPORT_DIR` overrides it, for tests). Android writes to the public Downloads folder through the `AgendaFiles` bridge in `MainActivity.kt` (MediaStore on Android 10+, no permission needed).
 - Import reads a file picked with the system file chooser (GTK dialog / Android document picker) and reports "N new, N updated, N unchanged".
-- Re-importing never duplicates: a VTODO's UID becomes the task id (unsafe UIDs are hashed to `ics-<hex>`), so the same task updates in place. Photos and history links on an existing task are kept; an existing completion time is kept.
+- Re-importing never duplicates: a VTODO's UID becomes the task id (unsafe UIDs are hashed to `ics-<hex>`), so the same task updates in place. Photos and history links on an existing task are kept; an existing completion time is kept. A task counts as unchanged when only empty fields differ (`""` notes, `[]` tags/steps, which an export leaves out) and numbers are equal by value, so re-importing an unchanged export reports "0 updated" (L10).
 - A task changed here after the file was written keeps its newer version ("kept (newer here)"), so importing an old export never undoes later edits or completions.
 
 ## Mapping (Agenda ↔ VTODO)

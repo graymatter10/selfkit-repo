@@ -121,15 +121,32 @@ pub fn write_sessions(
     Ok(rep)
 }
 
-/// Is a local agent running, and is it paused? (None = not reachable.)
-fn agent_paused(rt: &tokio::runtime::Runtime) -> Option<bool> {
+/// The running agent's state: (paused, foreground app it sees now). None = not reachable.
+fn agent_status(rt: &tokio::runtime::Runtime) -> Option<(bool, Option<String>)> {
     rt.block_on(async {
         let r = tokio::time::timeout(std::time::Duration::from_millis(400), crate::ipc::request(&crate::ipc::Request::Status)).await;
         match r {
-            Ok(Ok(v)) => Some(v["status"]["paused"].as_bool().unwrap_or(false)),
+            Ok(Ok(v)) => Some((v["status"]["paused"].as_bool().unwrap_or(false), v["status"]["current_app"].as_str().map(str::to_owned))),
             _ => None,
         }
     })
+}
+
+/// Is the calling browser the app in front, according to the agent's tracker (X11 /
+/// Windows)? None = can't tell (agent not running, idle/locked, Wayland). Lets the
+/// extension end a website session when another program is in front without any new
+/// browser permission — Firefox on X11 never reports losing focus (L3-6, 2026-11-21).
+pub fn browser_foreground(browser: &str, current_app: Option<&str>) -> Option<bool> {
+    let app = current_app?.trim().to_lowercase();
+    if app.is_empty() {
+        return None;
+    }
+    let names: &[&str] = if browser == "firefox" {
+        &["firefox", "librewolf", "waterfox", "floorp"]
+    } else {
+        &["chrom", "msedge", "microsoft-edge", "brave", "vivaldi", "opera"]
+    };
+    Some(names.iter().any(|n| app.contains(n)))
 }
 
 fn browser_of(msg: &Value, args: &[String]) -> &'static str {
@@ -170,6 +187,7 @@ impl Host {
                 "paused": paused,
                 "paused_until": cfg.paused_until.filter(|_| chrono_paused),
                 "exclude_domains": cfg.exclude_domains,
+                "idle_minutes": cfg.idle_minutes,
                 "agent_running": agent.is_some(),
                 "device": self.device,
             });
@@ -197,7 +215,6 @@ pub fn run(args: Vec<String>, rt: &tokio::runtime::Runtime) -> Result<()> {
     let mut host = Host::new(args)?;
     let mut input = std::io::stdin().lock();
     let mut out = std::io::stdout().lock();
-    let mut agent: Option<Option<bool>> = None;
     loop {
         let msg = match read_msg(&mut input) {
             Ok(Some(m)) => m,
@@ -207,8 +224,13 @@ pub fn run(args: Vec<String>, rt: &tokio::runtime::Runtime) -> Result<()> {
                 return Err(e);
             }
         };
-        let a = *agent.get_or_insert_with(|| agent_paused(rt));
-        let reply = host.handle(&msg, a);
+        // Asked per message: the browser may keep one host running (connectNative).
+        let st = agent_status(rt);
+        let mut reply = host.handle(&msg, st.as_ref().map(|s| s.0));
+        if reply["ok"] == true {
+            let fg = st.as_ref().and_then(|s| browser_foreground(browser_of(&msg, &host.args), s.1.as_deref()));
+            reply["browser_foreground"] = json!(fg);
+        }
         if reply["ok"] == false {
             tracing::warn!("native host: {}", reply["error"]);
         }
@@ -219,6 +241,17 @@ pub fn run(args: Vec<String>, rt: &tokio::runtime::Runtime) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn browser_foreground_matches_the_calling_browser() {
+        assert_eq!(browser_foreground("firefox", Some("firefox")), Some(true));
+        assert_eq!(browser_foreground("firefox", Some("Alacritty")), Some(false));
+        assert_eq!(browser_foreground("chrome", Some("Chromium")), Some(true));
+        assert_eq!(browser_foreground("chrome", Some("msedge.exe")), Some(true));
+        assert_eq!(browser_foreground("chrome", Some("firefox")), Some(false));
+        assert_eq!(browser_foreground("firefox", None), None);
+        assert_eq!(browser_foreground("firefox", Some(" ")), None);
+    }
 
     const NOW: i64 = 1_763_200_000_000;
 

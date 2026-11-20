@@ -9,7 +9,7 @@
 <div class="flex flex-col gap-3">
   <div class="grid gap-3 {desktop ? 'grid-cols-2' : ''}">
     {#each goals as g (g.id)}
-      {@const pct = Math.min(1, g.saved / g.target)}
+      {@const pct = Math.max(0, Math.min(1, g.saved / g.target)) /* clamp: a negative width drew a full bar (C60) */}
       <button type="button" class="press card block p-4 text-left" onclick={() => openSheet({ kind: "goal", id: g.id })}>
         <div class="flex items-baseline justify-between"><span class="truncate text-[15px] font-semibold">{g.name}</span><span class="text-[12.5px] text-muted">{Math.round(pct * 100)}%</span></div>
         <div class="num mt-2 text-[20px] font-semibold">{money(g.saved, g.currency)}<span class="text-[13px] font-medium text-muted">&nbsp;of {money(g.target, g.currency)}</span></div>

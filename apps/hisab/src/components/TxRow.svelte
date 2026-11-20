@@ -2,14 +2,14 @@
   // One transaction in a list.
   import type { Tx } from "../lib/api";
   import { money } from "../lib/fmt";
-  import { accountById, catById, main } from "../lib/state.svelte";
+  import { accountById, catById, catLabel, main } from "../lib/state.svelte";
   import CatBadge from "./CatBadge.svelte";
   import Ic from "./Ic.svelte";
   let { t, onopen, last = false }: { t: Tx; onopen: (t: Tx) => void; last?: boolean } = $props();
   const cat = $derived(catById(t.category));
   const split = $derived(t.splits?.length > 1);
   const title = $derived(
-    t.kind === "transfer" ? `${accountById(t.account)?.name ?? "?"} → ${accountById(t.to_account ?? "")?.name ?? "?"}` : t.note || (split ? t.splits.map((s) => catById(s.category)?.name ?? "?").join(" + ") : cat?.name ?? "Uncategorized"),
+    t.kind === "transfer" ? `${accountById(t.account)?.name ?? "?"} → ${accountById(t.to_account ?? "")?.name ?? "?"}` : t.note || catLabel(t) || "Uncategorized",
   );
   const sub = $derived(
     t.kind === "transfer" ? (t.note || "Transfer") : [split ? "Split" : t.note ? cat?.name : "", accountById(t.account)?.name, t.tags.length ? t.tags.map((x) => "#" + x).join(" ") : ""].filter(Boolean).join(" · "),

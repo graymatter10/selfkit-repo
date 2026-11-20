@@ -20,11 +20,14 @@
   let ov = $state<Overview | null>(null);
   const year = $derived(Number(month.slice(0, 4)));
 
+  // Replies can arrive out of order (async commands): keep only the newest (C7).
+  let seq = 0;
   $effect(() => {
     void app.rev;
     const m = month;
-    api.trends(m).then((t) => (tr = t));
-    api.snapshot(m).then((s) => (ov = s.overview));
+    const n = ++seq;
+    api.trends(m).then((t) => n === seq && (tr = t));
+    api.snapshot(m).then((s) => n === seq && (ov = s.overview));
   });
 
   function step(n: number) {
@@ -42,7 +45,7 @@
 </script>
 
 {#snippet stat(label: string, v: string, cls = "")}
-  <div class="min-w-0 flex-1 {desktop ? 'px-4' : 'px-3'} py-3.5"><div class="text-[12.5px] font-medium text-muted">{label}</div><div class="num mt-0.5 leading-tight [overflow-wrap:anywhere] {desktop ? (v.length > 14 ? "text-[17px]" : "text-[21px]") : v.length > 13 ? "text-[12px]" : v.length > 10 ? "text-[13.5px]" : v.length > 7 ? "text-[15px]" : "text-[18px]"} font-semibold tracking-[-0.4px] {cls}">{v}</div></div>
+  <div class="min-w-0 flex-1 {desktop ? 'px-4' : 'px-3'} py-3.5"><div class="text-[12.5px] font-medium text-muted">{label}</div><div class="num mt-0.5 overflow-hidden leading-tight text-ellipsis whitespace-nowrap {desktop ? (v.length > 18 ? "text-[14px]" : v.length > 14 ? "text-[17px]" : "text-[21px]") : v.length > 17 ? "text-[9.5px]" : v.length > 15 ? "text-[10.5px]" : v.length > 13 ? "text-[11.5px]" : v.length > 10 ? "text-[13.5px]" : v.length > 7 ? "text-[15px]" : "text-[18px]"} font-semibold tracking-[-0.4px] {cls}">{v}</div></div>
 {/snippet}
 
 <div class="flex flex-col gap-3">
@@ -110,7 +113,7 @@
         {@render stat("Income", money(tr.lifetime.income, cur))}
         {@render stat("Net worth", money(ov.net_worth, cur), ov.net_worth < 0 ? "text-danger" : "")}
       </div>
-      <p class="m-0 px-1 text-[13px] text-muted">{tr.lifetime.count} entries{tr.lifetime.first ? ` since ${shortDate(tr.lifetime.first)}` : ""}</p>
+      <p class="m-0 px-1 text-[13px] text-muted">{tr.lifetime.count} {tr.lifetime.count === 1 ? "entry" : "entries"}{tr.lifetime.first ? ` since ${shortDate(tr.lifetime.first)}` : ""}</p>
       <div class="grid gap-3 {desktop ? 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : 'grid-cols-[minmax(0,1fr)]'}">
         <div class={card}><h3 class={h2}>Years</h3><Bars items={tr.years.map((y) => ({ label: y.year, key: y.year, spent: y.spent, income: y.income }))} /></div>
         <div class={card}><h3 class={h2}>Net worth over time</h3><Trend values={tr.networth.map((n) => n.value)} labels={tr.networth.map((n) => monthName(n.month, true))} /></div>

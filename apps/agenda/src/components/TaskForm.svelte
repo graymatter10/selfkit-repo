@@ -6,7 +6,8 @@
   import type { Step, Task } from "../lib/api";
   import { api } from "../lib/api";
   import { SEVERITY, fmtMin, fmtWhen, parseWhen, reminderHint, dayLabel, hm, shortDay } from "../lib/time";
-  import { allTags, app, createTask, defaultReminder, defaultSeverity, saveEdit } from "../lib/state.svelte";
+  import { NEW_TASK_DRAFT, allTags, app, createTask, defaultReminder, defaultSeverity, saveEdit } from "../lib/state.svelte";
+  import { onDestroy } from "svelte";
   import { attachPhoto } from "../lib/photos";
   import { askPhotoSource, cleanCaptures } from "../lib/photo-source";
   import Photo from "./Photo.svelte";
@@ -44,6 +45,30 @@
   const snapshot = () => JSON.stringify([title.trim(), notes.trim(), severity, start, stop, reminder, repeat, list, steps, tags, photos, newTag.trim()]);
   const initial = snapshot();
   const dirty = $derived(snapshot() !== initial);
+
+  // Unsaved New Task input survives the app being killed (P5): kept in localStorage
+  // while the form is open with changes, restored on the next New Task (App opens it
+  // at start when one exists), removed when the form closes (Add, discard).
+  if (!editing && !app.demo.title) {
+    try {
+      const d = JSON.parse(localStorage.getItem(NEW_TASK_DRAFT) ?? "null");
+      if (d) {
+        title = d.title ?? ""; notes = d.notes ?? ""; severity = d.severity ?? severity; start = initialStart ?? d.start; stop = d.stop;
+        reminder = d.reminder ?? null; repeat = d.repeat ?? ""; list = d.list ?? list; steps = d.steps ?? []; tags = d.tags ?? [];
+      }
+    } catch { /* storage unavailable or damaged */ }
+  }
+  $effect(() => {
+    if (editing) return;
+    const d = { title, notes, severity, start, stop, reminder, repeat, list, steps: $state.snapshot(steps), tags: $state.snapshot(tags) };
+    try {
+      if (dirty) localStorage.setItem(NEW_TASK_DRAFT, JSON.stringify(d));
+      else localStorage.removeItem(NEW_TASK_DRAFT);
+    } catch { /* storage unavailable */ }
+  });
+  onDestroy(() => {
+    if (!editing) try { localStorage.removeItem(NEW_TASK_DRAFT); } catch { /* storage unavailable */ }
+  });
   const timed = $derived(!!start && !parseWhen(start)?.allDay);
 
   $effect(() => {

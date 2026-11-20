@@ -72,6 +72,21 @@ object SelfkitMirror {
             since = upto
             if (records.length() < 500) break
         }
+        for (t in TABLES[app].orEmpty()) pullTable(ctx, authority, app, t)
         return JSONObject().put("ok", true).put("records", total)
+    }
+
+    /** Local tables copied whole next to the records (selfkit-appsync SHARED_TABLES). */
+    private val TABLES = mapOf("dusk" to listOf("dusk_nights"))
+
+    /** Copy one shared table; an older app without `/table` (null cursor) is skipped. */
+    private fun pullTable(ctx: Context, authority: String, app: String, table: String) {
+        try {
+            ctx.contentResolver.query(Uri.parse("content://$authority/table?name=$table"), null, null, null, null)?.use { c ->
+                if (!c.moveToFirst()) return
+                SelfkitSync.call(ctx, "mirror_table", JSONObject().put("store", app).put("name", table)
+                    .put("sql", c.getString(c.getColumnIndexOrThrow("sql"))).put("rows", c.getString(c.getColumnIndexOrThrow("rows"))))
+            }
+        } catch (t: Throwable) { /* keep the records mirror even if the table copy fails */ }
     }
 }

@@ -65,7 +65,7 @@
           <div class="row" style="min-height:54px"><div style="flex:1"><div class="nm" style="font-size:14.5px">{b === "firefox" ? "Firefox" : "Chrome"}</div><div class="sb">{on ? "Website domains from the active tab" : "Add the Selfkit extension to count websites"}</div></div>
             {#if on}{@render st(true, "Connected")}{:else}<button type="button" class="btn" style="height:40px" onclick={() => (howTo = howTo === s.id + b ? "" : s.id + b)}>How to add</button>{/if}</div>
           {#if howTo === s.id + b}
-            <p class="hint fade" style="margin:0 0 12px">Load the Selfkit extension from the <b>extension</b> folder of Selfkit in {b === "firefox" ? "Firefox (about:debugging → This Firefox → Load temporary add-on)" : "Chrome (chrome://extensions → Developer mode → Load unpacked)"}, then run <b>selfkit-agent install-native-host</b> once. Private windows are never counted.</p>
+            <p class="hint fade" style="margin:0 0 12px">Load the Selfkit extension from the <b>extension</b> folder installed with the Selfkit agent (Linux: <b>/usr/share/selfkit-agent/extension</b>, or <b>extension</b> in the agent tarball; Windows: <b>%LOCALAPPDATA%\Programs\Selfkit Agent\extension</b>) in {b === "firefox" ? "Firefox (about:debugging → This Firefox → Load temporary add-on)" : "Chrome (chrome://extensions → Developer mode → Load unpacked)"}, then run <b>selfkit-agent install-native-host</b> once. Private windows are never counted.</p>
           {/if}
         {/each}
       {/if}

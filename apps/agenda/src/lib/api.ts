@@ -11,6 +11,8 @@ export interface Task {
   stop?: string;
   reminder_min?: number;
   repeat?: string;
+  /** Day of month a monthly/yearly repeat returns to after a short month clamped `start`. */
+  repeat_day?: number;
   list?: string;
   steps?: Step[];
   tags?: string[];

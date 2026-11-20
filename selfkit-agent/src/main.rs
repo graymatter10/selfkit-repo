@@ -39,7 +39,7 @@ USAGE:
   selfkit-agent restore --file F   import one .skb file
   selfkit-agent native-host        browser native-messaging host (stdin/stdout)
   selfkit-agent install-native-host [--path EXE] [--extension-id ID] [--chrome-profile DIR] [--uninstall]
-  selfkit-agent install-service [--enable] [--uninstall]   systemd user unit / Windows logon task
+  selfkit-agent install-service [--enable] [--uninstall]   systemd user unit / Windows HKCU Run entry
   selfkit-agent set-secret pg|s3   store the Postgres URL / S3 JSON (stdin) in the OS keychain
   selfkit-agent init               first-time key setup (passphrase on stdin)
   selfkit-agent unlock [--recovery] unlock with passphrase or recovery key (stdin), store data key
@@ -240,7 +240,7 @@ fn init_keys() -> Result<()> {
     anyhow::ensure!(!kp.exists(), "{} already exists", kp.display());
     eprintln!("Enter a new master passphrase:");
     let pass = read_stdin_line()?;
-    anyhow::ensure!(pass.chars().count() >= 8, "passphrase must be at least 8 characters");
+    anyhow::ensure!(pass.chars().count() >= 12, "passphrase must be at least 12 characters"); // same rule as the apps (C14)
     let (kf, data, rk) = KeyFile::create(&pass, KdfParams::default())?;
     kf.save(&kp)?;
     store_data_key(&data)?;

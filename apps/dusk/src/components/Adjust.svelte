@@ -89,7 +89,9 @@
   }
   // Same rule as log_set: the effective pair (typed time, else the estimate) must have wake after bed.
   function pairError(): string {
-    if (nap) return "";
+    // A nap end before its start wrapped to "Nap 23h 45m" (P25): naps over midnight are
+    // fine, but one longer than the 6 h limit means the times are the wrong way round.
+    if (nap) return asleep != null && asleep > 360 ? `Woke up must be after you fell asleep (${tdisp(val(a))} → ${tdisp(val(b))}).` : "";
     const x = val(a) || est.a, y = val(b) || est.b;
     if (!x || !y) return "";
     const bm = toMin(x) >= 18 * 60 ? toMin(x) - 1440 : toMin(x);
@@ -106,7 +108,11 @@
   }
   function onFocus(w: "a" | "b", e: FocusEvent) {
     focused = w;
-    (e.target as HTMLInputElement).select();
+    const el = e.target as HTMLInputElement;
+    el.select();
+    // A mouse click places the caret after focus and undid select(): typing appended
+    // to the old time ("Check the times") — select once the click is done (L4-16).
+    el.addEventListener("mouseup", (m) => (m.preventDefault(), el.select()), { once: true });
   }
   function onBlur(w: "a" | "b") {
     const t = normTime(w === "a" ? a : b);
@@ -177,8 +183,9 @@
   {@const bad = invalid(v)}
   <div class="flex items-center gap-2 py-3">
     <div class="flex min-w-0 flex-1 flex-col gap-1">
-      <label for="tf-{w}" class="text-[16px] font-[550]">{LABEL[w]}</label>
-      {#if est[w]}<span class="num text-[12.5px] whitespace-nowrap text-muted">Estimate {tdisp(est[w])}</span>{/if}
+      <!-- Wraps instead of running under the −15 button (12h, 1080 px — P31). -->
+      <label for="tf-{w}" class="text-[16px] leading-tight font-[550]">{LABEL[w]}</label>
+      {#if est[w]}<span class="num text-[12.5px] leading-tight text-muted">Estimate {tdisp(est[w])}</span>{/if}
     </div>
     <button type="button" tabindex="-1" class="press grid h-12 shrink-0 place-items-center rounded-[12px] bg-fill text-[14.5px] font-semibold text-ink2 {desktop ? 'w-11' : 'w-12'}" aria-label="{LABEL[w]} 15 minutes earlier" onmousedown={(e) => e.preventDefault()} onclick={() => nudge(w, -15)}>−15</button>
     {#if desktop}
@@ -186,11 +193,11 @@
         {#if w === "a"}
           <input id="tf-a" bind:this={elA} bind:value={a} autocomplete="off" placeholder={tdisp(est.a) || "hh:mm"} aria-invalid={bad} aria-describedby="tf-help"
             onfocus={(e) => onFocus("a", e)} onblur={() => onBlur("a")} onkeydown={(e) => fieldKeys("a", e)} oninput={() => (error = "")}
-            class="num h-12 w-[100px] rounded-[12px] pr-7 pl-1.5 text-center text-[18px] font-semibold outline-none {focused === 'a' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {bad ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
+            class="num h-12 rounded-[12px] pr-7 pl-1.5 text-center font-semibold outline-none {uses12h() ? 'w-[118px] text-[16px]' : 'w-[100px] text-[18px]'} {focused === 'a' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {bad ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
         {:else}
           <input id="tf-b" bind:this={elB} bind:value={b} autocomplete="off" placeholder={tdisp(est.b) || "hh:mm"} aria-invalid={bad} aria-describedby="tf-help"
             onfocus={(e) => onFocus("b", e)} onblur={() => onBlur("b")} onkeydown={(e) => fieldKeys("b", e)} oninput={() => (error = "")}
-            class="num h-12 w-[100px] rounded-[12px] pr-7 pl-1.5 text-center text-[18px] font-semibold outline-none {focused === 'b' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {bad ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
+            class="num h-12 rounded-[12px] pr-7 pl-1.5 text-center font-semibold outline-none {uses12h() ? 'w-[118px] text-[16px]' : 'w-[100px] text-[18px]'} {focused === 'b' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {bad ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
         {/if}
         <button type="button" tabindex="-1" class="press absolute top-1.5 right-1 grid h-9 w-7 place-items-center rounded-[9px] text-muted hover:bg-fill2 hover:text-accent" aria-label="Pick {LABEL[w]} on the clock (Alt+↓)" title="Pick on the clock (Alt+↓)"
           onmousedown={(e) => e.preventDefault()} onclick={() => (dial = w)}><Icon name="clock" size={17} stroke={2} /></button>
@@ -208,19 +215,19 @@
   <div class="card px-4 py-1">{@render timeRow("a")}<div class="h-px bg-sep"></div>{@render timeRow("b")}</div>
   <div class="mx-1 mt-2.5 flex text-[13px]">
     <span class="text-muted">{desktop ? `Type ${typeHint} or use the clock` : "Tap a time to pick it on the clock"}</span><span class="flex-1"></span>
-    {#if asleep != null && asleep > 0}<span class="num text-ink2">{nap ? "Nap" : "Asleep"} <b class="text-ink">{dur(asleep)}</b></span>{/if}
+    {#if asleep != null && asleep > 0 && !(nap && asleep > 360)}<span class="num text-ink2">{nap ? "Nap" : "Asleep"} <b class="text-ink">{dur(asleep)}</b></span>{/if}
   </div>
   {#if error}<p role="alert" class="mx-1 mt-2 mb-0 text-[14px] text-danger">{error}</p>{/if}
   {#if !nap}
     <div class="mx-1 mt-[22px] mb-2 text-[13.5px] font-semibold text-ink2">Notes</div>
     <div class="card">
       <label class="block px-4 pt-2.5 pb-3">
-        <span class="flex items-center gap-2 text-[12.5px] font-[550] text-muted"><Icon name="moon" size={14} stroke={2} />Before bed</span>
+        <span class="flex items-center gap-2 text-[12.5px] font-[550] text-muted"><Icon name="moon" size={14} stroke={2} />Before bed{#if before.length > 400}<span class="num ml-auto {before.length >= 500 ? 'text-danger' : ''}">{before.length} / 500</span>{/if}</span>
         <textarea bind:this={elBefore} bind:value={before} rows="2" maxlength="500" placeholder="Caffeine, mood, what's on your mind…" class="mt-1.5 block w-full resize-none bg-transparent text-[15.5px] leading-snug outline-none"></textarea>
       </label>
       <div class="h-px bg-sep"></div>
       <label class="block px-4 pt-2.5 pb-3">
-        <span class="flex items-center gap-2 text-[12.5px] font-[550] text-muted"><Icon name="sun" size={14} stroke={2} />After waking</span>
+        <span class="flex items-center gap-2 text-[12.5px] font-[550] text-muted"><Icon name="sun" size={14} stroke={2} />After waking{#if after.length > 400}<span class="num ml-auto {after.length >= 500 ? 'text-danger' : ''}">{after.length} / 500</span>{/if}</span>
         <textarea bind:this={elAfter} bind:value={after} rows="2" maxlength="500" placeholder="Dreams, how you feel…" class="mt-1.5 block w-full resize-none bg-transparent text-[15.5px] leading-snug outline-none"></textarea>
       </label>
     </div>

@@ -4,7 +4,7 @@ Status: **working in Chromium 14x and Firefox 160** (tested live, see Testing). 
 
 ## What it records
 - One session = one continuous stretch of one **domain** in the active tab of the **focused, non-private** window while the user is **active**. Domain = the URL's hostname, lowercased, without port, trailing dot or leading `www.`; only `http(s)` pages. Paths, queries and titles are never read or stored.
-- Not tracked: private/incognito windows and tabs (checked on both window and tab), unfocused browser, idle or locked (`chrome.idle`, default threshold 120 s; going idle back-dates the end by the threshold), non-web pages, Chrono `exclude_domains` (plus subdomains), while paused.
+- Not tracked: private/incognito windows and tabs (checked on both window and tab), unfocused browser (focus moving to another program, `onFocusChanged(WINDOW_ID_NONE)`, closes the session at once — L3-1), idle or locked (`chrome.idle`, default threshold 120 s, or Chrono's "Time away" `idle_minutes` from the native host reply — L3-2; going idle back-dates the end by the threshold), non-web pages, Chrono `exclude_domains` (plus subdomains), while paused.
 - If no heartbeat came for 150 s (browser closed, laptop asleep), the session ends at the last heartbeat. Sessions under 1 s are dropped.
 - Pause: the popup pauses this browser for 15 min, 1 hour or until resumed. Chrono's `paused_until` and the agent's `pause` are applied too: the agent reports them in every reply, and the open session closes right away. The toolbar badge shows "off" while paused.
 
@@ -48,3 +48,15 @@ Finished sessions wait in `storage.local.queue` until the agent confirms them. A
 - `extension/icons/`: from the Chrono app icon.
 - `extension/test/background.test.js`: bun tests.
 - Agent side: `selfkit-agent/src/native_host.rs`, `install.rs`, `chrono_settings.rs`.
+
+## Shipped with the agent (L3-3)
+The extension folder (without `test/`) is installed with the agent: Linux `.deb` → `/usr/share/selfkit-agent/extension`, tarball → `extension/`, Windows → `%LOCALAPPDATA%\Programs\Selfkit Agent\extension` (agent.nsi). Chrono → Devices and sources → How to add points there; the stable Chrome id comes from `key` in manifest.json.
+
+## Fixes 2026-11-21 (L3-7…L3-10)
+- The popup only looks (`state` doesn't run `evaluate`): opening it took focus and split the session, then showed "Browser not in front" (L3-7).
+- A Chrono pause with an end (`paused_until` from the reply → `hostPausedUntil`) expires locally, also while the native host can't be reached (L3-8).
+- "Today in this browser" leaves out excluded sites and time the host would drop while paused (L3-9).
+- Chrono's "Never track" stores sites like the agent: lowercase, no `www.`, no port (`settings.rs` `norm_domain`, Settings `addExclusion` — L3-10).
+- Focus (C52, also L3-1/L3-6): `onFocusChanged(WINDOW_ID_NONE)` sets `blurred`, which holds until a browser window is focused again or the user switches tabs; while blurred no session runs, whatever `getLastFocused()` says (on X11 it keeps reporting the browser focused). The alarm runs every 30 s, so a missed focus change costs at most half a minute. Exclude entries are normalised before matching (`www.`, port, scheme — C79).
+- Program in front (L3-6, decided 2026-11-21, no new browser permissions): the native host asks the running agent for its tracker's current foreground app and adds `browser_foreground: true|false|null` to every reply (`native_host::browser_foreground`: Firefox ↔ firefox/librewolf/…, Chrome ↔ chrom*/msedge/brave/…). `false` closes the open session at its last tracked moment and keeps `notInFront` until a reply says `true`; replies come with every flush (alarm every 30 s). `null` = can't tell (agent not running, idle/locked, **Wayland**, where the tracker sees no windows): Firefox then uses a 60 s idle threshold (unless Chrono sets `idle_minutes`), Chromium keeps its focus events. Limits: without a running agent on X11/Windows, Firefox on Linux can still over-count while another app is in front for up to the idle threshold.
+- Tests: `bun test extension/test` now also runs in CI (`ci.yml`).

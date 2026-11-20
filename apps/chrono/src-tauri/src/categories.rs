@@ -20,7 +20,7 @@ const DEFAULTS: &[(&str, &str)] = &[
     ("steamwebhelper", "entertainment"), ("lutris", "entertainment"),
     // android labels and packages
     ("whatsapp", "social"), ("com.whatsapp", "social"), ("instagram", "social"), ("com.instagram.android", "social"),
-    ("messenger", "social"), ("com.facebook.orca", "social"), ("facebook", "social"), ("com.facebook.katana", "social"),
+    ("messenger", "social"), ("com.facebook.orca", "social"), ("facebook", "social"), ("com.facebook.katana", "social"), ("com.facebook.lite", "social"), ("org.telegram.messenger.web", "social"), ("org.thunderdog.challegram", "social"),
     ("telegram", "social"), ("org.telegram.messenger", "social"), ("messages", "social"), ("com.google.android.apps.messaging", "social"),
     ("snapchat", "social"), ("x", "social"), ("com.twitter.android", "social"), ("reddit", "social"), ("com.reddit.frontpage", "social"),
     ("youtube", "entertainment"), ("com.google.android.youtube", "entertainment"), ("netflix", "entertainment"),
@@ -116,6 +116,7 @@ mod tests {
         assert_eq!(app_category(&s, "code", None), "work");
         assert_eq!(app_category(&s, "WhatsApp", Some("com.whatsapp")), "social");
         assert_eq!(app_category(&s, "Unknown", Some("com.x.y")), "other");
+        assert_eq!(app_category(&s, "Lite", Some("com.facebook.lite")), "social"); // P24
         assert_eq!(domain_category(&s, "www.youtube.com"), "entertainment");
         assert_eq!(domain_category(&s, "en.wikipedia.org"), "study");
         s.categories.insert("youtube.com".into(), "study".into());

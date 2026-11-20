@@ -19,7 +19,7 @@
     --bg: #0b0a10; --card: #17151f; --ink: #f1eff8; --ink2: #cfcbdc; --muted: #928ea2; --faint: #3d3a49;
     --sep: #272430; --fill: rgba(170, 160, 210, 0.12); --fill2: rgba(170, 160, 210, 0.065);
     --accent: #a898f2; --accent2: #5a4e96; --on-accent: #120f1d; --accent-soft: rgba(168, 152, 242, 0.14);
-    --act: #3a3646; --bar2: #34313f; --seg-on: #2b2838; --danger: #ff6b6b; --scrim: rgba(0, 0, 0, 0.6);
+    --act: #3a3646; --bar2: #34313f; --seg-on: #4a4560; /* lighter than the track so the selected segment shows (L4-12) */ --danger: #ff6b6b; --scrim: rgba(0, 0, 0, 0.6);
     --toast: rgba(44, 41, 56, 0.97); --toast-ink: #ffffff; --shadow: none;
   }
 }
@@ -28,7 +28,7 @@
   --bg: #0b0a10; --card: #17151f; --ink: #f1eff8; --ink2: #cfcbdc; --muted: #928ea2; --faint: #3d3a49;
   --sep: #272430; --fill: rgba(170, 160, 210, 0.12); --fill2: rgba(170, 160, 210, 0.065);
   --accent: #a898f2; --accent2: #5a4e96; --on-accent: #120f1d; --accent-soft: rgba(168, 152, 242, 0.14);
-  --act: #3a3646; --bar2: #34313f; --seg-on: #2b2838; --danger: #ff6b6b; --scrim: rgba(0, 0, 0, 0.6);
+  --act: #3a3646; --bar2: #34313f; --seg-on: #4a4560; --danger: #ff6b6b; --scrim: rgba(0, 0, 0, 0.6);
   --toast: rgba(44, 41, 56, 0.97); --toast-ink: #ffffff; --shadow: none;
 }
 

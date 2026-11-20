@@ -3,7 +3,8 @@
 //! statements) goes through a column mapping that is guessed from the header
 //! row and can be changed in the UI. Delimiter, quotes, decimal commas and
 //! the date format are detected. Rows already in Hisab (same date + amount +
-//! note) are marked as duplicates and skipped. Every row is validated with
+//! note + kind + account, each existing entry matching one row) are marked as
+//! duplicates and skipped; repeats inside one file are kept (C22). Every row is validated with
 //! the same `model::normalize` as a hand-made entry, so an import can't store
 //! anything the add screen couldn't. New entries default to the main currency
 //! and carry `source: "import"` and one `import_batch` id; the UI undoes the
@@ -11,7 +12,7 @@
 //!
 //! Docs: docs/apps/hisab/csv-import.md.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use chrono::{NaiveDate, NaiveTime};
 use selfkit_core::Store;
@@ -203,8 +204,11 @@ pub fn parse_amount(v: &str) -> Option<f64> {
     let low = t.to_ascii_lowercase();
     // A minus before the first digit ("-12", "৳ -850", "$-3"), brackets, a trailing minus or "DR".
     let before = t.split(|c: char| c.is_ascii_digit()).next().unwrap_or("");
-    let mut neg = before.contains(['-', '−']) || (t.starts_with('(') && t.ends_with(')')) || t.ends_with('-') || low.ends_with("dr");
-    if low.ends_with("cr") {
+    // "DR"/"CR" only as their own word at the end ("12.00 DR", "12.00DR"), not the end of
+    // a currency code such as IDR (C25).
+    let mark = low.split(|c: char| !c.is_ascii_alphabetic()).rfind(|w| !w.is_empty()).filter(|_| low.trim_end().ends_with(|c: char| c.is_ascii_alphabetic()));
+    let mut neg = before.contains(['-', '−']) || (t.starts_with('(') && t.ends_with(')')) || t.ends_with('-') || mark == Some("dr");
+    if mark == Some("cr") {
         neg = false;
     }
     let num: String = t.chars().filter(|c| c.is_ascii_digit() || *c == '.' || *c == ',').collect();
@@ -297,6 +301,10 @@ pub struct Row {
     pub to_account: String,
     pub to_amount: f64,
     pub tags: Vec<String>,
+    /// Split parts `[(category id, amount)]` read back from Hisab's own export, where a
+    /// split is written as "Food 60.00 + Bills 40.00" in the category column (L2-15).
+    #[serde(default)]
+    pub splits: Vec<(String, f64)>,
     pub duplicate: bool,
     pub error: String,
 }
@@ -309,9 +317,10 @@ pub struct Preview {
     pub errors: usize,
 }
 
-/// Duplicate key: date + amount in cents + note (trimmed, lower-case).
-pub fn dup_key(date: &str, amount: f64, note: &str) -> (String, i64, String) {
-    (date.to_string(), (round2(amount.abs()) * 100.0).round() as i64, note.trim().to_lowercase())
+/// Duplicate key: date + amount in cents + note (trimmed, lower-case) + kind + account.
+pub type DupKey = (String, i64, String, String, String);
+pub fn dup_key(date: &str, amount: f64, note: &str, kind: &str, account: &str) -> DupKey {
+    (date.to_string(), (round2(amount.abs()) * 100.0).round() as i64, note.trim().to_lowercase(), kind.to_string(), account.to_string())
 }
 
 fn data_of(r: &Row) -> Value {
@@ -322,6 +331,9 @@ fn data_of(r: &Row) -> Value {
     if r.kind == "transfer" {
         v["to_account"] = json!(r.to_account);
         v["to_amount"] = json!(r.to_amount);
+    }
+    if r.splits.len() > 1 {
+        v["splits"] = json!(r.splits.iter().map(|(c, a)| json!({"category": c, "amount": a})).collect::<Vec<_>>());
     }
     v
 }
@@ -339,7 +351,13 @@ pub fn preview(store: &Store, t: &Table, m: &Mapping, account: &str, main: &str)
         list.sort_by(|a, b| f(a, "order").total_cmp(&f(b, "order")));
         list.iter().find(|c| s(c, "name").eq_ignore_ascii_case("other")).or(list.first()).map(|c| (s(c, "id").to_string(), s(c, "name").to_string())).unwrap_or_default()
     };
-    let mut seen: HashSet<(String, i64, String)> = model::all(store, TRANSACTIONS)?.iter().map(|x| dup_key(s(x, "date"), f(x, "amount"), s(x, "note"))).collect();
+    // Only entries already in Hisab count as duplicates, each one matching one row: two
+    // equal ATM withdrawals on one day in the same file are both real (C22), and
+    // importing that file again marks both as duplicates.
+    let mut seen: HashMap<DupKey, usize> = HashMap::new();
+    for x in model::all(store, TRANSACTIONS)? {
+        *seen.entry(dup_key(s(&x, "date"), f(&x, "amount"), s(&x, "note"), s(&x, "kind"), s(&x, "account"))).or_default() += 1;
+    }
     let cell = |r: &Vec<String>, i: Option<usize>| i.and_then(|i| r.get(i)).map(|x| x.trim().to_string()).unwrap_or_default();
     let mut out = Preview { rows: vec![], ok: 0, duplicates: 0, errors: 0 };
     for (n, r) in t.rows.iter().enumerate() {
@@ -351,7 +369,10 @@ pub fn preview(store: &Store, t: &Table, m: &Mapping, account: &str, main: &str)
         };
         // Date (and time).
         let dv = cell(r, m.date);
-        match parse_date(&dv, &m.date_format) {
+        // Another row format is fine when it can't be misread (month names, year first):
+        // "16 Nov 2026" in a dd/mm/yyyy file was rejected (P36).
+        const UNAMBIGUOUS: &[&str] = &["%Y-%m-%d", "%Y/%m/%d", "%d %b %Y", "%d-%b-%Y", "%d-%b-%y", "%d %B %Y", "%b %d, %Y", "%B %d, %Y"];
+        match parse_date(&dv, &m.date_format).or_else(|| UNAMBIGUOUS.iter().find_map(|f| parse_date(&dv, f))) {
             Some((d, tm)) => {
                 row.date = d.format("%Y-%m-%d").to_string();
                 row.time = tm;
@@ -404,7 +425,21 @@ pub fn preview(store: &Store, t: &Table, m: &Mapping, account: &str, main: &str)
         } else if !row.kind.is_empty() {
             let name = cell(r, m.category);
             row.category_name = name.clone();
-            match cat_by_name.get(&(row.kind.clone(), name.to_lowercase())) {
+            // "Food 60.00 + Bills 40.00" (Hisab export of a split): read the parts back.
+            if row.kind == "expense" && name.contains(" + ") {
+                let parts: Option<Vec<(String, f64)>> = name
+                    .split(" + ")
+                    .map(|p| {
+                        let (n, a) = p.trim().rsplit_once(' ')?;
+                        Some((cat_by_name.get(&(row.kind.clone(), n.trim().to_lowercase()))?.clone(), a.trim().parse::<f64>().ok()?))
+                    })
+                    .collect();
+                if let Some(parts) = parts.filter(|p| p.len() > 1 && (p.iter().map(|x| x.1).sum::<f64>() - row.amount).abs() < 0.01) {
+                    row.category = parts[0].0.clone();
+                    row.splits = parts;
+                }
+            }
+            if row.splits.is_empty() { match cat_by_name.get(&(row.kind.clone(), name.to_lowercase())) {
                 Some(id) => row.category = id.clone(),
                 None => {
                     let (id, nm) = fallback(&row.kind);
@@ -413,7 +448,7 @@ pub fn preview(store: &Store, t: &Table, m: &Mapping, account: &str, main: &str)
                         row.category_name = nm;
                     }
                 }
-            }
+            } }
         }
         row.tags = cell(r, m.tags).split([' ', ',']).map(|x| x.trim_start_matches('#').to_lowercase()).filter(|x| !x.is_empty()).collect();
         // Same validation as a hand-made entry.
@@ -423,7 +458,12 @@ pub fn preview(store: &Store, t: &Table, m: &Mapping, account: &str, main: &str)
             }
         }
         if row.error.is_empty() {
-            row.duplicate = !seen.insert(dup_key(&row.date, row.amount, &row.note));
+            if let Some(n) = seen.get_mut(&dup_key(&row.date, row.amount, &row.note, &row.kind, &row.account))
+                && *n > 0
+            {
+                *n -= 1;
+                row.duplicate = true;
+            }
         }
         if !row.error.is_empty() {
             out.errors += 1;
@@ -495,11 +535,20 @@ mod tests {
         assert_eq!(parse_amount("(12.00)"), Some(-12.0));
         assert_eq!(parse_amount("৳ -850"), Some(-850.0));
         assert_eq!(parse_amount("30.00 DR"), Some(-30.0));
+        assert_eq!(parse_amount("30.00DR"), Some(-30.0));
+        assert_eq!(parse_amount("150000 IDR"), Some(150000.0));
+        assert_eq!(parse_amount("-75 IDR"), Some(-75.0));
         assert_eq!(parse_amount("abc"), None);
         assert_eq!(detect_date_format(["03/04/2026", "15/04/2026"].into_iter()), "%d/%m/%Y");
         assert_eq!(detect_date_format(["04/15/2026", "04/03/2026"].into_iter()), "%m/%d/%Y");
         assert_eq!(detect_date_format(["15 Nov 2026"].into_iter()), "%d %b %Y");
         assert_eq!(parse_date("2026-11-15T14:30:00", "%Y-%m-%d").unwrap().1, "14:30");
+        // P36: a different but unambiguous date in a day-first file is read.
+        let st = store();
+        let t = parse("Date,Description,Amount\n15/11/2026,Bus,-40\n16 Nov 2026,Tea,-15\n").unwrap();
+        let m = guess(&t);
+        let p = preview(&st, &t, &m, &cash(&st), "BDT").unwrap();
+        assert_eq!((p.ok, p.errors, p.rows[1].date.as_str()), (2, 0, "2026-11-16"), "{:?}", p.rows);
     }
 
     /// Hisab's own export round-trips: kinds, categories, accounts, transfers, tags.
@@ -535,6 +584,22 @@ mod tests {
         assert_eq!(preview(&st, &t, &m, &cash(&st), "BDT").unwrap().ok, 3);
     }
 
+    #[test]
+    fn split_entry_survives_export_and_import() {
+        // L2-15: a split is exported as "Food 60.00 + Bills 40.00" in the category column.
+        let st = store();
+        let csv = "date,time,type,amount,currency,amount_main,main_currency,account,to_account,to_amount,category,tags,note,source\n\
+            2026-11-04,,expense,100.00,BDT,100.00,BDT,Cash,,,Food 60.00 + Bills 40.00,,Groceries and power,manual\n";
+        let t = parse(csv).unwrap();
+        let m = guess(&t);
+        let p = preview(&st, &t, &m, &cash(&st), "BDT").unwrap();
+        assert_eq!(p.ok, 1, "{:?}", p.rows);
+        assert_eq!(p.rows[0].splits.len(), 2);
+        let ids = import(&st, &p.rows, "BDT", "b9").unwrap();
+        let saved = model::get(&st, &ids[0]).unwrap().unwrap();
+        assert_eq!(saved["splits"].as_array().map(Vec::len), Some(2));
+    }
+
     /// A bank statement: ';' separated, day-first dates, debit/credit columns,
     /// no currency (→ main), duplicates inside the file and errors reported.
     #[test]
@@ -551,13 +616,17 @@ mod tests {
         assert_eq!((m.date, m.description, m.debit, m.credit), (Some(0), Some(1), Some(2), Some(3)));
         assert_eq!(m.date_format, "%d/%m/%Y");
         let p = preview(&st, &t, &m, &cash(&st), "BDT").unwrap();
-        assert_eq!((p.ok, p.duplicates, p.errors), (2, 1, 2), "{:?}", p.rows);
+        // Two equal rows in one file are both real (C22).
+        assert_eq!((p.ok, p.duplicates, p.errors), (3, 0, 2), "{:?}", p.rows);
         assert_eq!((p.rows[0].kind.as_str(), p.rows[0].amount, p.rows[0].currency.as_str()), ("expense", 1200.5, "BDT"));
-        assert!(p.rows[1].duplicate);
+        assert!(!p.rows[1].duplicate);
         assert_eq!((p.rows[2].kind.as_str(), p.rows[2].amount), ("income", 50000.0));
         assert!(p.rows[3].error.contains("not understood"));
         assert_eq!(p.rows[4].error, "No amount");
-        assert_eq!(import(&st, &p.rows, "BDT", "b2").unwrap().len(), 2);
+        assert_eq!(import(&st, &p.rows, "BDT", "b2").unwrap().len(), 3);
+        // The same file again: every row is already there, once each.
+        let p = preview(&st, &t, &m, &cash(&st), "BDT").unwrap();
+        assert_eq!((p.ok, p.duplicates, p.errors), (0, 3, 2), "{:?}", p.rows);
     }
 
     /// One amount column with only positive numbers = a spending list.

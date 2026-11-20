@@ -49,6 +49,11 @@ pub struct KeyFile {
     pub version: u32,
     pub passphrase: Envelope,
     pub recovery: Envelope,
+    /// When the passphrase or recovery key last changed (ms). Only a newer file replaces
+    /// the published one, so a device with an old keys.json can't put it back (R-2).
+    /// 0 = written before this field existed.
+    #[serde(default)]
+    pub changed_at: i64,
 }
 
 /// Human-readable recovery key: 52 base32 chars in 13 groups of 4.
@@ -128,7 +133,7 @@ impl KeyFile {
     pub fn create(passphrase: &str, params: KdfParams) -> Result<(KeyFile, SecretKey, RecoveryKey)> {
         let data = SecretKey::generate();
         let (rk, raw) = RecoveryKey::generate();
-        let kf = KeyFile { version: 1, passphrase: wrap_passphrase(&data, passphrase, params)?, recovery: wrap_recovery(&data, raw.as_slice()) };
+        let kf = KeyFile { version: 1, passphrase: wrap_passphrase(&data, passphrase, params)?, recovery: wrap_recovery(&data, raw.as_slice()), changed_at: crate::time::now_ms() };
         Ok((kf, data, rk))
     }
 
@@ -150,6 +155,7 @@ impl KeyFile {
     /// Instant: only re-wraps the data key.
     pub fn change_passphrase(&mut self, data: &SecretKey, new_passphrase: &str, params: KdfParams) -> Result<()> {
         self.passphrase = wrap_passphrase(data, new_passphrase, params)?;
+        self.changed_at = crate::time::now_ms();
         Ok(())
     }
 
@@ -157,6 +163,7 @@ impl KeyFile {
     pub fn rotate_recovery(&mut self, data: &SecretKey) -> RecoveryKey {
         let (rk, raw) = RecoveryKey::generate();
         self.recovery = wrap_recovery(data, raw.as_slice());
+        self.changed_at = crate::time::now_ms();
         rk
     }
 

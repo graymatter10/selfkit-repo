@@ -4,9 +4,12 @@
   import { app, breakMin, defaultReminder, defaultSeverity, focusMin, refresh, savePrefs, saveSettings } from "../lib/state.svelte";
   import { api } from "../lib/api";
   import Seg from "./Seg.svelte";
+  import { getVersion } from "@tauri-apps/api/app";
   import { syncApi } from "../../../../ui/src/sync/api";
   import LockSettings from "../../../../ui/src/lock/LockSettings.svelte"; // App lock section
   let { desktop = false }: { desktop?: boolean } = $props();
+  let version = $state("");
+  getVersion().then((v) => (version = v)).catch(() => {}); // real version in the footer (L11)
   let syncLine = $state("");
   $effect(() => { if (app.settingsOpen && !app.syncOpen) syncApi.status().then((st) => (syncLine = st.conflicts ? `${st.conflicts} to review` : st.headline.split(" · ")[0])).catch(() => (syncLine = "")); });
   let recording = $state(false);
@@ -112,7 +115,7 @@
               </button>
             {/each}
           </div>
-          <span class="px-4 text-[13px] text-muted">Used for new tasks that have a start time.</span>
+          <span class="px-4 text-[13px] text-muted">Used for new tasks that have a start time.{#if /Android/i.test(navigator.userAgent)} Some phones (e.g. ColorOS) line alarms up, so a reminder can come up to about 2 minutes late.{/if}</span>
         </div>
 
         <div class="flex flex-col gap-2">
@@ -157,7 +160,7 @@
             <span class="px-4 text-[13px] {shortcutError ? 'text-danger' : 'text-muted'}" role={shortcutError ? "alert" : undefined}>{shortcutError || "Opens a small New Task window from anywhere."}</span>
           </div>
         {/if}
-        <p class="m-0 text-center text-[13px] text-muted">Agenda 0.4 · your data stays on this device and is encrypted when it syncs.</p>
+        <p class="m-0 text-center text-[13px] text-muted">Agenda {version} · your data stays on this device and is encrypted when it syncs.</p>
       </div>
     </div>
   </div>

@@ -132,6 +132,10 @@ fn run(app: &str, data_dir: &str, wrap: Option<Vec<u8>>, device_name: &str, meth
                         changed += 1;
                     }
                 }
+                if changed > 0 {
+                    // Tell the open page (tauri_cmds watcher) to reload (C16).
+                    let _ = std::fs::write(crate::settings_adopted_marker(&sync.config().data_dir), selfkit_core::time::now_ms().to_string());
+                }
                 json!({"ok": true, "changed": changed})
             }
             "mirror_apply" => {
@@ -145,10 +149,67 @@ fn run(app: &str, data_dir: &str, wrap: Option<Vec<u8>>, device_name: &str, meth
                 tx.commit()?;
                 json!({"ok": true, "applied": recs.len()})
             }
+            // Local (non-record) tables an app shares read-only with sibling mirrors (B2:
+            // Dusk's `dusk_nights` cache for Reflect). Never synced; phone-local only.
+            "table_rows" => {
+                let name = args["name"].as_str().unwrap_or("");
+                if !SHARED_TABLES.contains(&(app, name)) {
+                    return Err(selfkit_core::Error::Format(format!("not a shared table: {name}")));
+                }
+                let stores = sync.open_stores()?;
+                let s = stores.get(app).ok_or_else(|| selfkit_core::Error::NotFound("store".into()))?;
+                let (sql, rows) = table_dump(s, name)?;
+                json!({"ok": true, "sql": sql, "rows": rows})
+            }
+            "mirror_table" => {
+                let from = args["store"].as_str().unwrap_or("");
+                let name = args["name"].as_str().unwrap_or("");
+                if !SHARED_TABLES.contains(&(from, name)) {
+                    return Err(selfkit_core::Error::Format(format!("not a shared table: {from}/{name}")));
+                }
+                let store = mirror_store(&sync, from)?;
+                let n = table_replace(&store, name, args["sql"].as_str().unwrap_or(""), args["rows"].as_str().unwrap_or("[]"))?;
+                json!({"ok": true, "rows": n})
+            }
             other => json!({"ok": false, "error": format!("unknown method {other}")}),
         })
     });
     res.unwrap_or_else(|e| json!({"ok": false, "error": crate::explain(&e), "detail": e.to_string()}))
+}
+
+/// (app, table) pairs an app's provider may hand out whole (`/table?name=`), and a mirror
+/// may copy into its `<app>.db`. Keep in sync with `TABLES` in SelfkitMirror.kt.
+const SHARED_TABLES: &[(&str, &str)] = &[("dusk", "dusk_nights")];
+
+fn table_columns(s: &selfkit_core::Store, name: &str) -> selfkit_core::Result<Vec<String>> {
+    let mut st = s.conn().prepare("SELECT name FROM pragma_table_info(?1)")?;
+    let cols = st.query_map([name], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+    Ok(cols)
+}
+
+/// The table's CREATE statement and all rows as one JSON array of objects.
+fn table_dump(s: &selfkit_core::Store, name: &str) -> selfkit_core::Result<(String, String)> {
+    let sql: String = s.conn().query_row("SELECT sql FROM sqlite_master WHERE type='table' AND name=?1", [name], |r| r.get(0))?;
+    let obj = table_columns(s, name)?.iter().map(|c| format!("'{c}', \"{c}\"")).collect::<Vec<_>>().join(", ");
+    let rows: String = s.conn().query_row(&format!("SELECT COALESCE(json_group_array(json_object({obj})), '[]') FROM \"{name}\""), [], |r| r.get(0))?;
+    Ok((sql, rows))
+}
+
+/// Replace the mirror's copy of a shared table (recreated from the source's schema).
+fn table_replace(s: &selfkit_core::Store, name: &str, create: &str, rows: &str) -> selfkit_core::Result<usize> {
+    let create = create.trim().trim_end_matches(';');
+    if !create.to_ascii_uppercase().starts_with("CREATE TABLE") || !create.contains(name) || create.contains(';') {
+        return Err(selfkit_core::Error::Format(format!("bad schema for {name}")));
+    }
+    let tx = s.conn().unchecked_transaction()?;
+    s.conn().execute(&format!("DROP TABLE IF EXISTS \"{name}\""), [])?;
+    s.conn().execute(create, [])?;
+    let cols = table_columns(s, name)?;
+    let list = cols.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
+    let vals = cols.iter().map(|c| format!("json_extract(value, '$.{c}')")).collect::<Vec<_>>().join(", ");
+    let n = s.conn().execute(&format!("INSERT INTO \"{name}\" ({list}) SELECT {vals} FROM json_each(?1)"), [rows])?;
+    tx.commit()?;
+    Ok(n)
 }
 
 /// `<data_dir>/<app>.db` holding another app's records (never this app's own DB).

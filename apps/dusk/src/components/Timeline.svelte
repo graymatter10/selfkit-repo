@@ -2,7 +2,7 @@
   // The night on one line: screen use (grey), the sleep (violet) and, when you
   // changed the times, the device estimate as a thin line underneath.
   import type { Night } from "../lib/api";
-  import { hmd } from "../lib/fmt";
+  import { hmd, plural } from "../lib/fmt";
   let { night }: { night: Night } = $props();
 
   const H = 3_600_000;
@@ -27,8 +27,8 @@
   const showEst = $derived(night.source === "logged" && night.estimate.status === "found" && night.estimate.bed != null);
   const label = $derived(
     asleep
-      ? `Asleep ${hmd(night.bed, night.tz_offset)} to ${hmd(night.wake, night.tz_offset)}; screen on ${night.estimate.activity.length} times`
-      : `Screen on ${night.estimate.activity.length} times; no sleep found`,
+      ? `Asleep ${hmd(night.bed, night.tz_offset)} to ${hmd(night.wake, night.tz_offset)}; screen on ${plural(night.estimate.activity.length, "time")}`
+      : `Screen on ${plural(night.estimate.activity.length, "time")}; no sleep found`,
   );
 </script>
 

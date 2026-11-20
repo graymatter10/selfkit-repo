@@ -162,3 +162,57 @@ test('a session closed while its live copy was in flight is not lost', async () 
   expect(st.queue.map((q) => q.domain)).toEqual(['example.com']);
   expect(st.queue[0].end - st.queue[0].start).toBe(15_000);
 });
+
+test('agent says another program is in front: session ends, none starts until the browser is back (L3-6)', async () => {
+  const { st, env, tr } = fake();
+  await tr.evaluate('start');
+  env.t += 30_000;
+  await tr.evaluate('alarm');
+  env.t += 20_000;
+  env.reply = () => ({ ok: true, paused: false, exclude_domains: [], agent_running: true, written: 0, browser_foreground: false });
+  await tr.flush();
+  expect(st.cur).toBe(null);
+  // The open session went to the agent with its last tracked moment as the end (acked, so not queued again).
+  expect(env.native.at(-1).sessions.at(-1)).toMatchObject({ domain: 'example.com', end: 1_763_200_030_000 });
+  expect(st.queue).toHaveLength(0);
+  env.t += 30_000;
+  await tr.evaluate('alarm');
+  expect(st.cur).toBe(null);
+  env.reply = () => ({ ok: true, paused: false, exclude_domains: [], agent_running: true, written: 0, browser_foreground: true });
+  await tr.flush();
+  expect(st.cur && st.cur.domain).toBe('example.com');
+});
+
+test('the popup only looks: asking for state keeps the session (L3-7)', async () => {
+  const { st, env, tr } = fake();
+  await tr.evaluate('start');
+  env.t += 10_000;
+  env.win = { id: 1, focused: false, incognito: false }; // the popup has focus
+  const s = await tr.onMessage({ type: 'state' });
+  expect(s.status).toBe('tracking');
+  expect(st.cur && st.cur.domain).toBe('example.com');
+});
+
+test('exclude entries match with www., port or scheme (C79)', () => {
+  expect(excluded('youtube.com', ['www.youtube.com'])).toBe(true);
+  expect(excluded('localhost', ['localhost:5173'])).toBe(true);
+  expect(excluded('a.example.org', ['https://Example.org/x'])).toBe(true);
+  expect(excluded('example.net', ['example.org'])).toBe(false);
+});
+
+test('"not in front" clears on a tab switch and when the agent can no longer tell (C87)', async () => {
+  const { st, env, tr } = fake();
+  await tr.evaluate('start');
+  env.reply = () => ({ ok: true, paused: false, exclude_domains: [], agent_running: true, written: 0, browser_foreground: false });
+  env.t += 30_000;
+  await tr.flush();
+  expect(st.notInFront).toBe(true);
+  await tr.evaluate('tab', { focusEvent: true, blurred: false });
+  expect(st.notInFront).toBe(false);
+  expect(st.cur && st.cur.domain).toBe('example.com');
+  await tr.flush();
+  expect(st.notInFront).toBe(true);
+  env.reply = () => ({ ok: true, paused: false, exclude_domains: [], agent_running: false, written: 0, browser_foreground: null });
+  await tr.flush();
+  expect(st.notInFront).toBe(false);
+});

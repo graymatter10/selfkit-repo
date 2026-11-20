@@ -278,6 +278,11 @@ pub fn normalize(coll: &str, data: &Value, main: &str) -> R<Value> {
                 let id = text(&cm, "id");
                 cs.push(json!({"id": if id.is_empty() { selfkit_core::store::new_id() } else { id }, "date": d, "amount": round2(a), "note": text(&cm, "note")}));
             }
+            // "Take out" can't go below zero saved (L2-11).
+            let saved: f64 = cs.iter().filter_map(|c| c["amount"].as_f64()).sum();
+            if saved < -0.005 {
+                return Err("You can't take out more than is saved".into());
+            }
             out.insert("contributions".into(), json!(cs));
             out.insert("archived".into(), json!(b(data, "archived")));
         }
@@ -364,13 +369,47 @@ pub fn parts(t: &Value) -> Vec<(String, f64)> {
     }
 }
 
+/// Drop this device's seeded defaults (fixed ids `acct-cash`, `cat-exp-*`, `cat-inc-*`)
+/// when sync brought the same account/category (same kind and name) under another id
+/// from a device that seeded with random ids (before C19), as long as the seeded one is
+/// unused. Otherwise a new device + an existing one end up with two "Cash" (C94).
+pub fn merge_seeded_duplicates(store: &Store) -> R<usize> {
+    let txs = all(store, TRANSACTIONS)?;
+    let others: Vec<Value> = [RECURRING, LOANS].iter().map(|c| all(store, c)).collect::<R<Vec<_>>>()?.concat();
+    let used = |id: &str| {
+        txs.iter().any(|t| s(t, "account") == id || s(t, "to_account") == id || s(t, "category") == id
+            || t.get("splits").and_then(Value::as_array).is_some_and(|a| a.iter().any(|p| s(p, "category") == id)))
+            || others.iter().any(|o| o.to_string().contains(&format!("\"{id}\"")))
+    };
+    let mut removed = 0;
+    for coll in [ACCOUNTS, CATEGORIES] {
+        let list = all(store, coll)?;
+        for v in &list {
+            let id = s(v, "id");
+            let seeded = id == "acct-cash" || id.starts_with("cat-exp-") || id.starts_with("cat-inc-");
+            if !seeded || used(id) {
+                continue;
+            }
+            let twin = list.iter().any(|o| s(o, "id") != id && s(o, "kind") == s(v, "kind") && s(o, "name").eq_ignore_ascii_case(s(v, "name")) && !b(o, "archived"));
+            if twin {
+                store.delete(id).map_err(|e| e.to_string())?;
+                removed += 1;
+            }
+        }
+    }
+    Ok(removed)
+}
+
 /// Default categories and one cash account for a fresh install.
 pub fn seed_defaults(store: &Store, main: &str) -> R<()> {
     if store.count(CATEGORIES).map_err(|e| e.to_string())? > 0 || store.count(ACCOUNTS).map_err(|e| e.to_string())? > 0 {
         return Ok(());
     }
-    let put = |c: &str, v: Value| store.put(c, None, &v).map(|_| ()).map_err(|e| e.to_string());
-    put(ACCOUNTS, json!({"name": "Cash", "kind": "cash", "currency": main, "explicit_currency": false, "opening": 0, "order": 0, "archived": false}))?;
+    // Fixed ids (`acct-cash`, `cat-exp-food`, `cat-inc-salary`…): a second device seeding
+    // before sync is turned on writes the same records, not a second Cash and a second
+    // set of categories (C19).
+    let put = |c: &str, id: String, v: Value| store.put(c, Some(&id), &v).map(|_| ()).map_err(|e| e.to_string());
+    put(ACCOUNTS, "acct-cash".into(), json!({"name": "Cash", "kind": "cash", "currency": main, "explicit_currency": false, "opening": 0, "order": 0, "archived": false}))?;
     let exp = [
         ("Food", "food", "#d9822b"),
         ("Transport", "car", "#3b82c4"),
@@ -382,11 +421,11 @@ pub fn seed_defaults(store: &Store, main: &str) -> R<()> {
         ("Other", "dot", "#8a8a8e"),
     ];
     for (i, (n, ic, col)) in exp.iter().enumerate() {
-        put(CATEGORIES, json!({"name": n, "kind": "expense", "icon": ic, "color": col, "budget": 0, "order": i, "archived": false}))?;
+        put(CATEGORIES, format!("cat-exp-{}", n.to_lowercase()), json!({"name": n, "kind": "expense", "icon": ic, "color": col, "budget": 0, "order": i, "archived": false}))?;
     }
     let inc = [("Salary", "briefcase", "#4f8a55"), ("Gift", "gift", "#e0719c"), ("Other", "dot", "#8a8a8e")];
     for (i, (n, ic, col)) in inc.iter().enumerate() {
-        put(CATEGORIES, json!({"name": n, "kind": "income", "icon": ic, "color": col, "budget": 0, "order": i, "archived": false}))?;
+        put(CATEGORIES, format!("cat-inc-{}", n.to_lowercase()), json!({"name": n, "kind": "income", "icon": ic, "color": col, "budget": 0, "order": i, "archived": false}))?;
     }
     Ok(())
 }
@@ -442,5 +481,20 @@ mod tests {
         seed_defaults(&st, "USD").unwrap();
         assert_eq!(st.count(ACCOUNTS).unwrap(), 1);
         assert_eq!(st.count(CATEGORIES).unwrap(), 11);
+    }
+
+    #[test]
+    fn seeded_twins_from_an_older_device_are_merged() {
+        // C94: this device seeded fixed ids; sync brought the older device's random-id Cash.
+        let st = Store::open_in_memory("hisab", "d", MIGRATIONS).unwrap();
+        seed_defaults(&st, "BDT").unwrap();
+        st.put(ACCOUNTS, Some("old-cash"), &json!({"name": "Cash", "kind": "cash", "currency": "BDT", "opening": 0, "order": 0, "archived": false})).unwrap();
+        st.put(CATEGORIES, Some("old-food"), &json!({"name": "Food", "kind": "expense", "icon": "food", "color": "#d9822b", "budget": 0, "order": 0, "archived": false})).unwrap();
+        // A used seeded category stays.
+        st.put(CATEGORIES, Some("old-bills"), &json!({"name": "Bills", "kind": "expense", "icon": "bolt", "color": "#c4a43b", "budget": 0, "order": 3, "archived": false})).unwrap();
+        st.put(TRANSACTIONS, Some("t1"), &json!({"kind": "expense", "amount": 5, "account": "old-cash", "category": "cat-exp-bills", "date": "2026-11-21"})).unwrap();
+        assert_eq!(merge_seeded_duplicates(&st).unwrap(), 2);
+        assert!(get(&st, "acct-cash").unwrap().is_none() && get(&st, "cat-exp-food").unwrap().is_none());
+        assert!(get(&st, "cat-exp-bills").unwrap().is_some());
     }
 }

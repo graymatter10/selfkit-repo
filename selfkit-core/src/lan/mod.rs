@@ -348,11 +348,13 @@ mod tests {
         assert!(!s.contains("SECRET") && !s.contains("phone") && !s.contains("tasks"), "plaintext leaked to the network");
         assert!(wire.len() > 100_000);
 
-        // Second session only moves what changed (echoes come back as no-ops).
+        // Second session only moves what changed; records each side got from the other
+        // are not sent back (S-4).
         b["agenda"].put("tasks", None, &json!({"title": "new"})).unwrap();
         let (ra, rb, _) = sync_pair(&keys, &mut a, &mut b).await;
         assert_eq!(ra.received, 1);
         assert_eq!(rb.received, 0);
+        assert_eq!((ra.sent, rb.sent), (0, 1), "no echo of the peer's own records");
 
         // Concurrent edit of long text -> conflict on both, nothing lost (short fields auto-merge).
         let id = t.id.clone();
@@ -361,6 +363,12 @@ mod tests {
         b["hisab"].put("transactions", Some(&id), &json!({"note": "n\nfive"})).unwrap();
         let (ra, rb, _) = sync_pair(&keys, &mut a, &mut b).await;
         assert_eq!((ra.conflicts, rb.conflicts), (1, 1));
+
+        // C85: A loses its database (same device id); a fresh pull from B restores A's own
+        // records, which the S-4 echo filter must not hold back.
+        let mut a_fresh = stores("A");
+        let (ra2, _, _) = sync_pair(&keys, &mut a_fresh, &mut b).await;
+        assert_eq!(a_fresh["agenda"].count("tasks").unwrap(), 1201, "own tasks come back ({ra2:?})");
     }
 
     #[tokio::test]

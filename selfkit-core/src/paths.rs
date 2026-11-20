@@ -34,13 +34,32 @@ pub fn device_id() -> crate::Result<String> {
     let dir = data_dir();
     std::fs::create_dir_all(&dir)?;
     let p = dir.join("device_id");
-    if let Ok(s) = std::fs::read_to_string(&p) {
-        let s = s.trim().to_string();
-        if !s.is_empty() {
-            return Ok(s);
-        }
+    let read = || std::fs::read_to_string(&p).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    if let Some(s) = read() {
+        return Ok(s);
     }
+    // Exclusive create: when two processes start together on a fresh install (agent +
+    // app), only one id wins and the other process reads it (C27).
     let id = uuid::Uuid::now_v7().to_string();
-    std::fs::write(&p, &id)?;
-    Ok(id)
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(&p) {
+        Ok(mut f) => {
+            use std::io::Write;
+            f.write_all(id.as_bytes())?;
+            f.sync_all()?;
+            Ok(id)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            // The other process may not have written it yet.
+            for _ in 0..50 {
+                if let Some(s) = read() {
+                    return Ok(s);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            // An empty file left by a crash: take it over.
+            std::fs::write(&p, &id)?;
+            Ok(id)
+        }
+        Err(e) => Err(e.into()),
+    }
 }

@@ -66,7 +66,7 @@ pub enum Choice {
 /// Bookkeeping fields the user never picks between (bugs.md QA-U2): they follow the
 /// chosen version (Merge keeps A's, which the store restamps anyway).
 fn hidden(key: &str) -> bool {
-    matches!(key, "id" | "created_at" | "updated_at" | "tz_offset")
+    matches!(key, "id" | "created_at" | "updated_at" | "tz_offset" | selfkit_core::settings::LEGACY_CLOCK)
 }
 
 fn is_long(v: &Option<Value>) -> bool {

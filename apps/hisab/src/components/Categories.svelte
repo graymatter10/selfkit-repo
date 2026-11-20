@@ -89,7 +89,7 @@
             <span class="flex items-baseline gap-2"><span class="min-w-0 flex-1 truncate text-[15px] font-medium">{c.name}</span>
               <span class="num text-[13px] {c.budget && c.spent > c.budget ? 'text-danger' : 'text-muted'}">{kind === "expense" ? money(c.spent, main()) + (c.budget ? ` / ${money(c.budget, main())}` : "") : money(c.spent, main())}</span></span>
             {#if c.budget}<span class="mt-1.5 h-[5px] overflow-hidden rounded-full bg-fill"><span class="block h-full rounded-full {c.spent > c.budget ? 'bg-danger' : 'bg-accent'}" style="width:{Math.min(100, (c.spent / c.budget) * 100)}%"></span></span>
-            {:else}<span class="text-[12.5px] text-muted">{rank === "used" ? `${c.usage} entries` : kind === "expense" ? "No budget" : `${c.usage} entries`}</span>{/if}
+            {:else}<span class="text-[12.5px] text-muted">{rank === "used" ? `${c.usage} ${c.usage === 1 ? "entry" : "entries"}` : kind === "expense" ? "No budget" : `${c.usage} ${c.usage === 1 ? "entry" : "entries"}`}</span>{/if}
           </span>
         </button>
         <button type="button" aria-label="Archive {c.name}" class="press flex h-9 w-9 items-center justify-center rounded-full text-muted" onclick={() => archive(c)}><Ic name="trash" size={17} /></button>

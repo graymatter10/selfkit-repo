@@ -4,7 +4,7 @@ import { call } from "@selfkit/ui";
 export type Kind = "a" | "w";
 export interface Total { kind: Kind; name: string; package?: string | null; ms: number; opens: number; cat: string; platforms: string[]; prev: number; uninstalled?: number | null }
 export interface DeviceTotal { id: string; name: string; platforms: string[]; ms: number; web: boolean }
-export interface Goal { id: string; kind: "limit" | "goal"; scope: "total" | "category" | "app" | "domain"; target: string; minutes: number; enabled: boolean }
+export interface Goal { id: string; kind: "limit" | "goal"; scope: "total" | "category" | "app" | "domain"; target: string; minutes: number; enabled: boolean; created?: string }
 export interface GoalStatus { goal: Goal; used: number; state: "ok" | "near" | "over" | "todo" | "met" }
 export interface DayNote { day: string; text: string; photos: string[]; updated_at: number }
 export interface DayView {
@@ -73,4 +73,5 @@ export const api = {
   photoExport: (id: string) => call<string>("photo_export", { id }),
   appChanges: () => call<AppChange[]>("app_changes"),
   devHooks: () => call<string | null>("dev_hooks"),
+  startupNotice: () => call<string | null>("startup_notice"),
 };
