@@ -2,7 +2,7 @@
   // Settings: goals, wind-down reminder (off until turned on), day start,
   // appearance, data sources. Every row says what it is for.
   import { clock, dur, tdisp, toMin } from "../lib/fmt";
-  import { app, bridge, importUsage, refresh, saveGoals, savePrefs, saveSettings, saveShortcut } from "../lib/state.svelte";
+  import { app, bridge, importUsage, notifyBlocked, refresh, saveGoals, savePrefs, saveSettings, saveShortcut } from "../lib/state.svelte";
   import Icon from "./Icon.svelte";
   import Seg from "./Seg.svelte";
   import TimeSheet from "./TimeSheet.svelte";
@@ -66,7 +66,7 @@
     <h2 class="mx-1 mt-6 mb-2 text-[13.5px] font-[650] text-ink2">Wind-down reminder</h2>
     <div class="card">
       <label class="flex min-h-[60px] items-center gap-3 px-4 py-2 text-[15.5px]">
-        {@render lrow("Remind me to wind down", app.prefs.winddown_on ? `Every day at ${winddownAt}` : `Off · would remind you at ${winddownAt}`)}
+        {@render lrow("Remind me to wind down", app.prefs.winddown_on ? (notifyBlocked.v ? "Notifications are off for Dusk in Android settings" : `Every day at ${winddownAt}`) : `Off · would remind you at ${winddownAt}`)}
         <input type="checkbox" class="sr" checked={app.prefs.winddown_on} onchange={(e) => savePrefs({ ...app.prefs, winddown_on: (e.currentTarget as HTMLInputElement).checked })} />
         <span aria-hidden="true" class="relative inline-block h-7 w-12 shrink-0 rounded-full transition-colors duration-150 {app.prefs.winddown_on ? 'bg-accent' : 'bg-faint'}">
           <span class="absolute top-1 h-5 w-5 rounded-full transition-transform duration-150 {app.prefs.winddown_on ? 'translate-x-6 bg-on-accent' : 'translate-x-1 bg-white'}"></span>
