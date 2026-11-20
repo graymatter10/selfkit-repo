@@ -80,6 +80,9 @@
   const host = (url: string) => { try { return new URL(url.replace(/^postgres(ql)?:/, "http:")).host; } catch { return url; } };
   const dbName = (url: string) => { try { return new URL(url.replace(/^postgres(ql)?:/, "http:")).pathname.slice(1); } catch { return ""; } };
   const here = (t: number) => now - t < 5 * 60000;
+  // "Here" only while sync and LAN are on and the last pass didn't fail; the row kept a
+  // green pill next to "Waiting to sync · no connection" (S-1/C72).
+  const lanLive = $derived(!!st && st.settings.enabled && st.settings.lan_enabled && !(st.last_error && (st.last_attempt_at ?? 0) > (st.last_ok_at ?? 0)));
 
   function openServer() {
     form = { pg_url: srv?.pg_url ?? "", pg_password: "", s3_endpoint: srv?.s3_endpoint ?? "", s3_bucket: srv?.s3_bucket ?? "", s3_region: srv?.s3_region ?? "", s3_access_key: srv?.s3_access_key ?? "", s3_secret: "" };
@@ -213,7 +216,7 @@
             {#each st.peers as p (p.device_id)}
               <div class="k-row"><span class="k-mut">{@render icon(/phone|android|oppo|vivo|pixel|samsung/i.test(p.name) ? "phone" : "pc")}</span>
                 <div class="k-grow"><div class="k-t">{p.name}</div><div class="k-s">Seen {ago(now, p.last_seen)}{p.last_sync ? ` · synced ${ago(now, p.last_sync)}` : ""}</div></div>
-                {#if here(p.last_seen)}<span class="k-pill"><span class="k-okdot"></span>Here</span>{/if}</div>
+                {#if here(p.last_seen) && lanLive}<span class="k-pill"><span class="k-okdot"></span>Here</span>{/if}</div>
             {/each}
             {#if !st.peers.length && st.settings.lan_enabled}<div class="k-row"><div class="k-s">No devices seen yet. Your PC needs the Selfkit agent running on the same network.</div></div>{/if}
           </div>

@@ -821,6 +821,9 @@ fn headline(s: &SyncStatus, now: i64) -> String {
         if e.starts_with("Can't reach") || e.contains("timed out") || e.starts_with("No Selfkit PC") || e.starts_with("Nothing to sync") {
             return if s.pending > 0 && s.server_configured {
                 format!("Waiting to sync · {} change{} saved here", s.pending, if s.pending == 1 { "" } else { "s" })
+            } else if e.starts_with("No Selfkit PC") {
+                // Wi-Fi is fine, the PC just wasn't found: "no connection" misled (S-2/C73).
+                "Waiting to sync · no Selfkit PC found on this network".into()
             } else {
                 "Waiting to sync · no connection".into()
             };
