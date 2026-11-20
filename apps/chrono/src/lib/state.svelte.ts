@@ -133,6 +133,8 @@ export const initDone = new Promise<void>((r) => (ready = r));
 
 export async function init() {
   app.info = (await guard(api.info())) ?? null;
+  // A damaged data file was set aside at startup: say so once (L25).
+  guard(api.startupNotice()).then((n) => n && showToast(n, undefined, 15000));
   app.settings = (await guard(api.settings())) ?? null;
   app.theme = (await guard(api.theme())) ?? "system";
   applyTheme();
