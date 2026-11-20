@@ -60,7 +60,7 @@ One record per device per night, id `u-<device>-<night>`; re-imports merge (unio
 - `chrono.db`: `app_sessions` (all platforms, incl. Android sessions synced from Chrono) and `web_sessions` — `{start, end, tz_offset}`.
 - `agenda.db`: `tasks` with `done_at` (tasks done per logical day; days between the first task and today count 0 when nothing was done).
 - `hisab.db` (if the file exists): `transactions` `{kind, amount, currency, amount_main, date, time}` → spent per logical day (expenses only). `amount_main` if present, else `amount` converted from `currency` into the main currency with Hisab's `rates` record (`hisab-rates`; Hisab never stores `amount_main`); a currency without a rate is left out. Any other shape is skipped (the card says no data).
-- On Android these files are not on the device, so the two next-day connections say "isn't on this device".
+- On Android Dusk reads read-only copies of Agenda and Hisab made by `SelfkitMirror` (manifest `com.selfkit.sync.MIRROR=agenda,hisab`; refreshed on open, when Dusk comes back to the foreground and in the background job) at the same paths. Settings → Tasks and spending says Found / Agenda only / Hisab only / Not found; a missing app's next-day card says "isn't on this device" (B4).
 
 ## Build and run
 ```bash

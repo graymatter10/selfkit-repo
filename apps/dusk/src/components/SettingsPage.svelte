@@ -123,7 +123,8 @@
         <div class="h-px bg-sep"></div>
         <div class="flex min-h-[60px] items-center gap-3 px-4 py-2 text-[15.5px]">
           {@render lrow("Tasks and spending", "Agenda, Hisab · for Connections")}
-          <span class="text-[14px] text-muted">{app.sources.agenda || app.sources.hisab ? "Found" : "On computer"}</span>
+          {#if app.sources.agenda && app.sources.hisab}<span class="inline-flex items-center gap-1 font-semibold text-accent"><Icon name="check" size={17} stroke={2.4} />Found</span>
+          {:else}<span class="text-[14px] text-muted">{app.sources.agenda ? "Agenda only" : app.sources.hisab ? "Hisab only" : "Not found"}</span>{/if}
         </div>
       {:else}
         <div class="flex min-h-[60px] items-center gap-3 px-4 py-2 text-[15.5px]">
