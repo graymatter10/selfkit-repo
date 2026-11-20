@@ -159,6 +159,8 @@
     const tag = (e.target as HTMLElement)?.tagName;
     if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
       if (e.key === "Escape" && app.searching) stopSearch();
+      // Esc in a task form field (New Task focuses Title) closes / asks "Discard…?" too (L3).
+      else if (e.key === "Escape" && (app.panel.kind === "new" || app.panel.kind === "edit") && !app.settingsOpen && !app.focusOpen && !app.photo && !app.closeGuard?.()) close();
       return;
     }
     if (app.settingsOpen || app.focusOpen || app.photo || e.ctrlKey || e.metaKey || e.altKey) return;
