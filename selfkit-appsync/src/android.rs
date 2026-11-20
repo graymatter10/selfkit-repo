@@ -132,6 +132,10 @@ fn run(app: &str, data_dir: &str, wrap: Option<Vec<u8>>, device_name: &str, meth
                         changed += 1;
                     }
                 }
+                if changed > 0 {
+                    // Tell the open page (tauri_cmds watcher) to reload (C16).
+                    let _ = std::fs::write(crate::settings_adopted_marker(&sync.config().data_dir), selfkit_core::time::now_ms().to_string());
+                }
                 json!({"ok": true, "changed": changed})
             }
             "mirror_apply" => {

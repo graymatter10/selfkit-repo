@@ -308,8 +308,18 @@ pub fn spawn_on_open(app: &AppHandle, h: &SyncHandle) {
         let (app, s) = (app.clone(), h.0.clone());
         std::thread::spawn(move || {
             let mut seen = s.state().last.map(|l| l.finished_at).unwrap_or(0);
+            // Shared settings adopted from a sibling app (SelfkitMirror.pullSettings →
+            // JNI settings_adopt) bump this marker; the page reloads like after a pass (C16).
+            let marker = crate::settings_adopted_marker(&s.config().data_dir);
+            let read_marker = || std::fs::read_to_string(&marker).unwrap_or_default();
+            let mut adopted = read_marker();
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(3));
+                let now = read_marker();
+                if now != adopted {
+                    adopted = now;
+                    let _ = app.emit("data-changed", ());
+                }
                 if let Some(l) = s.state().last
                     && l.finished_at > seen
                 {

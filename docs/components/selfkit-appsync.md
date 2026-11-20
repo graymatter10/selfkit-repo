@@ -51,6 +51,8 @@ Headlines: "Synced locally with Linux PC · 2 min ago", "Synced via server · 5 
 ## Read-only mirrors (Reflect on Android)
 `SelfkitMirror` (Kotlin) pulls `content://com.selfkit.<app>.provider/changes` page by page and the JNI methods `mirror_cursor` / `mirror_apply` store the records in `<data_dir>/<app>.db` with `apply_peer` (cursor in kv `mirror.cursor`). Enabled per app with manifest meta-data `com.selfkit.sync.MIRROR` (Reflect: `chrono,hisab,agenda,dusk`); runs on init, in the background job, and from the page via `window.SelfkitSync.mirror(apps)`. Never touches the app's own DB. Users: Reflect (`chrono,hisab,agenda,dusk`), Dusk (`agenda,hisab`, for Connections).
 
+Shared settings (`pullSettings` → JNI `settings_adopt`, on init and when the app comes to the foreground): when a sibling's settings changed this app's, `<data_dir>/sync/settings-adopted` gets the time and the Android watcher thread (`spawn_on_open`) emits `data-changed`, so an open page shows the new currency/day start without a restart (C16).
+
 Shared local tables: besides records, a provider serves whole local tables listed in `SHARED_TABLES` (`android.rs`; today only Dusk's `dusk_nights` result cache) at `/table?name=<table>` (one row: `sql`, `rows` as a JSON array; JNI `table_rows`). `SelfkitMirror` copies them after the records (`TABLES` in the Kotlin, JNI `mirror_table`: drop, recreate from the source's CREATE statement, insert all rows in one transaction). Phone-local, never synced (DECISIONS 2026-11-20, B2). An older app without `/table` is skipped.
 
 ## Sync owner
