@@ -186,11 +186,11 @@
         {#if w === "a"}
           <input id="tf-a" bind:this={elA} bind:value={a} autocomplete="off" placeholder={tdisp(est.a) || "hh:mm"} aria-invalid={bad} aria-describedby="tf-help"
             onfocus={(e) => onFocus("a", e)} onblur={() => onBlur("a")} onkeydown={(e) => fieldKeys("a", e)} oninput={() => (error = "")}
-            class="num h-12 w-[100px] rounded-[12px] pr-7 pl-1.5 text-center text-[18px] font-semibold outline-none {focused === 'a' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {bad ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
+            class="num h-12 rounded-[12px] pr-7 pl-1.5 text-center font-semibold outline-none {uses12h() ? 'w-[118px] text-[16px]' : 'w-[100px] text-[18px]'} {focused === 'a' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {bad ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
         {:else}
           <input id="tf-b" bind:this={elB} bind:value={b} autocomplete="off" placeholder={tdisp(est.b) || "hh:mm"} aria-invalid={bad} aria-describedby="tf-help"
             onfocus={(e) => onFocus("b", e)} onblur={() => onBlur("b")} onkeydown={(e) => fieldKeys("b", e)} oninput={() => (error = "")}
-            class="num h-12 w-[100px] rounded-[12px] pr-7 pl-1.5 text-center text-[18px] font-semibold outline-none {focused === 'b' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {bad ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
+            class="num h-12 rounded-[12px] pr-7 pl-1.5 text-center font-semibold outline-none {uses12h() ? 'w-[118px] text-[16px]' : 'w-[100px] text-[18px]'} {focused === 'b' ? 'bg-card shadow-[inset_0_0_0_2px_var(--accent)]' : 'bg-fill'} {bad ? 'text-danger shadow-[inset_0_0_0_2px_var(--danger)]' : ''}" />
         {/if}
         <button type="button" tabindex="-1" class="press absolute top-1.5 right-1 grid h-9 w-7 place-items-center rounded-[9px] text-muted hover:bg-fill2 hover:text-accent" aria-label="Pick {LABEL[w]} on the clock (Alt+↓)" title="Pick on the clock (Alt+↓)"
           onmousedown={(e) => e.preventDefault()} onclick={() => (dial = w)}><Icon name="clock" size={17} stroke={2} /></button>

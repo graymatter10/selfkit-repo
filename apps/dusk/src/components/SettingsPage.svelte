@@ -99,7 +99,7 @@
         <label for="ds" class="flex min-w-0 flex-1 flex-col gap-0.5">New day starts at<small class="text-[13px] text-muted">Sleep before this counts as last night</small></label>
         <select id="ds" class="num h-11 rounded-[12px] bg-fill px-3 text-[15px] outline-none" value={app.settings?.day_start_min ?? 0}
           onchange={(e) => app.settings && saveSettings({ ...app.settings, day_start_min: Number((e.currentTarget as HTMLSelectElement).value) })}>
-          {#each DAY_STARTS as m}<option value={m}>{clock(m)}</option>{/each}
+          {#each DAY_STARTS as m}<option value={m}>{tdisp(clock(m))}</option>{/each}
         </select>
       </div>
       <div class="h-px bg-sep"></div>

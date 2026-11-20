@@ -104,6 +104,7 @@ Tested with the default seed (120 nights; the user asked not to use a year for D
 
 ## Phone QA fixes 2026-11-15
 - Nap rows and the Night page times (bed/wake cells, "was …", last screen use, timeline ticks and its label) use the same 12h/24h rule as the pickers (`hmd()` = `tdisp(hm())` in `lib/fmt.ts`), so a 12h phone no longer shows "16:15–17:30" next to a "4:15 pm" picker. Timeline ticks read "3 am" in 12h.
+- 2026-11-21 (Linux hunt): "Bed on time" card and the "New day starts at" list follow the 12h/24h rule too (L4-2); desktop time fields are wider with a smaller font in 12h so "11:30 pm" isn't clipped under the clock button (L4-1); "1 night with data" (L4-3); Sleep debt shows "–" with no nights instead of "None" (L4-4); on the dial, minute arrow keys carry into the hour (10:59 → 11:00, L4-5).
 - The nap screen header says which day: "Add nap" · "Nap · Sun 15 Nov" (was the night range "Sat 14 – Sun 15 Nov"); naps belong to the day of the night's morning.
 - Default wake time for a nap = fell asleep + 30 min: already in the tree (clock-dial work), verified in code.
 - Needs a phone re-check (12h locale: nap row format, header).

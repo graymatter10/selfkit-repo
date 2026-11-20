@@ -86,7 +86,11 @@
       e.preventDefault();
       const step = e.shiftKey && stage === "m" ? d * 5 : d;
       if (stage === "h") set(h + step, m);
-      else set(h, m + step);
+      else {
+        // Minutes carry into the hour like the hour keys carry into am/pm (10:59 → 11:00, L4-5).
+        const t = (((h * 60 + m + step) % 1440) + 1440) % 1440;
+        set(Math.floor(t / 60), t % 60);
+      }
     } else if (/^[0-9]$/.test(e.key) && stage === "m") {
       // quick minute typing on desktop: two digits
       e.preventDefault();
