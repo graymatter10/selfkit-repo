@@ -301,7 +301,10 @@ fn log_completion(store: &Store, task_id: &str, d: &Map<String, Value>, now: Nai
     if let Some(t) = d.get("tags") {
         c.insert("tags".into(), t.clone());
     }
-    Ok(store.put(COMPLETIONS, None, &Value::Object(c))?.id)
+    // One id per task occurrence (its start), so the same occurrence completed on two
+    // devices before syncing is one history entry, not two (C30).
+    let id = format!("c-{task_id}-{}", str_of(d, "start").unwrap_or("none"));
+    Ok(store.put(COMPLETIONS, Some(&id), &Value::Object(c))?.id)
 }
 
 #[derive(Debug, Clone, Serialize)]
