@@ -124,7 +124,8 @@ async fn pull<R: Remote>(store: &mut Store, remote: &R, key: &SecretKey, rep: &m
             match decrypt_record(key, &rr) {
                 Ok(rec) => {
                     match store.apply_remote(&rec, rr.rev)? {
-                        Applied::Inserted | Applied::Updated => rep.pulled += 1,
+                        Applied::Inserted | Applied::Updated if rec.is_user_data() => rep.pulled += 1,
+                        Applied::Inserted | Applied::Updated => {}
                         Applied::Conflict => rep.conflicts += 1,
                         Applied::Unchanged => {}
                     }
@@ -159,7 +160,7 @@ pub async fn sync_once<R: Remote>(store: &mut Store, remote: &R, key: &SecretKey
             match remote.push(&rr, base).await? {
                 Some(rev) => {
                     store.mark_synced(&rec.id, rec.updated_at, rev)?;
-                    rep.pushed += 1;
+                    rep.pushed += rec.is_user_data() as u64;
                 }
                 None => {
                     // Someone else changed it: fetch theirs and let the store decide.
@@ -202,16 +203,17 @@ mod tests {
         // Server only ever sees ciphertext.
         assert!(remote.rows().iter().all(|r| !String::from_utf8_lossy(&r.ciphertext).contains("one")));
 
-        // Concurrent edits -> conflict on the second pusher.
-        a.put("tasks", Some(&t.id), &json!({"title": "A edit"})).unwrap();
-        b.put("tasks", Some(&t.id), &json!({"title": "B edit"})).unwrap();
+        // Concurrent edits of long text -> conflict on the second pusher (short fields auto-merge).
+        std::thread::sleep(std::time::Duration::from_millis(20)); // both edits newer than the shared version
+        a.put("tasks", Some(&t.id), &json!({"title": "edit\nA edit"})).unwrap();
+        b.put("tasks", Some(&t.id), &json!({"title": "edit\nB edit"})).unwrap();
         sync_once(&mut a, &remote, &key).await.unwrap();
         let rb = sync_once(&mut b, &remote, &key).await.unwrap();
         assert_eq!(rb.conflicts, 1);
         b.resolve_conflict(&t.id, Resolution::KeepLocal).unwrap();
         assert_eq!(sync_once(&mut b, &remote, &key).await.unwrap().pushed, 1);
         sync_once(&mut a, &remote, &key).await.unwrap();
-        assert_eq!(a.get(&t.id).unwrap().unwrap().data["title"], "B edit");
+        assert_eq!(a.get(&t.id).unwrap().unwrap().data["title"], "edit\nB edit");
 
         // Deletes propagate.
         a.delete(&t.id).unwrap();

@@ -7,8 +7,18 @@
 # lowest priority. Only the user's build tools are touched (rustc, cargo, cc,
 # ld, bun/node/vite, java/gradle, webkit test apps); never the desktop, Claude,
 # adb or system processes.
+# Hard limit (user rule): the CPU must not stay at or above LIMIT (70 °C) for more
+# than LIMIT_SECS (40 s). Stage 1 at LIMIT_SECS: stop (SIGTERM) all build/test work
+# and report it. Stage 2, still >= LIMIT for another LIMIT_SECS: save uncommitted
+# work as a local snapshot ref and power off. Every event also goes to the notify
+# queue so the lead reports it in the main chat.
 # usage: dev/thermal-guard.sh     (runs until killed; log: /shared/selfkitextra/locks/thermal.log)
 HOT=${HOT:-65}; CRIT=${CRIT:-70}; COOL=${COOL:-55}; HOT_SECS=${HOT_SECS:-10}
+LIMIT=${LIMIT:-70}; LIMIT_SECS=${LIMIT_SECS:-40}
+Q=/shared/selfkitextra/locks/notify
+REPO=$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)
+notify() { mkdir -p "$Q"; echo "THERMAL: $*" > "$Q/req-$(date +%s%N)-thermal"; log "$*"; }
+over_since=0; stage=0
 LOG=/shared/selfkitextra/locks/thermal.log
 zone=$(grep -l x86_pkg_temp /sys/class/thermal/thermal_zone*/type 2>/dev/null | head -1)
 zone=${zone%/type}/temp
@@ -21,6 +31,27 @@ hot_since=0; throttling=0
 trap 'for p in $(pids); do kill -CONT "$p" 2>/dev/null; done; exit 0' INT TERM EXIT
 while :; do
   t=$(temp); now=$(date +%s)
+  if [ "$t" -ge "$LIMIT" ]; then
+    [ "$over_since" = 0 ] && over_since=$now
+    over=$((now - over_since))
+    if [ "$stage" = 0 ] && [ "$over" -ge "$LIMIT_SECS" ]; then
+      stage=1; notify "${t}°C for ${over}s (limit ${LIMIT}°C/${LIMIT_SECS}s): stopping all build and test work"
+      for p in $(pids); do kill -CONT "$p" 2>/dev/null; kill -TERM "$p" 2>/dev/null; done
+      over_since=$now
+    elif [ "$stage" = 1 ] && [ "$over" -ge "$LIMIT_SECS" ]; then
+      notify "still ${t}°C ${LIMIT_SECS}s after stopping builds: saving work and powering off"
+      cd "$REPO" && idx=$(mktemp) && GIT_INDEX_FILE=$idx git read-tree HEAD && GIT_INDEX_FILE=$idx git add -A \
+        && tree=$(GIT_INDEX_FILE=$idx git write-tree) && rm -f "$idx" \
+        && c=$(GIT_AUTHOR_NAME="no name" GIT_AUTHOR_EMAIL="noname@noemail.com" GIT_COMMITTER_NAME="no name" GIT_COMMITTER_EMAIL="noname@noemail.com" git commit-tree "$tree" -p HEAD -m "Thermal snapshot $(date '+%F %T')") \
+        && git update-ref "refs/wip/thermal-$(date +%Y%m%d-%H%M%S)" "$c" && log "snapshot $c"
+      sync; sleep 3
+      systemctl poweroff || busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager PowerOff b false
+      exit 0
+    fi
+  else
+    [ "$stage" = 1 ] && [ "$over_since" != 0 ] && notify "back to ${t}°C after stopping builds"
+    over_since=0; stage=0
+  fi
   for p in $(pids); do renice -n 19 -p "$p" >/dev/null 2>&1; done
   if [ "$throttling" = 0 ]; then
     if [ "$t" -ge "$HOT" ]; then

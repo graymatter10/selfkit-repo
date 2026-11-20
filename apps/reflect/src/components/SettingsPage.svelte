@@ -99,7 +99,7 @@
     {#each ["chrono", "hisab", "agenda", "dusk"] as AppKey[] as a}
       <div class="lrow"><span class="grid w-5 shrink-0 place-items-center"><i class="block h-2 w-2 rounded-full" style="background:var(--{a})"></i></span>
         <div class="lbl"><b>{APP_NAMES[a]}</b><small>{APP_WHAT[a]}{first[a] ? ` · since ${since(first[a])}` : ""}</small></div>
-        <span class="v">{#if app.sources?.has[a]}<span class="text-accent"><Icon name="check" size={17} stroke={2.4} /></span>{:else}<span class="text-[13px] font-medium text-muted">{app.sources?.mobile ? "Not shared yet" : found[a] ? "No data yet" : "Not installed"}</span>{/if}</span></div>
+        <span class="v">{#if app.sources?.has[a]}<span class="text-accent"><Icon name="check" size={17} stroke={2.4} /></span>{:else}<span class="text-[13px] font-medium text-muted">{found[a] ? "No data yet" : "Not installed"}</span>{/if}</span></div>
     {/each}
   </div>
   <p class="mx-1 mt-2 text-[13px] leading-[1.45] text-muted">Reflect only reads these apps and never changes them. An app that isn't installed is simply left out.{app.sources?.mobile ? " On this phone Reflect reads the Selfkit apps installed here (each app shares its data only with your other Selfkit apps)." : ""}</p>

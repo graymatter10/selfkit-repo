@@ -234,7 +234,7 @@
   .k-pick .k-chk { position: absolute; top: 9px; right: 9px; width: 18px; height: 18px; border-radius: 9px; border: 1.5px solid var(--line-c); box-sizing: border-box; display: grid; place-items: center; color: #fff; }
   .k-pick.k-sel .k-chk { border: none; }
   .k-pick.k-sel.k-a .k-chk { background: var(--sa); } .k-pick.k-sel.k-b .k-chk { background: var(--sb); }
-  .k-v { font-weight: 550; overflow-wrap: anywhere; }
+  .k-v { font-weight: 550; overflow-wrap: anywhere; white-space: pre-line; }
   .k-v.k-gone { color: var(--mut); font-weight: 500; font-style: italic; }
   .k-diff { border: 1px solid var(--line-c); border-radius: 12px; overflow: hidden; margin-bottom: 10px; font-size: 13px; }
   .k-dl { display: flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 44px; width: 100%; box-sizing: border-box; background: none; border: 0; font: inherit; color: inherit; text-align: left; }

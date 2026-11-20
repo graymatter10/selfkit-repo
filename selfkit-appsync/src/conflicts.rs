@@ -63,6 +63,12 @@ pub enum Choice {
     },
 }
 
+/// Bookkeeping fields the user never picks between (bugs.md QA-U2): they follow the
+/// chosen version (Merge keeps A's, which the store restamps anyway).
+fn hidden(key: &str) -> bool {
+    matches!(key, "id" | "created_at" | "updated_at" | "tz_offset")
+}
+
 fn is_long(v: &Option<Value>) -> bool {
     matches!(v, Some(Value::String(s)) if s.contains('\n') || s.chars().count() > LONG_TEXT)
 }
@@ -73,6 +79,7 @@ pub fn view(store_name: &str, store: &Store) -> Result<Vec<ConflictView>> {
         let diffs = conflict::field_diffs(&c.local.data, &c.remote.data);
         let fields = diffs
             .into_iter()
+            .filter(|d| !hidden(&d.key))
             .map(|d| {
                 let lines = (is_long(&d.local) && is_long(&d.remote)).then(|| {
                     conflict::line_diff(d.local.as_ref().and_then(Value::as_str).unwrap_or(""), d.remote.as_ref().and_then(Value::as_str).unwrap_or(""))
@@ -84,7 +91,7 @@ pub fn view(store_name: &str, store: &Store) -> Result<Vec<ConflictView>> {
             .local
             .data
             .as_object()
-            .map(|o| o.keys().filter(|k| !fields.iter().any(|f| &f.key == *k)).cloned().collect())
+            .map(|o| o.keys().filter(|k| !hidden(k) && !fields.iter().any(|f| &f.key == *k)).cloned().collect())
             .unwrap_or_default();
         let v = |r: &selfkit_core::Record| Version {
             device_id: r.device_id.clone(),

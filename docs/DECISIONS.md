@@ -1,5 +1,13 @@
 # Decisions (newest first)
 
+## 2026-11-20 — Sync bug round (QA-U1..U4, R1), Hisab typing lag, laptop limits
+- Numbers compare by value in sync (`conflict::json_eq`: `5000 == 5000.0`) for conflict diffs, `same_content`, field clocks and the field merge. Reason: Rust writes whole numbers as f64, JS as integers, so every such field looked changed (QA-U3).
+- The conflict screen hides bookkeeping fields (`id`, `created_at`, `updated_at`, `tz_offset`) and shows lists/objects as readable items (one per line, title/name or values without ids/timestamps). Reason: users can't decide between raw JSON or epoch numbers (QA-U2/U3).
+- "Selfkit companion" is only selectable when `com.selfkit.companion` is installed (bridge `companionInstalled`, manifest `<queries>`); a phone already set to it shows "Not syncing" with "Let this app sync". Reason: choosing it silently stopped sync (QA-U4).
+- Hisab: the add-screen draft goes to localStorage on every key and to SQLite only after 1.5 s idle (or when the app is hidden); both copies carry `_t` and boot takes the newer. The main data commands (`snapshot`, `transactions`, `trends`, `save`, `get`, `remove`, `restore`, `draft_set`, `prefs_set`) run as `#[tauri::command(async)]`, off the UI thread. Reason: 0.1.4 typing stalls — a SQLite write per key on the main thread waited for sync passes.
+- Same field edited on two devices auto-merges (newer wins) by design (field clocks); QA tests that expected a conflict there now use long notes, which still go to the conflict screen.
+- Laptop safety (user rule): CPU may not stay >= 70 °C longer than 40 s — `dev/thermal-guard.sh` stops build/test work at 40 s and saves a snapshot ref and powers off if still hot 40 s later; `dev/power-guard.sh` powers off on battery below 30 %. Both post to the notify queue so the lead reports events in the main chat.
+
 ## 2026-11-15 — Security hardening (security audit, docs/security.md)
 - Release workflows compile with `SELFKIT_RELEASE=1`, which disables the public sync test key and test server. Reason: `sync-test-key` is in every app's default features, so release installers would have synced real data under a public key. Kept the feature default on for test builds so phone testing still needs no passphrase; flipping the default is the lead's call once the phones have real encryption set up.
 - A device with `keys.json` never falls back to the test key (unreadable secret store → Locked). Reason: a keychain hiccup silently moved a real-data device onto the public key, including its LAN listener.

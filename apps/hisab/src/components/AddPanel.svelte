@@ -7,7 +7,7 @@
   import { api, type Tx } from "../lib/api";
   import { LOCALE, money, nowHm, shortDate, symbol, todayIso, dayLabel } from "../lib/fmt";
   import { addPhoto } from "../lib/photo";
-  import { accountById, accounts, app, catById, defaultAccount, emptyDraft, openSheet, persistDraft, rankedCats, refresh, resetDraft, main } from "../lib/state.svelte";
+  import { accountById, accounts, app, catById, defaultAccount, draftWritten, emptyDraft, openSheet, persistDraft, rankedCats, refresh, resetDraft, main } from "../lib/state.svelte";
   import CategoryRow from "./CategoryRow.svelte";
   import Ic from "./Ic.svelte";
   import NumPad from "./NumPad.svelte";
@@ -125,7 +125,8 @@
       // here before anything else is awaited: a kill or Home right after Save
       // used to bring the saved amount back as a draft (double entry on next Save).
       const keep = { kind: dr.kind, account: dr.account };
-      const t = await api.save<Tx>("transactions", data, undefined, { ...emptyDraft(), ...keep });
+      await draftWritten(); // a queued draft write must not land after this Save
+      const t = await api.save<Tx>("transactions", data, undefined, { ...emptyDraft(), ...keep, _t: Date.now() });
       resetDraft(keep);
       await refresh();
       const label = dr.kind === "transfer" ? "Moved" : dr.kind === "income" ? "Income saved" : "Saved";

@@ -64,7 +64,8 @@ async fn pull_phase<S: AsyncRead + AsyncWrite + Unpin + Send>(
             let tx = store.conn().unchecked_transaction()?;
             for r in &records {
                 match store.apply_peer(r)? {
-                    Applied::Inserted | Applied::Updated => rep.received += 1,
+                    Applied::Inserted | Applied::Updated if r.is_user_data() => rep.received += 1,
+                    Applied::Inserted | Applied::Updated => {}
                     Applied::Conflict => rep.conflicts += 1,
                     Applied::Unchanged => {}
                 }
@@ -95,7 +96,7 @@ async fn serve_phase<S: AsyncRead + AsyncWrite + Unpin + Send>(
                 let changes = stores[&app].changes_since(since, PAGE)?;
                 let more = changes.len() as u32 == PAGE;
                 let upto = changes.last().map(|(_, l)| *l).unwrap_or(since);
-                rep.sent += changes.len() as u64;
+                rep.sent += changes.iter().filter(|(r, _)| r.is_user_data()).count() as u64;
                 let records = changes.into_iter().map(|(r, _)| r).collect();
                 ch.send(&Msg::Batch { app, records, upto, more }).await?;
             }
