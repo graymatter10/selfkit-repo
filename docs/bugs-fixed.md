@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| P37 | amount font shrinks until it fits the row (measured), not only by length — regression from P12 | `AddPanel.svelte` | OPPO |
 | L3-12 / C83 | goals get `created` (day); Today/report/alerts skip days before it; website targets normalised on save; excluded subdomains already dropped thanks to the L3-10 norm_domain fix | `apps/chrono/src-tauri/src/{settings,stats,alerts}.rs`, `Settings.svelte`, `api.ts` | Linux |
 | L3-11 / C84 | analysed on hunter 3's chrono.db (copy): device keys match (not the cause); 9.0 of 24.9 website minutes lie outside any browser-app interval = the L3-1/L3-6 over-count (extension kept the session while another app was in front). Categories swap browser-app time for website time per device, the screen total is a union, so that over-count makes them disagree. Fixed at the source by C52 + browser_foreground (66d9a8a); no change to the totals logic. Retest after a8 | — | Linux |
 | P35 / C81 | note blurs when the keyboard closes (visualViewport grows), pad comes back | `AddPanel.svelte` | OPPO |

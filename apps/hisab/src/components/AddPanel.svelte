@@ -50,9 +50,21 @@
   const splitIds = $derived(app.draft.splits.map((s) => s.category));
   const canSave = $derived(amountNum > 0 && !busy);
   // Long amounts shrink so "9,999,999,999.99" fits next to the chips on a 360 dp phone.
-  const amountPx = $derived.by(() => {
+  const basePx = $derived.by(() => {
     const n = display(app.draft.amount).length;
     return compact ? (n > 12 ? 22 : n > 9 ? 27 : 34) : (n > 12 ? 25 : n > 9 ? 31 : 40);
+  });
+  // ...and keep shrinking until it really fits the row: with 2 decimals after 10 digits
+  // (P12) and wide chips, "1,234,567.8…" was cut under the currency chip (P37).
+  let amountRow: HTMLDivElement | undefined = $state();
+  $effect(() => {
+    void app.draft.amount, cur;
+    const el = amountRow;
+    if (!el) return;
+    let px = basePx;
+    el.style.setProperty("--amt", `${px}px`);
+    // Reading scrollWidth lays out with the new size at once.
+    while (el.scrollWidth > el.clientWidth + 1 && px > 14) el.style.setProperty("--amt", `${--px}px`);
   });
 
   $effect(() => {
@@ -181,9 +193,9 @@
   <!-- Amount, currency, account -->
   <div class="flex items-end gap-2 px-1">
     <div class="min-w-0 flex-1 {shake ? 'animate-[shake_.3s]' : ''} {phone ? '' : 'rounded-[14px] px-2 py-1.5 shadow-[inset_0_0_0_2px_var(--accent)]'}">
-      <div class="num flex items-baseline gap-1 truncate {app.draft.amount ? 'text-ink' : 'text-faint'} {app.draft.kind === 'income' && app.draft.amount ? 'text-accent-ink' : ''}" aria-live="polite" aria-label="Amount">
+      <div bind:this={amountRow} class="num flex items-baseline gap-1 overflow-hidden whitespace-nowrap {app.draft.amount ? 'text-ink' : 'text-faint'} {app.draft.kind === 'income' && app.draft.amount ? 'text-accent-ink' : ''}" aria-live="polite" aria-label="Amount">
         <span class="text-[22px] font-medium text-muted">{symbol(cur)}</span>
-        <span class="leading-none font-semibold tracking-[-1px]" style="font-size: {amountPx}px">{display(app.draft.amount)}</span>{#if !phone}<span class="amt-caret" aria-hidden="true"></span>{/if}
+        <span class="leading-none font-semibold tracking-[-1px]" style="font-size: var(--amt, {basePx}px)">{display(app.draft.amount)}</span>{#if !phone}<span class="amt-caret" aria-hidden="true"></span>{/if}
       </div>
       {#if !phone}<div class="mt-0.5 text-[12px] text-muted">{app.draft.amount ? "Enter saves · Backspace deletes · Delete clears" : "Type an amount · Enter saves"}</div>{/if}
     </div>
