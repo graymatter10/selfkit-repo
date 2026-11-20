@@ -56,7 +56,8 @@
     else if (/^\d$/.test(k)) {
       const [, frac] = a.split(".");
       if (frac !== undefined && frac.length >= 2) return;
-      if (a.replace(".", "").length >= 10) return;
+      // Up to 10 whole digits plus 2 decimals (decimals after 10 digits were dropped, P12).
+      if (frac === undefined && a.length >= 10) return;
       a = a === "0" ? k : a + k;
     }
     app.draft.amount = a;
