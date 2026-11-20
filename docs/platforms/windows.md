@@ -58,11 +58,14 @@ NSIS uninstallers copy themselves to `%TEMP%` and return at once; wait for the A
 
 ## Build (CI)
 `windows.yml` (push to `test/**` or `ci/installers/**`, by hand, or from `release.yml`):
-1. `cargo test -p selfkit-core -p selfkit-agent`, `cargo build --release -p selfkit-agent`.
+1. `cargo test --no-fail-fast -p selfkit-core -p selfkit-agent`; then the ignored `install::tests::windows_native_host_round_trip` with `--ignored` (writes the real HKCU native-host keys, checks them, removes them, restores any earlier value; it refuses to run unless `CI=true`); `cargo build --release -p selfkit-agent`.
 2. Each app: `bun tauri build --bundles nsis`, copied to `dist/` right away.
-3. `makensis` (preinstalled on the runner; `choco install nsis` fallback): launcher → agent installer → stage component installers + download the WebView2 offline installer (Authenticode signature checked) → Selfkit Setup.
+3. `makensis`: the full NSIS 3 the Tauri CLI downloads in step 2 (`%LOCALAPPDATA%\tauri\NSIS\makensis.exe`), else a system NSIS, else `choco install nsis` (3 tries). `windows-latest` no longer ships NSIS and the Chocolatey feed times out now and then. Then: launcher → agent installer → stage component installers + download the WebView2 offline installer (Authenticode signature checked) → Selfkit Setup.
 4. `installer/windows/test-installers.ps1`: per app: silent install, exe + `Selfkit\<App>.lnk` + Apps & features key, launch 10 s (must stay up and create `<app>.db`), uninstall keeps data, reinstall + `/DELETEDATA` deletes only that app's data. Agent: Run value, native host keys + manifest path, one native-messaging round trip (status → ok, L3-4), extension folder shipped (L3-3), running with no window, `selfkit-agent status` over the named pipe, uninstall removes all of it and keeps data, `/NOSTART`, `/DELETEDATA`. Setup: install all, combined uninstall keeps data, `/APPS=hisab,agent`, combined uninstall `/DELETEDATA` removes the data folder.
+   The test step has a 30 min cap. Installers are awaited with `WaitForExit` on the installer process only: `Start-Process -Wait` also waits for children, and the agent installer leaves the agent running, which hung the first runs for 2 h. The native-messaging round trip writes stdin without a UTF-8 BOM (Windows PowerShell's redirected stdin adds one, which the host reads as a 300 MB length). If an app's DB does not appear within 60 s, the test prints its stderr, window title and the data folder.
 5. Artifact `windows-installers` (14 days).
+
+Status: first fully green run on 2026-11-21 (branch `ci/installers/first-build`, see docs/DECISIONS.md). Every installer built and passed the checks above on `windows-latest`.
 
 From the dev machine: `installer/ci-installers.sh [installers] [out-dir]` (snapshot of the working tree → `ci/installers/<stamp>`, which triggers only `windows.yml`; waits, downloads to `<out-dir>/<stamp>/`, deletes the branch).
 

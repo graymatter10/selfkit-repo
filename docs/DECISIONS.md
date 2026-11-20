@@ -1,5 +1,11 @@
 # Decisions (newest first)
 
+## 2026-11-21 — Windows installers: first green CI build
+- **makensis comes from the Tauri CLI's download** (`%LOCALAPPDATA%\tauri\NSIS`), then a system NSIS, then Chocolatey (3 tries). Reason: `windows-latest` no longer ships NSIS and the Chocolatey feed returned 504. Tauri's copy is a full NSIS 3 with the standard includes and plugins, and the app builds download it anyway, so it costs nothing.
+- **The installer test waits for the installer process only** (`WaitForExit`, 5 min cap), and the test step has a 30 min cap. Reason: `Start-Process -Wait` also waits for children, and the agent installer starts the agent, so the first runs hung until the 2 h job timeout.
+- **Agent "delete data" keeps the apps' local backups** (C99). It deletes only the agent's own files (`agent.json`, `health.json`, `agent-reminders.json`, `logs\`, `backups\state.json`). `backups\<app>\` goes only with that app's own delete or "delete ALL". Reason: the backups are app data, and the checkbox is about the agent.
+- **The HKCU native-host round-trip test runs only on CI** (C100). It is `#[ignore]`d, refuses to run without `CI=true`, and restores any value that was there before. Reason: it writes the real per-user browser keys.
+
 ## 2026-11-21 — Desktop without a keyring (C80/S-5)
 - A sync pass treats unreadable secure storage as "no server here", so LAN sync works (on the test key in test builds).
 - Saving the server and encryption key on such a desktop uses a 0600 file in the data folder (`sync/secrets.json`) instead of failing. Reason: the threat model already excludes same-user malware (which can read the plaintext DBs and the keychain); refusing left these users with no sync and no encryption at all. The keychain is always tried first; the agent is unchanged (keychain only).

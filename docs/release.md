@@ -4,7 +4,7 @@ Everything is built in the cloud by `.github/workflows/release.yml`; nothing hea
 
 ## What it builds
 - `android` ×5 (`android.yml`, one per app): release APK, arm64.
-- `windows` (`windows.yml`): per-app NSIS installers, agent installer, `SelfkitSetup_<v>_x64.exe`; tested end to end ([platforms/windows.md](platforms/windows.md)).
+- `windows` (`windows.yml`): per-app NSIS installers, agent installer, `SelfkitSetup_<v>_x64.exe`; tested end to end ([platforms/windows.md](platforms/windows.md)). First green run 2026-11-21. The job takes ~40 min: ~15 min for the 5 app builds, ~3 min for the installer tests. makensis is the NSIS the Tauri CLI downloads, because the runner image has none.
 - `linux` (`linux.yml`): per-app `.deb` + `.AppImage`, agent `.deb` + tarball; tested ([platforms/linux.md](platforms/linux.md)).
 - `publish`: collects all files, signs the APKs (if the signing secrets exist), writes `SHA256SUMS.txt` and release notes (app versions table), and creates the draft.
 
@@ -28,4 +28,5 @@ Without them the draft carries `<app>-<v>-arm64-unsigned.apk`; sign locally with
 
 ## Notes
 - Windows installers are not code-signed, so SmartScreen warns on first run ("More info → Run anyway").
+- `installer/ci-installers.sh` deletes its `ci/installers/<stamp>` branch when it ends. To keep a run's branch, push `HEAD:refs/heads/ci/installers/<name>` yourself (the trigger is the same).
 - Test-only snapshots: `installer/ci-installers.sh` (Windows only; Linux builds locally with `installer/linux/build-local.sh`) and `dev/ci-apk.sh <app>` (one APK). Branches `ci/installers/**` trigger windows only, `ci/installers-release/**` the release dry run, other `ci/<app>/**` one APK.
