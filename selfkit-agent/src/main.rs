@@ -39,7 +39,7 @@ USAGE:
   selfkit-agent restore --file F   import one .skb file
   selfkit-agent native-host        browser native-messaging host (stdin/stdout)
   selfkit-agent install-native-host [--path EXE] [--extension-id ID] [--chrome-profile DIR] [--uninstall]
-  selfkit-agent install-service [--enable] [--uninstall]   systemd user unit / Windows logon task
+  selfkit-agent install-service [--enable] [--uninstall]   systemd user unit / Windows HKCU Run entry
   selfkit-agent set-secret pg|s3   store the Postgres URL / S3 JSON (stdin) in the OS keychain
   selfkit-agent init               first-time key setup (passphrase on stdin)
   selfkit-agent unlock [--recovery] unlock with passphrase or recovery key (stdin), store data key

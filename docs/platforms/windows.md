@@ -77,7 +77,7 @@ App config (each `apps/<app>/src-tauri/tauri.conf.json` → `bundle`): `publishe
 
 ## Runtime notes
 - **Agent:** per-user (not a Service: Services can't see the active window). Tracking via `GetForegroundWindow` + `GetLastInputInfo`. Compiles and its tests pass on the Windows runner.
-  - `selfkit-agent install-service` → `schtasks /Create /SC ONLOGON /TN "Selfkit agent" ...` (needs admin; the installer uses the Run key instead, see above). `--uninstall` deletes it.
+  - `selfkit-agent install-service` → per-user `HKCU\…\Run` value "Selfkit agent" (same as the installer, its hidden launcher when present; no admin needed) and removes an old "Selfkit agent" logon task. `--uninstall` deletes the value (C28).
   - `selfkit-agent install-native-host` → see above.
   - IPC: named pipe `\\.\pipe\selfkit-agent`. Health: RSS via `GetProcessMemoryInfo`, CPU via `GetProcessTimes`. Reminders: a toast via PowerShell (`Windows.UI.Notifications`); the "is Agenda running" check uses `tasklist`.
 - Local cross-build (`x86_64-pc-windows-gnu`) is not set up (no mingw on the dev machine); use CI.

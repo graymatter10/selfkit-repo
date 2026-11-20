@@ -109,7 +109,13 @@ pub fn agenda_running() -> bool {
         let Ok(rd) = std::fs::read_dir("/proc") else { return false };
         return rd.flatten().any(|e| {
             e.file_name().to_str().is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
-                && std::fs::read_to_string(e.path().join("comm")).is_ok_and(|c| c.trim() == "agenda")
+                // comm ignoring case ("Agenda" from a productName-named binary), or the
+                // executable's file name (AppImage, renamed installs) — C29.
+                && (std::fs::read_to_string(e.path().join("comm")).is_ok_and(|c| c.trim().eq_ignore_ascii_case("agenda"))
+                    || std::fs::read_link(e.path().join("exe"))
+                        .ok()
+                        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()))
+                        .is_some_and(|n| n == "agenda" || n == "agenda.appimage" || n.starts_with("agenda_")))
         });
     }
     #[cfg(windows)]
