@@ -15,8 +15,9 @@ import org.json.JSONObject
  * same key). Goes through selfkit-appsync/selfkit-core so history and dirty flags stay right.
  *
  *  query  /changes?store=<app|settings>&since=<lseq>&limit=500  -> lseq, id, collection, data, updated_at, deleted, record (full JSON)
- *  query  /table?name=<table>  -> one row: sql (CREATE TABLE), rows (JSON array); only the
- *         local tables listed in selfkit-appsync android.rs SHARED_TABLES (Dusk: dusk_nights)
+ *  query  /table?name=<table>[&offset=&limit=]  -> one row: sql (CREATE TABLE), rows (JSON array
+ *         of that page), count (rows in the page); only the local tables listed in
+ *         selfkit-appsync android.rs SHARED_TABLES (Dusk: dusk_nights). No limit = whole table.
  *  insert /records  values: store?, collection, id?, data(JSON)  -> /records/<id>
  *  call   "status" | "sync_now" | "settings" | "set_settings" | "schedule" | "conflicts"   (arg/extras "json")
  *         -> Bundle { "json": <result> }
@@ -35,9 +36,12 @@ class SelfkitDataProvider : ContentProvider() {
         guard()
         val ctx = context!!
         if (uri.pathSegments.firstOrNull() == "table") {
-            val res = SelfkitSync.call(ctx, "table_rows", JSONObject().put("name", uri.getQueryParameter("name") ?: ""))
-            if (!res.optBoolean("ok")) return null
-            return MatrixCursor(arrayOf("sql", "rows")).apply { addRow(arrayOf<Any?>(res.getString("sql"), res.getString("rows"))) }
+            val args = JSONObject().put("name", uri.getQueryParameter("name") ?: "")
+            uri.getQueryParameter("offset")?.toLongOrNull()?.let { args.put("offset", it) }
+            uri.getQueryParameter("limit")?.toLongOrNull()?.let { args.put("limit", it) }
+            val res = SelfkitSync.call(ctx, "table_rows", args)
+            if (!res.optBoolean("ok")) throw IllegalStateException("table ${args.optString("name")}: ${res.optString("error")}")
+            return MatrixCursor(arrayOf("sql", "rows", "count")).apply { addRow(arrayOf<Any?>(res.getString("sql"), res.getString("rows"), res.optLong("count"))) }
         }
         if (uri.pathSegments.firstOrNull() != "changes") return null
         val args = JSONObject()

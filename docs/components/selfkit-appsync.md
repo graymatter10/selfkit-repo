@@ -88,7 +88,7 @@ App seeds: Hisab `--year`, Agenda `--year`, Chrono default seed. `year_data_full
 | Agenda | 3,559 | 2.1 MB | 9.5 s | 1.1 s | 1.0 s | 0.60 / 0.55 / 0.06 s |
 | Chrono | 22,961 | 12.7 MB | 60.8 s | 6.7 s | 6.1 s | 3.41 / 2.93 / 0.05 s |
 
-Server table for all three: 16.3 MB (encrypted). The first push is slow because core pushes one row per round trip; incremental syncs are well under the 15-min period. A LAN pass no longer sends a peer the versions it wrote itself (`serve_phase` skips `device_id == peer`; the phone's first push of 6458 Chrono records used to come straight back — S-4), so incremental LAN only moves real changes.
+Server table for all three: 16.3 MB (encrypted). The first push is slow because core pushes one row per round trip; incremental syncs are well under the 15-min period. A LAN pass no longer sends a peer the versions it wrote itself (`serve_phase` skips `device_id == peer`; the phone's first push of 6458 Chrono records used to come straight back — S-4), so incremental LAN only moves real changes. Exception: a puller that holds none of its own records (wiped database, same device id) sets `restore` in its `Pull` and gets them back (C85; JSON field, older peers omit it = false).
 
 ## Known limits
 - Pushes are one row per round trip (core `sync_once`): a first upload of a year of Chrono took 61 s locally and will take minutes over a mobile link. Batch push is the next core improvement.

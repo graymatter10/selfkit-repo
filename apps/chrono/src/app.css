@@ -85,6 +85,8 @@ svg text { font-family: "Inter Variable", Inter, system-ui, sans-serif; }
 .facts .l { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .row { display: flex; align-items: center; gap: 12px; min-height: 52px; border-top: 1px solid var(--line2); width: 100%; }
 .row:first-child, .ch + .row, .ch + .gr { border-top: 0; }
+button.row:focus:not(:focus-visible) { outline: none; }
+button.row:focus-visible { outline-offset: -2px; } /* inside the clipped card (Agenda L2) */
 .row .nm { font-size: 15px; } .row .sb { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .row .val { font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 button.row:hover { background: var(--raised); }

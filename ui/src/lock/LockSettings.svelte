@@ -33,6 +33,13 @@
     if (f === "change") kind = "pin";
   }
   const close = () => { flow = ""; current = first = entry = ""; };
+  // `autofocus` sometimes lost to the button that opened the dialog (desktop "Turn off
+  // app lock", Linux): focus once the dialog is laid out, and again a frame later.
+  function focusSoon(el: HTMLInputElement) {
+    el.focus();
+    const id = requestAnimationFrame(() => { if (document.activeElement !== el) el.focus(); });
+    return { destroy: () => cancelAnimationFrame(id) };
+  }
   function bad(text: string) {
     err = text; entry = ""; shake = true;
     setTimeout(() => (shake = false), 420);
@@ -166,8 +173,7 @@
           <div class="l-acts" style:visibility={act ? null : "hidden"}><button type="button" class="l-btn l-pri" disabled={!act || entry.length < 4 || busy} onclick={() => next()}>{step === "current" ? "Continue" : "Next"}</button></div>
         {:else}
           {#key step}
-            <!-- svelte-ignore a11y_autofocus -->
-            <input class="l-in" type="password" inputmode={curKind === "pin" ? "numeric" : "text"} bind:value={entry} autofocus autocomplete="new-password" autocapitalize="off" spellcheck="false"
+            <input class="l-in" type="password" inputmode={curKind === "pin" ? "numeric" : "text"} bind:value={entry} use:focusSoon autocomplete="new-password" autocapitalize="off" spellcheck="false"
               aria-label={prompt} onkeydown={(e) => e.key === "Enter" && next()} />
           {/key}
           {#if err}<p class="l-msg">{err}</p>{/if}

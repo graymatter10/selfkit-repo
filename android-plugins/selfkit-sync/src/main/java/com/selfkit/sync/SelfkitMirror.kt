@@ -2,6 +2,7 @@ package com.selfkit.sync
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -72,21 +73,52 @@ object SelfkitMirror {
             since = upto
             if (records.length() < 500) break
         }
-        for (t in TABLES[app].orEmpty()) pullTable(ctx, authority, app, t)
-        return JSONObject().put("ok", true).put("records", total)
+        val out = JSONObject().put("ok", true).put("records", total)
+        for (t in TABLES[app].orEmpty()) {
+            pullTable(ctx, authority, app, t)?.let { err ->
+                // Records stay mirrored; the table copy failure is reported, not swallowed.
+                Log.w("SelfkitMirror", "$app/$t: $err")
+                out.put("table_error", "$t: $err")
+            }
+        }
+        return out
     }
 
     /** Local tables copied whole next to the records (selfkit-appsync SHARED_TABLES). */
     private val TABLES = mapOf("dusk" to listOf("dusk_nights"))
 
-    /** Copy one shared table; an older app without `/table` (null cursor) is skipped. */
-    private fun pullTable(ctx: Context, authority: String, app: String, table: String) {
-        try {
-            ctx.contentResolver.query(Uri.parse("content://$authority/table?name=$table"), null, null, null, null)?.use { c ->
-                if (!c.moveToFirst()) return
-                SelfkitSync.call(ctx, "mirror_table", JSONObject().put("store", app).put("name", table)
-                    .put("sql", c.getString(c.getColumnIndexOrThrow("sql"))).put("rows", c.getString(c.getColumnIndexOrThrow("rows"))))
+    /** Rows per `/table` page: ~200 B per dusk_nights row keeps a page far below the ~2 MB CursorWindow. */
+    private const val TABLE_PAGE = 1000
+
+    /**
+     * Copy one shared table page by page, then replace the mirror's copy in one go.
+     * Returns null when done (or the source app is too old to share tables), else the error.
+     */
+    private fun pullTable(ctx: Context, authority: String, app: String, table: String): String? {
+        return try {
+            var sql: String? = null
+            val all = JSONArray()
+            var offset = 0L
+            while (true) {
+                val uri = Uri.parse("content://$authority/table?name=$table&offset=$offset&limit=$TABLE_PAGE")
+                val c = ctx.contentResolver.query(uri, null, null, null, null) ?: return if (offset == 0L) null else "page at $offset unavailable"
+                val (pageSql, rows, count) = c.use {
+                    if (!it.moveToFirst()) return "empty reply"
+                    val iC = it.getColumnIndex("count")
+                    Triple(it.getString(it.getColumnIndexOrThrow("sql")), JSONArray(it.getString(it.getColumnIndexOrThrow("rows"))),
+                        // An older provider has no count column and always sends the whole table.
+                        if (iC < 0) -1L else it.getLong(iC))
+                }
+                sql = pageSql
+                for (i in 0 until rows.length()) all.put(rows.get(i))
+                if (count < TABLE_PAGE) break
+                offset += count
             }
-        } catch (t: Throwable) { /* keep the records mirror even if the table copy fails */ }
+            val res = SelfkitSync.call(ctx, "mirror_table", JSONObject().put("store", app).put("name", table)
+                .put("sql", sql).put("rows", all.toString()))
+            if (res.optBoolean("ok")) null else res.optString("error", "copy failed")
+        } catch (t: Throwable) {
+            t.message ?: t.javaClass.simpleName
+        }
     }
 }

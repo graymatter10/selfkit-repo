@@ -14,14 +14,15 @@
   import SheetFrame from "./SheetFrame.svelte";
   import Seg from "./Seg.svelte";
 
-  let { id, edit = false, desktop = false }: { id?: string; edit?: boolean; desktop?: boolean } = $props();
+  // `direction`: the Loans tab a new loan was started from (L2-28).
+  let { id, edit = false, desktop = false, direction = "lent" }: { id?: string; edit?: boolean; desktop?: boolean; direction?: "lent" | "borrowed" } = $props();
   const loan = $derived(id ? app.snap?.loans.find((l) => l.id === id) : undefined);
   let editing = $state(edit || !id);
 
   // ---- form
   const o = id ? app.snap?.loans.find((l) => l.id === id) : undefined;
   let f = $state({
-    direction: o?.direction ?? "lent", person: o?.person ?? "", title: o?.title ?? "", description: o?.description ?? "", amount: o ? String(o.amount) : "",
+    direction: o?.direction ?? direction, person: o?.person ?? "", title: o?.title ?? "", description: o?.description ?? "", amount: o ? String(o.amount) : "",
     currency: o?.currency ?? main(), given: o?.given ?? todayIso(), due: o?.due ?? "", account: o?.account ?? "", photos: [...(o?.photos ?? [])],
     remind: o?.remind ?? true, remind_days: String(o?.remind_days ?? 1), remind_time: o?.remind_time ?? "09:00",
   });

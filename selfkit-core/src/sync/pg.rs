@@ -332,4 +332,31 @@ mod tests {
         assert_eq!(remote.meta_get("k").await.unwrap().as_deref(), Some("v2"));
         assert!(remote.size_bytes().await.unwrap() > 0);
     }
+
+    /// R-1 against real Postgres: migrating twice is harmless, and the same record id in
+    /// two apps stays two rows. Needs Postgres like `pg_two_devices`.
+    #[tokio::test]
+    #[ignore]
+    async fn pg_same_id_two_apps() {
+        let url = std::env::var("SELFKIT_TEST_PG").expect("SELFKIT_TEST_PG");
+        let remote = PgRemote::connect(&url).await.unwrap();
+        remote.migrate().await.unwrap();
+        remote.migrate().await.unwrap(); // idempotent
+        assert_eq!(remote.server_schema_version().await.unwrap(), PgRemote::known_schema_version());
+        let key = SecretKey::generate();
+        let tag = uuid::Uuid::now_v7();
+        let (a1, a2) = (format!("test-a-{tag}"), format!("test-b-{tag}"));
+        let mut s1 = Store::open_in_memory(&a1, "A", &[]).unwrap();
+        let mut s2 = Store::open_in_memory(&a2, "A", &[]).unwrap();
+        s1.put("one", Some("settings"), &json!({"v": 1})).unwrap();
+        s2.put("two", Some("settings"), &json!({"v": 2})).unwrap();
+        assert_eq!(sync_once(&mut s1, &remote, &key).await.unwrap().pushed, 1);
+        assert_eq!(sync_once(&mut s2, &remote, &key).await.unwrap().pushed, 1);
+        for (app, coll, v) in [(&a1, "one", 1), (&a2, "two", 2)] {
+            let mut fresh = Store::open_in_memory(app, "B", &[]).unwrap();
+            assert_eq!(sync_once(&mut fresh, &remote, &key).await.unwrap().pulled, 1);
+            let r = fresh.get("settings").unwrap().unwrap();
+            assert_eq!((r.collection.as_str(), r.data["v"].as_i64()), (coll, Some(v)));
+        }
+    }
 }

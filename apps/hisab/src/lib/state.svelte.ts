@@ -11,7 +11,7 @@ export type Sheet =
   | { kind: "account"; id?: string }
   | { kind: "transfer"; from?: string }
   | { kind: "category"; id?: string; type?: "expense" | "income"; pick?: boolean }
-  | { kind: "loan"; id?: string; edit?: boolean }
+  | { kind: "loan"; id?: string; edit?: boolean; direction?: "lent" | "borrowed" }
   | { kind: "goal"; id?: string }
   | { kind: "recurring"; id?: string }
   | { kind: "export" }

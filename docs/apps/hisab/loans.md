@@ -6,3 +6,4 @@
 - A linked account changes its balance: lent takes the amount out on the date given, repayments put it back (borrowed the other way round). Net worth counts money lent as an asset and money borrowed as a debt.
 - Reminder: `remind_days` before the due date (on the day, 1, 2, 3, 5, 7, 14) at `remind_time`; only while unpaid and while loan reminders are on. See README § Reminders.
 - Code: `components/Loans.svelte`, `LoanSheet.svelte`; `stats::loans_view`, `lib.rs` `reminders`.
+- **New loan** starts on the tab it was opened from: the Borrowed tab preselects "I borrowed" (L2-28).

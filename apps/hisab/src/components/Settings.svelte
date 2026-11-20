@@ -97,7 +97,11 @@
   // Re-checked when Hisab comes back from Android settings (C93).
   const checkNotify = () => { if (isAndroid()) import("@tauri-apps/plugin-notification").then((n) => n.isPermissionGranted()).then((g) => (notifyBlocked = !g)).catch(() => {}); };
   checkNotify();
-  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && checkNotify());
+  $effect(() => {
+    const onVis = () => document.visibilityState === "visible" && checkNotify();
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis); // no stacking on reopen
+  });
   async function notifications(on: boolean) {
     if (on && isAndroid()) {
       try {

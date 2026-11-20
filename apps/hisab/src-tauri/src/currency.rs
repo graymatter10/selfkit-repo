@@ -172,7 +172,13 @@ pub fn relabel_account(store: &Store, id: &str, to: &str) -> R<usize> {
     if from == to {
         return Ok(0);
     }
-    put_currency(store, ACCOUNTS, &a, &to)?;
+    // Answering the offer with "Switch" is a choice too, like "Keep": never offered again
+    // (before, the next main-currency change offered to relabel the new entries back, L2-27).
+    let mut acct = a.clone();
+    if let Some(m) = acct.as_object_mut() {
+        m.insert("explicit_currency".into(), json!(true));
+    }
+    put_currency(store, ACCOUNTS, &acct, &to)?;
     let mut n = 0;
     for t in model::all(store, TRANSACTIONS)? {
         if s(&t, "account") == id && s(&t, "currency") == from {
@@ -299,6 +305,22 @@ mod tests {
         keep_currency(&st, &id).unwrap();
         assert!(stale_accounts(&st, &main).unwrap().is_empty(), "Keep USD: not offered again");
         assert_eq!(entry_currency(&cash(&st), &main), "USD");
+    }
+
+    /// L2-27: "Switch to BDT" is a choice; changing the main currency back later must not
+    /// offer to relabel the (now real taka) entries again.
+    #[test]
+    fn switch_is_never_offered_again() {
+        let (set, st) = stores();
+        seed_defaults(&st, "USD").unwrap();
+        let id = s(&cash(&st), "id").to_string();
+        st.put(TRANSACTIONS, None, &json!({"kind":"expense","amount":2,"currency":"USD","account":id,"date":"2026-11-15"})).unwrap();
+        set.put(COLLECTION, Some(SETTINGS_ID), &json!({"main_currency":"BDT"})).unwrap();
+        assert_eq!(stale_accounts(&st, "BDT").unwrap().len(), 1);
+        assert_eq!(relabel_account(&st, &id, "BDT").unwrap(), 1);
+        st.put(TRANSACTIONS, None, &json!({"kind":"expense","amount":500,"currency":"BDT","account":id,"date":"2026-11-16"})).unwrap();
+        assert!(stale_accounts(&st, "USD").unwrap().is_empty(), "back to USD: Cash stays BDT, no offer");
+        assert_eq!(entry_currency(&cash(&st), "USD"), "BDT");
     }
 
     /// An entry in BDT on a USD account still converts for the balance.
