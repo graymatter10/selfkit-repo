@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| L2-12 | budget remaining and the home budget bar count only spending in budgeted categories (`budget_spent`) | `apps/hisab/src-tauri/src/stats.rs`, `Summary.svelte`, `api.ts` | Linux |
 | L2-11 / C60 | goal progress clamped to 0–100 %; goal "Take out" can't exceed what is saved (Rust normalize + sheet check) | `apps/hisab/src-tauri/src/model.rs`, `GoalSheet.svelte` | Linux |
 
 ## Still open (not started yet, 2026-11-21 ~01:30)

@@ -25,7 +25,7 @@ export interface Recurring {
 }
 export interface CatAmount { id: string; name: string; color: string; icon: string; archived: boolean; amount: number }
 export interface Overview {
-  month: string; main: string; spent: number; income: number; balance: number; budget: number; remaining: number | null;
+  month: string; main: string; spent: number; income: number; balance: number; budget: number; budget_spent?: number; remaining: number | null;
   prev_spent: number; days_in_month: number; days_elapsed: number; net_worth: number; by_category: CatAmount[];
 }
 export interface Rates { base: string; rates: Record<string, number>; manual: Record<string, number>; fetched_at: number }
