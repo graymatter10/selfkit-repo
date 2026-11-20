@@ -143,6 +143,9 @@ function createTracker(api, env = {}) {
       // gets focus again. On X11 getLastFocused() keeps saying focused, so the next tab
       // event or alarm reopened the session (Firefox: it never ended — C52/L3-6).
       if (opts.focusEvent) s.blurred = !!opts.blurred;
+      // A browser window got focus or the user switched tabs: the browser is in front
+      // again, whatever the last agent reply said (C87).
+      if (opts.focusEvent && !opts.blurred) s.notInFront = false;
       if (s.cur && t - s.cur.last > GAP_MS) closeCur(s, s.cur.last);
       const want = s.blurred || s.notInFront ? { domain: null, why: 'unfocused' } : await target(s, t);
       if (s.cur && s.cur.domain === want.domain) {
@@ -222,6 +225,14 @@ function createTracker(api, env = {}) {
     }
     // The agent sees another program in front: end the session where it was last seen
     // tracked, and wait until the browser is in front again (L3-6, no new permissions).
+    // The agent can't tell any more (stopped, idle/locked, Wayland): don't keep an old "away" (C87).
+    if (reply && reply.ok && reply.browser_foreground == null && (await load()).notInFront) {
+      await serial(async () => {
+        const s4 = await load();
+        s4.notInFront = false;
+        await save(s4);
+      });
+    }
     if (reply && reply.ok && typeof reply.browser_foreground === 'boolean') {
       await serial(async () => {
         const s3 = await load();
