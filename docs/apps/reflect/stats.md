@@ -7,7 +7,7 @@ All numbers are computed in Rust; the UI only lays them out.
 - A source's value is "no data" before that app's first record; after it, a day without records counts as 0.
 - **Screen time** = union of all app and website sessions on all devices (phone use while the PC is on counts once), same as Chrono. **Phone** = union of Android sessions. Excluded apps/domains from `chrono_settings` are dropped.
 - **Late phone use** = phone minutes between 00:00 and 05:00 local on that calendar morning.
-- **Spent** = Hisab expenses on that day in the main currency (`hisab-rates`; a time before the day start counts for the day before). **Daily budget** = sum of the monthly category budgets ÷ days in that month; it is compared with spending in categories that have a budget only (split parts per category), like Hisab (C61).
+- **Spent** = Hisab expenses on that day in the main currency (`hisab-rates`; a time before the day start counts for the day before). **Daily budget** = sum of the monthly category budgets ÷ days in that month; it is compared with spending in categories that have a budget only (split parts per category), like Hisab (C61). The Tasks tile also says "N overdue" for open tasks from earlier days (P33).
 - **Tasks** = Agenda completions on that day (every completion of a repeating task counts).
 - **Sleep** = Dusk's `dusk_nights` row for the night that ended that morning (`asleep_min`; all-nighter = 0, `none` = no data). Bedtime = local clock of `bed`.
 
@@ -26,6 +26,6 @@ All numbers are computed in Rust; the UI only lays them out.
 - Groups: late phone use ≥ 30 min vs other nights; screen time under vs over your median (rounded to 30 min); sleep under 7 h vs 7 h+. Details split into 4 groups.
 
 ## Reviews
-- Week = 7 days from the chosen week start; month = calendar month. Default: the last full one. Comparisons use the previous period's **per-day** average, so a period in progress is fair.
+- Week = 7 days from the chosen week start; month = calendar month. Default: the last full one. Comparisons use the previous period's **per-day** average, so a period in progress is fair; while it is in progress, today (just started) is left out of the averages (P34).
 - Screen and sleep: average a day/night; money and tasks: totals. Budget: under/over the period's summed daily budgets, plus days kept.
 - Worth knowing: heaviest screen day + its top app, biggest single spend (week) or top category share (month), nights with ≥ 15 min of late phone use, longest run of the first streak in the month (≥ 3 days).

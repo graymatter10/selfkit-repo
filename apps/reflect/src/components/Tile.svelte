@@ -16,7 +16,8 @@
 
 {#if tile}
   <div class="card flex min-h-[120px] flex-col px-4 pt-3.5 pb-[15px]">
-    <div class="flex items-center gap-2 text-[13px] font-semibold text-ink2"><span class="min-w-0 flex-1 truncate">{label}</span><Src apps={[app]} /></div>
+    <!-- The label wraps rather than "Screen t…" next to the marker (P32). -->
+    <div class="flex items-center gap-2 text-[13px] font-semibold text-ink2"><span class="min-w-0 flex-1 leading-tight">{label}</span><Src apps={[app]} /></div>
     <div class="num mt-2.5 text-[27px] leading-[1.1] font-[650] tracking-[-0.03em]">{tile.value}{#if tile.unit}<small class="ml-0.5 text-[15px] font-[550] tracking-[-0.01em] text-muted">{tile.unit}</small>{/if}</div>
     <div class="mt-1.5 text-[13px] leading-[1.35] text-muted">{#if tile.strong}<b class="font-semibold text-ink2">{tile.strong}</b>{" "}{/if}{tile.sub}</div>
   </div>

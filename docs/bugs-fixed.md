@@ -72,6 +72,9 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| P32 | Reflect tile label wraps instead of "Screen t…" | `apps/reflect/src/components/Tile.svelte` | OPPO |
+| P33 | Tasks tile counts open tasks from earlier days ("3 overdue") | `apps/reflect/src-tauri/src/model.rs` | OPPO |
+| P34 | in-progress review averages leave today out | `model.rs` (`review`) | OPPO |
 | P27 | partly: nap row in Notes wraps instead of "3…". The missing nap part on the highlighted bar wasn't reproducible from code (NightBars draws `nap_min` on every bar); needs the night's data | `NightPage.svelte` | OPPO |
 | P29 | not a bug in code: "of N nights" counts the last 7 nights that have a bedtime (5 of 7 had one); consistency mixes bed and wake spread by design (estimation.md). Wording left as is | — | — |
 | P31 | Adjust: "Estimate …" and labels wrap instead of running under −15 | `Adjust.svelte` | OPPO 12h |

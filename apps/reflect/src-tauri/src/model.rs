@@ -306,12 +306,19 @@ pub fn today(cx: &Ctx, today_sessions: &[sources::Sess]) -> Today {
     }
     // Tasks
     if let Some(n) = d.tasks.filter(|_| cx.has.agenda) {
-        let left = cx.agenda.and_then(|a| a.open_by_date.get(&date_str(i)).copied()).unwrap_or(0);
-        let sub = match left {
-            0 => "Nothing else due today".to_string(),
-            1 => "1 left for today".into(),
-            k => format!("{k} left for today"),
+        let day = date_str(i);
+        let left = cx.agenda.and_then(|a| a.open_by_date.get(&day).copied()).unwrap_or(0);
+        // Open tasks from earlier days were ignored ("Nothing else due today" with 3 overdue — P33).
+        let overdue: u32 = cx.agenda.map(|a| a.open_by_date.iter().filter(|(k, _)| k.as_str() < day.as_str()).map(|(_, n)| *n).sum()).unwrap_or(0);
+        let mut sub = match (left, overdue) {
+            (0, 0) => "Nothing else due today".to_string(),
+            (0, _) => String::new(),
+            (1, _) => "1 left for today".into(),
+            (k, _) => format!("{k} left for today"),
         };
+        if overdue > 0 {
+            sub = if sub.is_empty() { format!("{overdue} overdue") } else { format!("{sub} · {overdue} overdue") };
+        }
         if n >= 1.0 {
             clauses.push(format!("{} {} done", n as i64, if n == 1.0 { "task" } else { "tasks" }));
         }
@@ -1043,7 +1050,12 @@ pub fn review(cx: &Ctx, kind: &str, offset: i32, week_start: u8, defs: &[StreakD
     let end = b.min(cx.today);
     let get = |i: i32, f: &dyn Fn(&Day) -> Option<f64>| if i > cx.today { None } else { cx.day(i).and_then(f) };
     let series = |f: &dyn Fn(&Day) -> Option<f64>| (a..=b).map(|i| get(i, f)).collect::<Vec<_>>();
-    let avg_of = |x: i32, y: i32, f: &dyn Fn(&Day) -> Option<f64>| mean(&(x..=y.min(cx.today)).filter_map(|i| get(i, f)).collect::<Vec<_>>());
+    // A period still in progress leaves today (just started) out of its averages, so a
+    // week "so far" isn't lighter only because today has 20 minutes (P34).
+    let skip_today = r.in_progress && a < cx.today;
+    let avg_of = |x: i32, y: i32, f: &dyn Fn(&Day) -> Option<f64>| {
+        mean(&(x..=y.min(cx.today)).filter(|i| !(skip_today && *i == cx.today)).filter_map(|i| get(i, f)).collect::<Vec<_>>())
+    };
     let sum_of = |x: i32, y: i32, f: &dyn Fn(&Day) -> Option<f64>| {
         let v: Vec<f64> = (x..=y.min(cx.today)).filter_map(|i| get(i, f)).collect();
         (!v.is_empty()).then(|| v.iter().sum::<f64>())
