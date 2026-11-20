@@ -46,6 +46,8 @@ jobs:
           echo "agent $agent, suite $suite"
       - name: Rust tests (agent + core)
         run: cargo test --no-fail-fast -p selfkit-core -p selfkit-agent
+      - name: Agent native-messaging host on Windows (manifests + HKCU keys, round trip)
+        run: cargo test -p selfkit-agent -- --ignored --exact install::tests::windows_native_host_round_trip
       - name: Agent release build
         run: cargo build --release -p selfkit-agent
       - name: App installers (Tauri NSIS)

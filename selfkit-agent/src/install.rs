@@ -75,6 +75,26 @@ pub fn native_host_targets(home: &Path) -> Vec<(&'static str, PathBuf)> {
     ]
 }
 
+/// Windows: manifest folder, Chrome-style and Firefox manifests, and the HKCU keys
+/// (full key path, manifest it points at) for Chrome, Chromium, Edge and Firefox.
+#[cfg(any(windows, test))]
+#[allow(clippy::type_complexity)]
+pub fn windows_native_host_targets(local_app_data: &Path) -> (PathBuf, PathBuf, PathBuf, Vec<(String, PathBuf)>) {
+    let dir = local_app_data.join("Selfkit").join("native-host");
+    let cj = dir.join(format!("{HOST_NAME}.chrome.json"));
+    let fj = dir.join(format!("{HOST_NAME}.firefox.json"));
+    let keys = [
+        (r"HKCU\Software\Google\Chrome\NativeMessagingHosts", &cj),
+        (r"HKCU\Software\Chromium\NativeMessagingHosts", &cj),
+        (r"HKCU\Software\Microsoft\Edge\NativeMessagingHosts", &cj),
+        (r"HKCU\Software\Mozilla\NativeMessagingHosts", &fj),
+    ]
+    .into_iter()
+    .map(|(k, f)| (format!(r"{k}\{HOST_NAME}"), f.clone()))
+    .collect();
+    (dir, cj, fj, keys)
+}
+
 /// Write (or remove) the host manifests; returns what was done.
 pub fn install_native_host(o: &NativeHostOpts) -> Result<Vec<String>> {
     let mut done = vec![];
@@ -100,21 +120,13 @@ pub fn install_native_host(o: &NativeHostOpts) -> Result<Vec<String>> {
     #[cfg(windows)]
     {
         // Manifests in %LOCALAPPDATA%\Selfkit\native-host, registered under HKCU.
-        let dir = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).context("LOCALAPPDATA not set")?.join("Selfkit").join("native-host");
-        let cj = dir.join(format!("{HOST_NAME}.chrome.json"));
-        let fj = dir.join(format!("{HOST_NAME}.firefox.json"));
-        let keys = [
-            (r"HKCU\Software\Google\Chrome\NativeMessagingHosts", &cj),
-            (r"HKCU\Software\Chromium\NativeMessagingHosts", &cj),
-            (r"HKCU\Software\Microsoft\Edge\NativeMessagingHosts", &cj),
-            (r"HKCU\Software\Mozilla\NativeMessagingHosts", &fj),
-        ];
+        let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).context("LOCALAPPDATA not set")?;
+        let (dir, cj, fj, keys) = windows_native_host_targets(&local);
         if !o.uninstall {
             write_json(&cj, &chrome)?;
             write_json(&fj, &firefox)?;
         }
-        for (k, file) in keys {
-            let key = format!(r"{k}\{HOST_NAME}");
+        for (key, file) in keys {
             let st = if o.uninstall {
                 std::process::Command::new("reg").args(["delete", &key, "/f"]).status()?
             } else {
@@ -218,6 +230,50 @@ mod tests {
         assert_eq!(f["allowed_extensions"][0], "chrono@selfkit");
         assert_eq!(f["path"], "/opt/selfkit-agent");
         assert!(systemd_unit(Path::new("/x/agent")).contains("ExecStart=/x/agent run"));
+    }
+
+    #[test]
+    fn windows_targets() {
+        let (dir, cj, fj, keys) = windows_native_host_targets(Path::new("C:/Users/u/AppData/Local"));
+        assert_eq!(dir, Path::new("C:/Users/u/AppData/Local").join("Selfkit").join("native-host"));
+        assert_eq!(cj, dir.join("com.selfkit.agent.chrome.json"));
+        assert_eq!(fj, dir.join("com.selfkit.agent.firefox.json"));
+        assert_eq!(keys.len(), 4);
+        assert_eq!(keys[2].0, r"HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.selfkit.agent");
+        assert_eq!(keys[2].1, cj);
+        assert_eq!(keys[3].0, r"HKCU\Software\Mozilla\NativeMessagingHosts\com.selfkit.agent");
+        assert_eq!(keys[3].1, fj);
+    }
+
+    /// Real round trip on Windows: manifests + HKCU keys written, then removed. Uses a
+    /// temporary LOCALAPPDATA; the HKCU keys are the real per-user ones, so it only runs
+    /// with --ignored (CI on windows-latest does).
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "writes HKCU registry keys; run on CI with --ignored"]
+    fn windows_native_host_round_trip() {
+        let tmp = std::env::temp_dir().join(format!("selfkit-nh-{}", std::process::id()));
+        // SAFETY: test-only; no other thread in this test reads LOCALAPPDATA.
+        unsafe { std::env::set_var("LOCALAPPDATA", &tmp) };
+        let exe = PathBuf::from(r"C:\Program Files\x\selfkit-agent.exe");
+        let mut o = NativeHostOpts { exe: exe.clone(), extra_ids: vec![], profile_dirs: vec![], uninstall: false };
+        let done = install_native_host(&o).unwrap();
+        assert_eq!(done.iter().filter(|d| d.starts_with("registered")).count(), 4, "{done:?}");
+        let (_, cj, _, keys) = windows_native_host_targets(&tmp);
+        let m: Value = serde_json::from_slice(&std::fs::read(&cj).unwrap()).unwrap();
+        assert_eq!(m["path"], exe.display().to_string());
+        for (k, f) in &keys {
+            let out = std::process::Command::new("reg").args(["query", k, "/ve"]).output().unwrap();
+            assert!(out.status.success(), "{k} missing");
+            assert!(String::from_utf8_lossy(&out.stdout).contains(&f.display().to_string()), "{k} value");
+        }
+        o.uninstall = true;
+        install_native_host(&o).unwrap();
+        for (k, _) in &keys {
+            assert!(!std::process::Command::new("reg").args(["query", k]).output().unwrap().status.success(), "{k} still there");
+        }
+        assert!(!cj.exists());
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[cfg(not(windows))]

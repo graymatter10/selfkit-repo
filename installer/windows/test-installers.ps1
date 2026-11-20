@@ -114,6 +114,8 @@ function Test-Agent {
   $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).'Selfkit agent'
   Check ($run -like '*selfkit-agent-start.exe*') "autostart Run value ($run)"
   Check (Test-Path 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.selfkit.agent') "Chrome native host registered"
+  Check (Test-Path 'HKCU:\Software\Chromium\NativeMessagingHosts\com.selfkit.agent') "Chromium native host registered"
+  Check (Test-Path 'HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\com.selfkit.agent') "Edge native host registered"
   Check (Test-Path 'HKCU:\Software\Mozilla\NativeMessagingHosts\com.selfkit.agent') "Firefox native host registered"
   $mf = "$env:LOCALAPPDATA\Selfkit\native-host\com.selfkit.agent.chrome.json"
   Check (Test-Path $mf) "native host manifest"
@@ -134,7 +136,9 @@ function Test-Agent {
   Check (-not (Agent-Running)) "agent stopped"
   $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).'Selfkit agent'
   Check (-not $run) "autostart removed"
-  Check (-not (Test-Path 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.selfkit.agent')) "native host unregistered"
+  foreach ($b in 'Google\Chrome', 'Chromium', 'Microsoft\Edge', 'Mozilla') {
+    Check (-not (Test-Path "HKCU:\Software\$b\NativeMessagingHosts\com.selfkit.agent")) "$b native host unregistered"
+  }
   Check (-not (Test-Path "$env:LOCALAPPDATA\Selfkit\native-host")) "native host manifests removed"
   Check (Test-Path "$Data\agent.json") "agent data kept after normal uninstall"
 
