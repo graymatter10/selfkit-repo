@@ -22,7 +22,9 @@
     const q = (p: number) => v[Math.floor(p * (v.length - 1))] ?? 0;
     return [q(0.25), q(0.5), q(0.75)];
   });
-  const op = (v: number) => (v <= 0 ? 0 : v <= qs[0] ? 0.2 : v <= qs[1] ? 0.42 : v <= qs[2] ? 0.68 : 1);
+  // Strict "<": with one day (or equal days) every quartile equals the value, which must
+  // then be the darkest, not the palest (L13).
+  const op = (v: number) => (v <= 0 ? 0 : v < qs[0] ? 0.2 : v < qs[1] ? 0.42 : v < qs[2] ? 0.68 : 1);
   const S = 6.4, G = 1.1;
   const today = iso(new Date());
 </script>
