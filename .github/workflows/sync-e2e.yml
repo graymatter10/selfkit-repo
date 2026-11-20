@@ -7,6 +7,15 @@ on:
   push:
     branches: ["test/sync-*"]
   workflow_dispatch:
+    inputs:
+      longrun_days:
+        description: "Long-run simulation: simulated days (empty = skip the long run)"
+        required: false
+        default: ""
+      longrun_seed:
+        description: "Long-run simulation seed"
+        required: false
+        default: "1"
 concurrency:
   group: sync-e2e-${{ github.ref }}
   cancel-in-progress: true
@@ -23,6 +32,8 @@ env:
   SELFKIT_TEST_S3_SECRET: selfkit-dev-secret
 jobs:
   scenarios:
+    # Long-run branches (test/sync-longrun-*) only run the long-run job.
+    if: ${{ !startsWith(github.ref_name, 'test/sync-longrun') }}
     runs-on: ubuntu-latest
     timeout-minutes: 75
     services:
@@ -88,6 +99,7 @@ jobs:
         run: docker logs s3 | tail -n 50
 
   android-check:
+    if: ${{ !startsWith(github.ref_name, 'test/sync-longrun') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -108,3 +120,43 @@ jobs:
         with: { gradle-version: "9.6.1" }
       - name: Kotlin plugin (android-plugins/selfkit-sync)
         run: gradle -p android-plugins/selfkit-sync assembleRelease --no-daemon
+
+  # Years of simulated daily use on several devices (selfkit-appsync/tests/longrun.rs).
+  # Runs on test/sync-longrun-* pushes or by hand with longrun_days. Uploads the report
+  # and the final per-device data folders (open them with the real apps).
+  longrun:
+    if: ${{ startsWith(github.ref_name, 'test/sync-longrun') || inputs.longrun_days != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: selfkit, POSTGRES_PASSWORD: selfkit-dev, POSTGRES_DB: selfkit }
+        ports: ["55432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 20
+    env:
+      SELFKIT_LONGRUN_DAYS: ${{ inputs.longrun_days || '30' }}
+      SELFKIT_LONGRUN_SEED: ${{ inputs.longrun_seed || '1' }}
+      SELFKIT_LONGRUN_OUT: ${{ github.workspace }}/longrun-out
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxss-dev libdbus-1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { shared-key: sync-longrun, cache-on-failure: true }
+      - name: Long-run simulation
+        run: |
+          set -o pipefail
+          cargo test -p selfkit-appsync --test longrun -- --ignored --nocapture 2>&1 | tee "$RUNNER_TEMP/longrun.log"
+      - name: Summary
+        if: always()
+        run: |
+          cp "$RUNNER_TEMP/longrun.log" "$SELFKIT_LONGRUN_OUT/" 2>/dev/null || true
+          [ -f "$SELFKIT_LONGRUN_OUT/report.md" ] && cat "$SELFKIT_LONGRUN_OUT/report.md" >> "$GITHUB_STEP_SUMMARY" || grep "^LONGRUN" "$RUNNER_TEMP/longrun.log" >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: longrun-${{ env.SELFKIT_LONGRUN_DAYS }}d-seed${{ env.SELFKIT_LONGRUN_SEED }}
+          path: ${{ env.SELFKIT_LONGRUN_OUT }}
+          retention-days: 14
