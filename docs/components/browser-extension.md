@@ -57,3 +57,4 @@ The extension folder (without `test/`) is installed with the agent: Linux `.deb`
 - A Chrono pause with an end (`paused_until` from the reply → `hostPausedUntil`) expires locally, also while the native host can't be reached (L3-8).
 - "Today in this browser" leaves out excluded sites and time the host would drop while paused (L3-9).
 - Chrono's "Never track" stores sites like the agent: lowercase, no `www.`, no port (`settings.rs` `norm_domain`, Settings `addExclusion` — L3-10).
+- Focus (C52, also L3-1/L3-6): `onFocusChanged(WINDOW_ID_NONE)` sets `blurred`, which holds until a browser window is focused again or the user switches tabs; while blurred no session runs, whatever `getLastFocused()` says (on X11 it keeps reporting the browser focused). The alarm runs every 30 s, so a missed focus change costs at most half a minute. Exclude entries are normalised before matching (`www.`, port, scheme — C79).

@@ -34,7 +34,13 @@ function domainOf(url) {
 
 /** An exclude entry matches the domain itself and its subdomains. */
 function excluded(domain, list) {
-  return (list || []).some((e) => domain === e || domain.endsWith('.' + e));
+  // Entries normalised like domains (www./port/scheme/case), so "www.youtube.com" or
+  // "localhost:5173" typed in Chrono still match (C79).
+  return (list || []).map(normEntry).some((e) => e && (domain === e || domain.endsWith('.' + e)));
+}
+
+function normEntry(e) {
+  return String(e || '').trim().toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '').replace(/\.$/, '').replace(/^www\./, '');
 }
 
 function localDay(ms) {
@@ -53,6 +59,7 @@ const DEFAULT_STATE = {
   queue: [], // finished sessions not yet confirmed by the agent
   pausedUntil: 0, // local pause from the popup (ms; Infinity-like = 8.64e15)
   hostPaused: false, // Chrono / agent pause, as last reported by the agent
+  blurred: false, // focus went to another program (WINDOW_ID_NONE), until a browser window is focused
   hostPausedUntil: 0, // its end (ms), 0 = open-ended; expires locally while the host is unreachable (L3-8)
   excludes: [], // Chrono exclude_domains, as last reported by the agent
   idleState: 'active',
@@ -131,8 +138,12 @@ function createTracker(api, env = {}) {
       const s = await load();
       const t = now();
       if (opts.idleState) s.idleState = opts.idleState;
+      // Focus left the browser (WINDOW_ID_NONE): stay "unfocused" until a browser window
+      // gets focus again. On X11 getLastFocused() keeps saying focused, so the next tab
+      // event or alarm reopened the session (Firefox: it never ended — C52/L3-6).
+      if (opts.focusEvent) s.blurred = !!opts.blurred;
       if (s.cur && t - s.cur.last > GAP_MS) closeCur(s, s.cur.last);
-      const want = opts.blurred ? { domain: null, why: 'unfocused' } : await target(s, t);
+      const want = s.blurred ? { domain: null, why: 'unfocused' } : await target(s, t);
       if (s.cur && s.cur.domain === want.domain) {
         s.cur.last = t;
       } else {
@@ -257,20 +268,22 @@ function createTracker(api, env = {}) {
 
   /** Wire up browser events (called once per background start). */
   function install() {
-    api.alarms.create('tick', { periodInMinutes: 1 });
+    // 30 s (the minimum Chrome allows): a missed focus change costs at most half a minute (C52).
+    api.alarms.create('tick', { periodInMinutes: 0.5 });
     api.alarms.onAlarm.addListener(async (a) => {
       if (a.name !== 'tick') return;
       await evaluate('alarm');
       await flush();
     });
-    api.tabs.onActivated.addListener(() => evaluate('tab'));
+    // Switching tabs means the user is in the browser: it also ends a "blurred" state (C52).
+    api.tabs.onActivated.addListener(() => evaluate('tab', { focusEvent: true, blurred: false }));
     api.tabs.onUpdated.addListener((_id, change, tab) => {
       if (tab && tab.active && (change.url || change.status === 'complete')) evaluate('url');
     });
     api.tabs.onRemoved.addListener(() => evaluate('tab-closed'));
     // WINDOW_ID_NONE = focus went to another program: close the session now. On X11
     // getLastFocused().focused can stay true, so it ran until the next 1-min alarm (L3-1).
-    api.windows.onFocusChanged.addListener((windowId) => evaluate('focus', { blurred: api.windows.WINDOW_ID_NONE !== undefined && windowId === api.windows.WINDOW_ID_NONE }));
+    api.windows.onFocusChanged.addListener((windowId) => evaluate('focus', { focusEvent: true, blurred: api.windows.WINDOW_ID_NONE !== undefined && windowId === api.windows.WINDOW_ID_NONE }));
     api.idle.onStateChanged.addListener((state) => evaluate('idle', { idleState: state }));
     api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       onMessage(msg).then(sendResponse, (e) => sendResponse({ error: String(e) }));

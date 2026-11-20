@@ -73,7 +73,8 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
 | L3-7..L3-10 | extension: popup looks only, host pause expires locally, Today skips excluded/paused; Chrono norm_domain + addExclusion strip port/www. | `extension/background.js`, `apps/chrono/src-tauri/src/settings.rs`, `Settings.svelte` | Linux Chromium/Firefox |
-| L3-6 | not fixed yet: Firefox on X11 never reports losing focus; needs a decision (content-script focus probe = host permission on all sites) — asked the lead | — | Firefox |
+| L3-6 / C52 | sticky `blurred` from onFocusChanged(WINDOW_ID_NONE) until a browser window or tab switch; 30 s alarm. If Firefox on X11 doesn't send WINDOW_ID_NONE at all, this won't help — retest; fallback options sent to the lead | `extension/background.js` | Firefox + Chromium Linux |
+| C79 | extension `excluded()` normalises stored entries | `extension/background.js` | — |
 | P13 | loan pill text shared (`loanPill`), reminder time in the locale clock (`clockText`); the native date picker look is the system's (not changed) | `lib/fmt.ts`, `Loans.svelte`, `LoanSheet.svelte` | OPPO |
 | L15 | decision: PDF stays Latin-only (Bangla needs font + shaping); export sheet note, README, DECISIONS | `ExportSheet.svelte`, `export.rs`, docs | — |
 | S-3 | "Sync this app" subtitle says "only when you tap Sync now" when Automatic is off | `ui/src/sync/SyncSettings.svelte` | all apps |
