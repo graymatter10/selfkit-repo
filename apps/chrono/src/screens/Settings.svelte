@@ -8,7 +8,7 @@
   import Icon from "../components/Icon.svelte";
   import Seg from "../components/Seg.svelte";
   import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
-  import { syncApi } from "../../../../ui/src/sync/api";
+  import { bridge as syncBridge, syncApi } from "../../../../ui/src/sync/api";
   import LockSettings from "../../../../ui/src/lock/LockSettings.svelte"; // App lock section
   let { phone, onsources, onsync }: { phone: boolean; onsources: () => void; onsync: () => void } = $props();
   let syncLine = $state("");
@@ -23,6 +23,13 @@
   $effect(() => { void app.rev; guard(api.names()).then((n) => n && (names = n)); });
   const s = $derived(app.settings);
   const clone = (): ChronoSettings => JSON.parse(JSON.stringify($state.snapshot(app.settings)));
+
+  // Phones that stop background jobs: suggest allowing background activity, like the
+  // Sync page's battery tip; shown only while Chrono isn't exempt (P15, 2026-11-21).
+  let batteryTip = $state(false);
+  const checkBattery = () => { try { batteryTip = !!syncBridge()?.needsBatteryTip(); } catch { batteryTip = false; } };
+  checkBattery();
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && checkBattery());
 
   /** Android 13+: alerts need the notification permission; ask when it matters. */
   let notifyBlocked = $state(false);
@@ -150,6 +157,10 @@
         {#if app.android.notifications}<button type="button" class="ok" style="min-height:44px" onclick={() => api.androidOpen("notifications")}><Icon name="check" size={16} stroke={2.4} /> On</button>{:else}<button type="button" class="btn" onclick={() => (app.setup = 2)}>Turn on</button>{/if}</div>
       <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Last import</div><div class="sb">When you open Chrono and every 15 min in the background</div></div>
         <button type="button" class="muted num" style="font-size:14px;min-height:44px" onclick={refreshAndroid}>{ago(app.android.last_import, app.now)}</button></div>
+      {#if batteryTip}
+        <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Background activity</div><div class="sb">Phones may delay Chrono's background import at night. Allow it to run in the background so no time goes missing.</div></div>
+          <button type="button" class="btn" onclick={() => syncBridge()?.openBatterySettings()}>Allow</button></div>
+      {/if}
     </div>
   {/if}
 {/snippet}

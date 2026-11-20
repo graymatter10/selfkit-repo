@@ -1,5 +1,9 @@
 # Decisions (newest first)
 
+## 2026-11-21 — Late reminders on ColorOS (P2), Chrono background tip (P15)
+- Agenda reminders can be up to ~2 min late on ColorOS: the app has the exact-alarm permission and the plugin schedules exact alarms, but ColorOS aligns them. Documented (README, Settings hint on Android); `setAlarmClock` with our own scheduler is a post-release item (PLANNING → Agenda/Tickd → Next). Reason: half a day of new Android code in the last batch is too risky for ~1.5 min.
+- Chrono Settings → This phone shows the Sync page's battery tip ("Allow it to run in the background") on phones that stop background jobs, only while Chrono isn't exempt; no forced prompt. Reason: the night-time import gap behind P15; the daily-total reconcile stays post-release.
+
 ## 2026-11-21 — Browser extension: "is the browser in front" from the agent (L3-6)
 - Firefox on X11 never reports losing focus, so website time ran on while other apps were in front. Fix without new browser permissions (privacy first): the native host adds `browser_foreground` from the agent's own foreground tracker; the extension ends and pauses sessions when it is `false`. Without the agent (or on Wayland) Firefox falls back to a 60 s idle threshold. Not chosen: a content script on every site (needs "access all websites").
 

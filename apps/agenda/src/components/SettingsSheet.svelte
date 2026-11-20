@@ -115,7 +115,7 @@
               </button>
             {/each}
           </div>
-          <span class="px-4 text-[13px] text-muted">Used for new tasks that have a start time.</span>
+          <span class="px-4 text-[13px] text-muted">Used for new tasks that have a start time.{#if /Android/i.test(navigator.userAgent)} Some phones (e.g. ColorOS) line alarms up, so a reminder can come up to about 2 minutes late.{/if}</span>
         </div>
 
         <div class="flex flex-col gap-2">
