@@ -163,6 +163,11 @@
       else if (e.key === "Escape" && (app.panel.kind === "new" || app.panel.kind === "edit") && !app.settingsOpen && !app.focusOpen && !app.photo && !app.closeGuard?.()) close();
       return;
     }
+    // The "…" menu is on top: Esc closes it, other keys wait until it is closed (L9).
+    if (menu) {
+      if (e.key === "Escape") menu = false;
+      return;
+    }
     if (app.settingsOpen || app.focusOpen || app.photo || e.ctrlKey || e.metaKey || e.altKey) return;
     if (app.panel.kind === "new" || app.panel.kind === "edit") {
       if (e.key === "Escape" && !app.closeGuard?.()) close();
