@@ -224,7 +224,7 @@ impl Oracle {
         }
     }
 
-    fn ensure_coll(r: &mut ORec, k: &str, arr: bool) -> &mut BTreeMap<String, (Option<Value>, i64)> {
+    fn ensure_coll<'a>(r: &'a mut ORec, k: &str, arr: bool) -> &'a mut BTreeMap<String, (Option<Value>, i64)> {
         let conv = match r.f.get(k) {
             Some(OF::C { arr: a, .. }) if *a == arr => None,
             Some(OF::S(v, t)) => Some(match itemize(v) {
@@ -1073,8 +1073,9 @@ impl Sim {
         match self.rng.below(6) {
             0 => {
                 let person = self.rng.pick(&["Karim", "Rina", "Sam", "Joy"]);
-                self.put(i, "hisab", "loans", None, json!({"direction": self.rng.pick(&["lent", "borrowed"]), "person": person, "title": "Loan", "description": "",
-                    "amount": self.rng.money(1000.0, 20000.0), "currency": "BDT", "given": self.today(), "due": date(self.day + 60), "photos": [], "repayments": [],
+                let (dir, amount) = (self.rng.pick(&["lent", "borrowed"]), self.rng.money(1000.0, 20000.0));
+                self.put(i, "hisab", "loans", None, json!({"direction": dir, "person": person, "title": "Loan", "description": "",
+                    "amount": amount, "currency": "BDT", "given": self.today(), "due": date(self.day + 60), "photos": [], "repayments": [],
                     "remind": false}));
             }
             1 | 2 => {
@@ -1164,9 +1165,10 @@ impl Sim {
             let hour = sim_ms(y, h * 60, self.tz);
             let (yy, mm, dd) = civil(hour.div_euclid(86_400_000));
             let id = format!("e-{dev}-{yy:04}{mm:02}{dd:02}{:02}", (hour.rem_euclid(86_400_000)) / 3_600_000);
+            let (unlocks, pickups) = (self.rng.range(1, 15), self.rng.range(1, 20));
             let mut notif = Map::new();
             notif.insert("com.whatsapp".into(), json!(self.rng.range(0, 20)));
-            self.put(i, "chrono", "android_events", Some(&id), json!({"hour": hour, "tz_offset": self.tz, "device": dev, "unlocks": self.rng.range(1, 15), "pickups": self.rng.range(1, 20), "notifications": notif}));
+            self.put(i, "chrono", "android_events", Some(&id), json!({"hour": hour, "tz_offset": self.tz, "device": dev, "unlocks": unlocks, "pickups": pickups, "notifications": notif}));
         }
         // Screen-on intervals for last night (Dusk), merged into one record per night.
         let nid = format!("u-{dev}-{}", self.today());
@@ -1278,7 +1280,8 @@ impl Sim {
     }
     fn dusk_nap(&mut self, i: usize) {
         let s = sim_ms(self.day, 14 * 60 + self.rng.range(0, 60), self.tz);
-        let id = self.put(i, "dusk", "sleep_log", None, json!({"night": self.today(), "kind": "nap", "bed": s, "wake": s + self.rng.range(15, 90) * 60_000, "tz_offset": self.tz,
+        let wake = s + self.rng.range(15, 90) * 60_000;
+        let id = self.put(i, "dusk", "sleep_log", None, json!({"night": self.today(), "kind": "nap", "bed": s, "wake": wake, "tz_offset": self.tz,
             "quality": null, "note_before": null, "note_after": null, "created_at": s}));
         if self.rng.chance(0.15) {
             self.del(i, "dusk", &id, true);
@@ -1672,7 +1675,7 @@ impl Sim {
         let y = self.year();
         let day = self.day;
         let tz = self.tz;
-        let mut rec = |name: &str, f: &mut dyn FnMut() -> usize, out: &mut BTreeMap<(i64, String), Vec<f64>>| {
+        let rec = |name: &str, f: &mut dyn FnMut() -> usize, out: &mut BTreeMap<(i64, String), Vec<f64>>| {
             for _ in 0..3 {
                 let t = Instant::now();
                 let n = f();
