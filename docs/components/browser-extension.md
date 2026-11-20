@@ -51,3 +51,9 @@ Finished sessions wait in `storage.local.queue` until the agent confirms them. A
 
 ## Shipped with the agent (L3-3)
 The extension folder (without `test/`) is installed with the agent: Linux `.deb` → `/usr/share/selfkit-agent/extension`, tarball → `extension/`, Windows → `%LOCALAPPDATA%\Programs\Selfkit Agent\extension` (agent.nsi). Chrono → Devices and sources → How to add points there; the stable Chrome id comes from `key` in manifest.json.
+
+## Fixes 2026-11-21 (L3-7…L3-10)
+- The popup only looks (`state` doesn't run `evaluate`): opening it took focus and split the session, then showed "Browser not in front" (L3-7).
+- A Chrono pause with an end (`paused_until` from the reply → `hostPausedUntil`) expires locally, also while the native host can't be reached (L3-8).
+- "Today in this browser" leaves out excluded sites and time the host would drop while paused (L3-9).
+- Chrono's "Never track" stores sites like the agent: lowercase, no `www.`, no port (`settings.rs` `norm_domain`, Settings `addExclusion` — L3-10).

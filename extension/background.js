@@ -53,6 +53,7 @@ const DEFAULT_STATE = {
   queue: [], // finished sessions not yet confirmed by the agent
   pausedUntil: 0, // local pause from the popup (ms; Infinity-like = 8.64e15)
   hostPaused: false, // Chrono / agent pause, as last reported by the agent
+  hostPausedUntil: 0, // its end (ms), 0 = open-ended; expires locally while the host is unreachable (L3-8)
   excludes: [], // Chrono exclude_domains, as last reported by the agent
   idleState: 'active',
   idleSecs: DEFAULT_IDLE_SECS,
@@ -91,7 +92,8 @@ function createTracker(api, env = {}) {
     if (!c) return;
     end = Math.max(c.start, Math.min(end, now()));
     if (end - c.start < MIN_MS) return;
-    addToday(s, c.domain, c.start, end);
+    // Excluded sites (or time the host will drop) aren't shown in "Today in this browser" (L3-9).
+    if (!excluded(c.domain, s.excludes || []) && !(s.hostPaused && !(s.hostPausedUntil && end >= s.hostPausedUntil))) addToday(s, c.domain, c.start, end);
     // The agent already has exactly this version (sent while it was live).
     if (s.ackedLive && s.ackedLive.id === c.id && s.ackedLive.end === end) return;
     s.queue.push({ id: c.id, domain: c.domain, start: c.start, end, tz_offset: -new Date(c.start).getTimezoneOffset() });
@@ -99,9 +101,10 @@ function createTracker(api, env = {}) {
   }
 
   /** What should be tracked right now, and why (not). */
-  async function target(s, t) {
+  async function target(s, t, opts = {}) {
     if (s.pausedUntil > t) return { domain: null, why: 'paused' };
-    if (s.hostPaused) return { domain: null, why: 'chrono-paused' };
+    // A Chrono pause with an end expires here too, also while the host can't be reached (L3-8).
+    if (s.hostPaused && !(s.hostPausedUntil && t >= s.hostPausedUntil)) return { domain: null, why: 'chrono-paused' };
     if (s.idleState !== 'active') return { domain: null, why: s.idleState };
     let win;
     try {
@@ -109,7 +112,8 @@ function createTracker(api, env = {}) {
     } catch {
       return { domain: null, why: 'no-window' };
     }
-    if (!win || !win.focused) return { domain: null, why: 'unfocused' };
+    // The popup is its own window and takes focus: when it asks, ignore focus (L3-7).
+    if (!win || (!win.focused && !opts.ignoreFocus)) return { domain: null, why: 'unfocused' };
     if (win.incognito) return { domain: null, why: 'private' };
     const tabs = await api.tabs.query({ active: true, windowId: win.id });
     const tab = tabs && tabs[0];
@@ -148,7 +152,7 @@ function createTracker(api, env = {}) {
 
   function updateBadge(s, t) {
     if (!api.action || !api.action.setBadgeText) return;
-    const paused = s.pausedUntil > t || s.hostPaused;
+    const paused = s.pausedUntil > t || (s.hostPaused && !(s.hostPausedUntil && t >= s.hostPausedUntil));
     try {
       api.action.setBadgeText({ text: paused ? 'off' : '' });
       if (api.action.setBadgeBackgroundColor) api.action.setBadgeBackgroundColor({ color: '#6b7280' });
@@ -187,6 +191,7 @@ function createTracker(api, env = {}) {
       if (reply && reply.ok) {
         pauseChanged = s2.hostPaused !== !!reply.paused;
         s2.hostPaused = !!reply.paused;
+        s2.hostPausedUntil = reply.paused_until || 0;
         s2.excludes = Array.isArray(reply.exclude_domains) ? reply.exclude_domains : [];
       }
       s2.last = error
@@ -218,8 +223,12 @@ function createTracker(api, env = {}) {
   async function onMessage(msg) {
     switch (msg && msg.type) {
       case 'state': {
-        const s = await evaluate('popup');
-        return { ...s, now: now(), browser: browserName };
+        // Look only: opening the popup took focus from the browser and used to close
+        // (split) the session and show "Browser not in front" (L3-7).
+        const s = await load();
+        const t = now();
+        const want = await target(s, t, { ignoreFocus: true });
+        return { ...s, status: s.cur && s.cur.domain === want.domain ? 'tracking' : want.why, now: t, browser: browserName };
       }
       case 'pause': {
         const until = msg.minutes ? now() + msg.minutes * 60_000 : 8.64e15;

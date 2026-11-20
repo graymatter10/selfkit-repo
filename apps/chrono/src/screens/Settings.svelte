@@ -49,7 +49,9 @@
     saveSettings(n);
   }
   function addExclusion(kind: "app" | "site") {
-    const v = (kind === "app" ? addApp : addSite).trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    let v = (kind === "app" ? addApp : addSite).trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    // Sites stored like the agent keeps them: lowercase, no www., no port (L3-10).
+    if (kind === "site") v = v.toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "").replace(/^www\./, "");
     if (!v) return void (adding = "");
     const n = clone();
     const list = kind === "app" ? n.exclude_apps : n.exclude_domains;
