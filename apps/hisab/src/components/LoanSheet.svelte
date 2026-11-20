@@ -34,25 +34,27 @@
     else closeSheet();
   }
 
-  async function askNotify() {
+  /** False when Android refused notifications (the reminder can't show — P11). */
+  async function askNotify(): Promise<boolean> {
     if (!app.prefs.notify) await setPrefs({ notify: true });
-    if (!isAndroid()) return;
+    if (!isAndroid()) return true;
     try {
       const n = await import("@tauri-apps/plugin-notification");
-      if (!(await n.isPermissionGranted())) await n.requestPermission();
+      if (!(await n.isPermissionGranted())) return (await n.requestPermission()) === "granted";
     } catch {}
+    return true;
   }
 
   async function saveForm() {
     const data = { ...(o ?? { repayments: [] }), ...f, amount: Number(f.amount) || 0, remind_days: Number(f.remind_days) || 0, repayments: loan?.repayments ?? [] };
-    if (f.remind && f.due) await askNotify();
+    const canNotify = f.remind && f.due ? await askNotify() : true;
     const r = await saveRec<Loan>("loans", data, id);
     if (r) {
       start = JSON.stringify(f);
       app.guard = null;
       if (id) editing = false;
       else closeSheet();
-      showToast(id ? "Loan saved" : `Loan added · ${f.person}`);
+      showToast((id ? "Loan saved" : `Loan added · ${f.person}`) + (canNotify ? "" : " · reminders need notifications, which Android blocks for Hisab"), undefined, canNotify ? 5000 : 8000);
     }
   }
 

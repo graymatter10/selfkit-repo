@@ -88,6 +88,9 @@
     await refresh();
     showToast(`Rate for ${c} saved`);
   }
+  // Reminders on but Android notifications refused: say so (P11).
+  let notifyBlocked = $state(false);
+  if (isAndroid()) import("@tauri-apps/plugin-notification").then((n) => n.isPermissionGranted()).then((g) => (notifyBlocked = !g)).catch(() => {});
   async function notifications(on: boolean) {
     if (on && isAndroid()) {
       try {
@@ -162,7 +165,7 @@
 
   <p class="{h} pt-4">Notifications</p>
   <div class="card overflow-hidden">
-    <label class={row}><span class="flex-1 text-[15px]">Loan due-date reminders</span><input type="checkbox" checked={app.prefs.notify ?? false} class="h-5 w-5 accent-[var(--accent)]" onchange={(e) => notifications((e.currentTarget as HTMLInputElement).checked)} /></label>
+    <label class={row}><span class="flex flex-1 flex-col text-[15px]">Loan due-date reminders{#if app.prefs.notify && notifyBlocked}<small class="text-[12.5px] text-danger">Notifications are off for Hisab in Android settings, so nothing will show</small>{/if}</span><input type="checkbox" checked={app.prefs.notify ?? false} class="h-5 w-5 accent-[var(--accent)]" onchange={(e) => notifications((e.currentTarget as HTMLInputElement).checked)} /></label>
   </div>
   <p class="m-0 px-1 pt-1.5 text-[12px] text-muted">Off by default. Each loan sets how many days before its due date to remind you.</p>
 

@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| P11 / P23 | Hisab: loan save toast + Settings say Android blocks notifications; Chrono: Alerts/Weekly report lines say so | `LoanSheet.svelte`, Hisab + Chrono `Settings.svelte` | OPPO (Don't allow) |
 | L4-14 / C62 | time sheet focuses the dial whenever there is a keyboard (not the Android app), not only at ≥ 900 px | `TimeSheet.svelte` | Linux narrow window |
 | L4-15 / C63 | note counters "n / 500" from 400 chars | `Adjust.svelte` | Linux |
 | P25 | Add nap: end before start shows "Woke up must be after you fell asleep" (no wrapped 23h 45m) | `apps/dusk/src/components/Adjust.svelte` | OPPO |

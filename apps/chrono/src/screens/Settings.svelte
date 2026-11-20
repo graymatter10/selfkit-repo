@@ -25,13 +25,17 @@
   const clone = (): ChronoSettings => JSON.parse(JSON.stringify($state.snapshot(app.settings)));
 
   /** Android 13+: alerts need the notification permission; ask when it matters. */
+  let notifyBlocked = $state(false);
   async function askNotify() {
     try {
-      if (!(await isPermissionGranted())) await requestPermission();
+      if (!(await isPermissionGranted())) notifyBlocked = (await requestPermission()) !== "granted";
+      else notifyBlocked = false;
     } catch (e) {
       console.warn("notification permission", e);
     }
   }
+  // Alerts / Weekly report are on by default: say when Android blocks them (P23).
+  if (/Android/i.test(navigator.userAgent)) isPermissionGranted().then((g) => (notifyBlocked = !g)).catch(() => {});
   function toggle(field: "alerts" | "weekly_report") {
     const n = clone();
     n[field] = !n[field];
@@ -183,8 +187,8 @@
         {/if}
       {/each}
       {#if !s.goals.length && !edit}<p class="hint" style="margin:8px 0 6px">No goals yet. Add a daily limit or a goal.</p>{/if}
-      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Alerts</div><div class="sb">Notify me when a limit is reached or a goal is met</div></div>{@render tg(s.alerts, "Alerts", () => toggle("alerts"))}</div>
-      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Weekly report</div><div class="sb">Ready every Monday morning</div></div>{@render tg(s.weekly_report, "Weekly report", () => toggle("weekly_report"))}</div>
+      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Alerts</div><div class="sb">{s.alerts && notifyBlocked ? "Notifications are off for Chrono in Android settings, so nothing will show" : "Notify me when a limit is reached or a goal is met"}</div></div>{@render tg(s.alerts, "Alerts", () => toggle("alerts"))}</div>
+      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Weekly report</div><div class="sb">{s.weekly_report && notifyBlocked ? "Notifications are off for Chrono in Android settings" : "Ready every Monday morning"}</div></div>{@render tg(s.weekly_report, "Weekly report", () => toggle("weekly_report"))}</div>
     </div>
   {/if}
 {/snippet}
