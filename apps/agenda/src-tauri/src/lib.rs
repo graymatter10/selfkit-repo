@@ -212,11 +212,11 @@ fn ext_for(mime: &str) -> &'static str {
 // ---- .ics ----
 
 #[tauri::command]
-fn ics_export(state: State<AppState>, include_done: bool) -> Res<String> {
+fn ics_export(app: AppHandle, state: State<AppState>, include_done: bool) -> Res<String> {
     let store = state.store.lock().unwrap();
     let filter = if include_done { tasks::Filter::All } else { tasks::Filter::Active };
     let list = tasks::list(&store, filter).map_err(e)?;
-    Ok(ics::export(&list, &tasks::lists(&store).map_err(e)?))
+    Ok(ics::export(&list, &tasks::lists(&store).map_err(e)?, &app.package_info().version.to_string()))
 }
 
 #[tauri::command]

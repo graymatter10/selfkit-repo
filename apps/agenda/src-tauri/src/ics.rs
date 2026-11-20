@@ -166,9 +166,11 @@ fn vtodo(t: &TaskView, lists: &[ListInfo], out: &mut String) {
 }
 
 /// A whole VCALENDAR with one VTODO per task.
-pub fn export(list: &[TaskView], lists: &[ListInfo]) -> String {
+/// `version` = the app's package version (tauri.conf.json), so PRODID never goes stale (L11).
+pub fn export(list: &[TaskView], lists: &[ListInfo], version: &str) -> String {
     let mut out = String::new();
-    for l in ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Selfkit//Agenda//EN" /* no version: it went stale (L11) */, "CALSCALE:GREGORIAN", "X-WR-CALNAME:Agenda"] {
+    let prodid = format!("PRODID:-//Selfkit//Agenda {version}//EN");
+    for l in ["BEGIN:VCALENDAR", "VERSION:2.0", prodid.as_str(), "CALSCALE:GREGORIAN", "X-WR-CALNAME:Agenda"] {
         fold(l, &mut out);
     }
     for t in list {
@@ -595,7 +597,7 @@ mod tests {
         create(&a, NewTask { title: "All day due".into(), start: Some("2026-12-02".into()), reminder_min: Some(30), severity: Some(1), ..Default::default() }).unwrap();
         let d = create(&a, NewTask { title: "Done one".into(), ..Default::default() }).unwrap();
         tasks::toggle(&a, &d.id, Local::now().naive_local()).unwrap();
-        let text = export(&list(&a, Filter::All).unwrap(), &lists(&a).unwrap());
+        let text = export(&list(&a, Filter::All).unwrap(), &lists(&a).unwrap(), "0.0.0");
         assert!(text.lines().all(|l| l.len() <= 76), "folded");
 
         let b = store();
@@ -646,7 +648,7 @@ mod tests {
             d.insert(k.into(), v);
         }
         tasks::put_raw(&s, "t1", d).unwrap();
-        let text = export(&list(&s, Filter::All).unwrap(), &lists(&s).unwrap());
+        let text = export(&list(&s, Filter::All).unwrap(), &lists(&s).unwrap(), "0.0.0");
         assert_eq!(import(&s, &text).unwrap(), ImportResult { unchanged: 1, ..Default::default() });
     }
 
