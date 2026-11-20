@@ -69,9 +69,9 @@
       if (r.result === "ok") {
         set(r.lock);
       } else {
-        // A wait is shown by the live countdown line; a fixed "Try again in 30 s." in msg
-        // stayed on screen after the wait ended (phone bug B5).
-        msg = "retry_in_ms" in r && r.retry_in_ms > 0 ? `Wrong ${word(r.lock.kind)}.` : wrongText(r, r.lock.kind);
+        // A wait is shown by the live countdown line, then "Enter your PIN" again; a fixed
+        // "Try again in 30 s." in msg stayed on screen after the wait ended (B5, L7).
+        msg = "retry_in_ms" in r && r.retry_in_ms > 0 ? "" : wrongText(r, r.lock.kind);
         shake = true;
         setTimeout(() => (shake = false), 420);
         set(r.lock);
