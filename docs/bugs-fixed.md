@@ -72,6 +72,8 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| L3-12 / C83 | goals get `created` (day); Today/report/alerts skip days before it; website targets normalised on save; excluded subdomains already dropped thanks to the L3-10 norm_domain fix | `apps/chrono/src-tauri/src/{settings,stats,alerts}.rs`, `Settings.svelte`, `api.ts` | Linux |
+| L3-11 / C84 | not fixed: can't tell from code which of three causes (device keys differ, website time outside browser-app time, overlaps) gives 38 vs 43; L3-6/C52 fixes remove the main over-count source. Needs the day's web_sessions/app_sessions rows to decide | — | Linux |
 | P35 / C81 | note blurs when the keyboard closes (visualViewport grows), pad comes back | `AddPanel.svelte` | OPPO |
 | P36 / C82 | per-row fallback to unambiguous date formats; row errors wrap; test | `csvimport.rs`, `ImportSheet.svelte` | OPPO |
 | S-5 / C80 | see S-5 above | — | — |

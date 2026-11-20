@@ -4,7 +4,7 @@
   // sources, appearance. Everything shared lives in `chrono_settings`.
   import { api, type ChronoSettings, type Goal, type Total } from "../lib/api";
   import { CATS, ago, catColor, catName, dur, goalName } from "../lib/fmt";
-  import { app, guard, isPaused, pause, pauseLabel, refreshAndroid, resume, saveSettings, setTheme } from "../lib/state.svelte";
+  import { app, guard, isPaused, pause, pauseLabel, refreshAndroid, resume, saveSettings, setTheme, today } from "../lib/state.svelte";
   import Icon from "../components/Icon.svelte";
   import Seg from "../components/Seg.svelte";
   import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
@@ -87,12 +87,15 @@
     if (!s.goals.length) newGoal();
   });
   function newGoal() {
-    edit = { id: `g-${Date.now().toString(36)}`, kind: "limit", scope: "category", target: "entertainment", minutes: 60, enabled: true };
+    // `created`: days before it aren't judged (L3-12).
+    edit = { id: `g-${Date.now().toString(36)}`, kind: "limit", scope: "category", target: "entertainment", minutes: 60, enabled: true, created: today() };
     editNew = true;
   }
   function saveGoal() {
     if (!edit) return;
     const g = $state.snapshot(edit) as Goal;
+    // A website target is stored like exclusions and sessions: no scheme, www., port (L3-12).
+    if (g.scope === "domain") g.target = g.target.trim().toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/\/.*$/, "").replace(/:\d+$/, "").replace(/\.$/, "").replace(/^www\./, "");
     if (g.scope === "total") g.target = "";
     if ((g.scope === "app" || g.scope === "domain") && !g.target.trim()) return;
     g.minutes = Math.max(1, Math.round(g.minutes));
