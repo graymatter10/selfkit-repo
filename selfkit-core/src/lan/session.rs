@@ -18,7 +18,10 @@ const PAGE: u32 = 500;
 #[serde(tag = "t", rename_all = "snake_case")]
 enum Msg {
     Hello { device_id: String, name: String, apps: Vec<String>, proto: u32 },
-    Pull { app: String, since: i64 },
+    /// `restore`: the puller holds no record it wrote itself (fresh or wiped database with
+    /// the same device id), so its own versions must come back (C85). Missing from older
+    /// peers = false.
+    Pull { app: String, since: i64, #[serde(default)] restore: bool },
     Batch { app: String, records: Vec<Record>, upto: i64, more: bool },
     YourTurn,
     Bye,
@@ -52,9 +55,11 @@ async fn pull_phase<S: AsyncRead + AsyncWrite + Unpin + Send>(
 ) -> Result<()> {
     for app in apps {
         let store = stores.get_mut(app).expect("common app");
+        // Decided once per app, before the first page lands (that page may hold our own).
+        let restore: bool = !store.conn().query_row("SELECT EXISTS(SELECT 1 FROM records WHERE device_id=?1)", [store.device_id()], |r| r.get(0))?;
         loop {
             let since: i64 = store.kv_get(&cursor_key(peer))?.and_then(|s| s.parse().ok()).unwrap_or(0);
-            ch.send(&Msg::Pull { app: app.clone(), since }).await?;
+            ch.send(&Msg::Pull { app: app.clone(), since, restore }).await?;
             let Msg::Batch { app: got, records, upto, more } = ch.recv().await? else {
                 return Err(Error::Format("lan: expected batch".into()));
             };
@@ -90,7 +95,7 @@ async fn serve_phase<S: AsyncRead + AsyncWrite + Unpin + Send>(
 ) -> Result<Msg> {
     loop {
         match ch.recv().await? {
-            Msg::Pull { app, since } => {
+            Msg::Pull { app, since, restore } => {
                 if !apps.contains(&app) {
                     return Err(Error::Format("lan: pull for unshared app".into()));
                 }
@@ -100,10 +105,10 @@ async fn serve_phase<S: AsyncRead + AsyncWrite + Unpin + Send>(
                 // Versions written by the asking peer came from it: don't echo them back.
                 // The phone's first push of 6458 Chrono records used to return all of them
                 // on the next pass (S-4). The cursor still moves past them (`upto`).
-                // Only while the peer has synced with us before (since > 0): a device with
-                // a fresh database (reinstall, data cleared, same device id) pulls from 0 and
-                // must get its own records back (C85).
-                let records: Vec<Record> = changes.into_iter().map(|(r, _)| r).filter(|r| since == 0 || r.device_id != peer).collect();
+                // Except when the peer holds none of its own records (reinstall, data cleared,
+                // same device id): then it must get them back (C85). `since == 0` couldn't
+                // tell: a peer whose first pull found nothing also asks from 0 (a12 CI).
+                let records: Vec<Record> = changes.into_iter().map(|(r, _)| r).filter(|r| restore || r.device_id != peer).collect();
                 rep.sent += records.iter().filter(|r| r.is_user_data()).count() as u64;
                 ch.send(&Msg::Batch { app, records, upto, more }).await?;
             }
