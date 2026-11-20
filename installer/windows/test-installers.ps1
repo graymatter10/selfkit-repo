@@ -16,8 +16,11 @@ function Check([bool]$cond, [string]$msg) {
   if ($cond) { Write-Host "  ok   $msg" } else { Write-Host "::error::FAIL $msg"; $script:failures++ }
 }
 function Title([string]$s) { $s.Substring(0, 1).ToUpper() + $s.Substring(1) }
-function Run([string]$exe, [string[]]$argv) {
-  $p = Start-Process -FilePath $exe -ArgumentList $argv -Wait -PassThru
+# Wait for the installer process itself only: Start-Process -Wait also waits for every
+# child it started, and the agent installer leaves the agent running (that hung CI).
+function Run([string]$exe, [string[]]$argv, [int]$secs = 300) {
+  $p = Start-Process -FilePath $exe -ArgumentList $argv -PassThru
+  if (-not $p.WaitForExit($secs * 1000)) { Write-Host "::error::$exe $argv still running after $secs s"; $p.Kill(); return -1 }
   return $p.ExitCode
 }
 function Find-Setup([string]$pattern) {
@@ -69,11 +72,22 @@ function Test-App([string]$app) {
   Check (Test-Path "$inst\uninstall.exe") "uninstaller present"
   Check (Test-Path "$StartMenu\$P.lnk") "Start-menu shortcut Selfkit\$P.lnk"
 
-  # Launch briefly: the app must stay up and create its database.
-  $proc = Start-Process -FilePath $exe -PassThru
+  # Launch briefly: the app must stay up and create its database. The first app on a
+  # fresh runner can be slow (first WebView2 start, Defender scan), so wait up to 60 s.
+  $log = Join-Path $env:RUNNER_TEMP "$app-stderr.txt"; if (-not $env:RUNNER_TEMP) { $log = Join-Path $env:TEMP "$app-stderr.txt" }
+  $proc = Start-Process -FilePath $exe -PassThru -RedirectStandardError $log -RedirectStandardOutput "$log.out"
   $alive = -not (Wait-Until { $proc.HasExited } 10)
   Check $alive "app keeps running (10 s)"
-  Check (Wait-Until { Test-Path "$Data\$app.db" } 20) "app created $Data\$app.db"
+  $made = Wait-Until { Test-Path "$Data\$app.db" } 60
+  Check $made "app created $Data\$app.db"
+  if (-not $made) {
+    # Diagnostics for CI: what the app printed, its window, and the data folder.
+    $proc.Refresh()
+    Write-Host "  exited: $($proc.HasExited) window: '$($proc.MainWindowTitle)'"
+    Get-ChildItem -Recurse -Force $Data -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  data: $($_.FullName)" }
+    Get-Process | Where-Object { $_.Path -like "*\$P\*" -or $_.ProcessName -like "$app*" } | ForEach-Object { Write-Host "  proc: $($_.Id) $($_.Path) '$($_.MainWindowTitle)'" }
+    if (Test-Path $log) { Get-Content $log, "$log.out" -ErrorAction SilentlyContinue | Select-Object -Last 40 | ForEach-Object { Write-Host "  stderr: $_" } }
+  }
   if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force; Start-Sleep 2 }
   Get-Process | Where-Object { $_.Path -eq $exe } | Stop-Process -Force -ErrorAction SilentlyContinue
   Start-Sleep 1
