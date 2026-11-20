@@ -1,5 +1,8 @@
 # Decisions (newest first)
 
+## 2026-11-21 — Server rows keyed by (app, id) (R-1); keys.json versioned by `changed_at` (R-2)
+Record ids are unique per app only, so the server key is `(app, id)` (migration 2, schema 2; older builds refuse that server instead of mixing apps). S3 photo blobs stay `blobs/<record id>`: photo records get UUIDv7 ids, never fixed names like `settings`, so they can't collide across apps. `keys.json` is replaced on the server only by a newer file (`changed_at`), and a device adopts a newer server copy, so a stale device can't bring an old passphrase back.
+
 ## 2026-11-21 — Desktop without a keyring (C80/S-5)
 - A sync pass treats unreadable secure storage as "no server here", so LAN sync works (on the test key in test builds).
 - Saving the server and encryption key on such a desktop uses a 0600 file in the data folder (`sync/secrets.json`) instead of failing. Reason: the threat model already excludes same-user malware (which can read the plaintext DBs and the keychain); refusing left these users with no sync and no encryption at all. The keychain is always tried first; the agent is unchanged (keychain only).
