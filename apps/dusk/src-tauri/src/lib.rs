@@ -148,7 +148,15 @@ fn connections(state: State<AppState>) -> Res<Vec<model::Connection>> {
         compute(&store, cur - Duration::days(89), cur, true).map_err(e)?
     };
     let today = model::logical_day(now(), tz_now(), ds);
-    let mut out = vec![model::late_use_vs_quality(&nights, if cfg!(mobile) { "this phone" } else { "Chrono" })];
+    let mut late = model::late_use_vs_quality(&nights, if cfg!(mobile) { "this phone" } else { "Chrono" });
+    // Desktop without Chrono: say so instead of "from Chrono" over no data (L4-10).
+    if !cfg!(mobile) && !paths::app_db("chrono").exists() {
+        late.available = false;
+        late.enough = false;
+        late.strength = 0;
+        late.finding = model::not_found("Chrono");
+    }
+    let mut out = vec![late];
     let agenda = sources::open_other("agenda");
     let tasks = agenda.as_ref().map(|a| sources::tasks_done_per_day(a, ds, today)).unwrap_or_default();
     out.push(model::sleep_vs_next_day(&nights, &tasks, ds, "tasks", "tasks", agenda.is_some()));
