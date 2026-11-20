@@ -190,13 +190,14 @@
 
 {#snippet search()}
   <div class="flex items-center gap-2">
-    <label class="flex h-9 flex-1 items-center gap-1.5 rounded-[10px] bg-fill px-2 text-muted">
+    <!-- min-w-0 + shrink-0: Cancel stays inside the desktop header's 16rem box instead of running under "+" (L8). -->
+    <label class="flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-[10px] bg-fill px-2 text-muted">
       <Icon name="search" size={16} stroke={2.2} /><span class="sr">Search tasks</span>
       <input bind:this={searchEl} bind:value={app.query} oninput={onSearch} placeholder="Search" enterkeyhint="search"
         onfocus={() => ((searchFocus = true), (app.searching = true))} onblur={() => ((searchFocus = false), !app.query.trim() && (app.searching = false))}
         class="min-w-0 flex-1 bg-transparent text-[17px] text-ink outline-none" />
     </label>
-    {#if app.searching}<button type="button" class="press fade text-[17px] text-accent" onmousedown={(e) => e.preventDefault()} onclick={stopSearch}>Cancel</button>{/if}
+    {#if app.searching}<button type="button" class="press fade shrink-0 text-[17px] text-accent" onmousedown={(e) => e.preventDefault()} onclick={stopSearch}>Cancel</button>{/if}
   </div>
 {/snippet}
 
