@@ -72,6 +72,10 @@
     const a = get(main()), b = get(c);
     return a && b ? b / a : undefined;
   }
+  // No rate yet (C88): ask "1 USD = __ BDT" when the other currency is a "big unit" and the
+  // main one isn't; typing 124.42 into "1 BDT = __ USD" stored a wildly wrong rate.
+  const STRONG = ["USD", "EUR", "GBP", "CHF", "CAD", "AUD", "NZD", "SGD", "KWD", "BHD", "OMR", "JOD", "KYD"];
+  const strongUnit = (c: string) => STRONG.includes(c);
   // A row shows whichever direction gives a number ≥ 1 ("1 USD = 124.42 BDT" with main BDT,
   // not "1 BDT = 0.00803758 USD"); a value typed into an inverted row is turned back (L2-8).
   async function setRate(c: string, v: string, inverted = false) {
@@ -141,7 +145,7 @@
       <button type="button" disabled={fetching} class="press text-[14px] font-semibold text-accent disabled:opacity-40" onclick={refetch}>{fetching ? "Updating…" : "Update now"}</button></div>
     {#each used as c (c)}
       {@const r = rateOf(c)}
-      {@const inv = !!r && r < 1}
+      {@const inv = r ? r < 1 : strongUnit(c) && !strongUnit(main())}
       {@const shown = r ? (inv ? 1 / r : r) : undefined}
       <label class={row}>
         <span class="flex-1 text-[15px]">1 {inv ? c : main()} =</span>
