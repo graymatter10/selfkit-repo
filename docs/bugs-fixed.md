@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| P17–P20 | Chrono: average window named, short change text (+minutes for big jumps), last use 23:59 past midnight, "N sources this week" | `screens/Today.svelte`, `screens/Trends.svelte`, `App.svelte` | OPPO |
 | P32 | Reflect tile label wraps instead of "Screen t…" | `apps/reflect/src/components/Tile.svelte` | OPPO |
 | P33 | Tasks tile counts open tasks from earlier days ("3 overdue") | `apps/reflect/src-tauri/src/model.rs` | OPPO |
 | P34 | in-progress review averages leave today out | `model.rs` (`review`) | OPPO |

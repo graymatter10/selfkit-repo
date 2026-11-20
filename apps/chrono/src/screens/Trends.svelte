@@ -82,7 +82,10 @@
     // compare per day: the current period may not be over yet
     const p = prev * (Math.max(1, v.summary.days) / Math.max(1, v.prev.days));
     const d = Math.round(((ms - p) / p) * 100);
-    return Math.abs(d) >= 10 ? `${Math.abs(d)}% ${d > 0 ? "more" : "less"} than ${prevShort}` : "";
+    // Big jumps from almost nothing read oddly ("4365% more"): say the minutes instead,
+    // and keep it short so it fits one line on a phone (P18).
+    if (d >= 300) return `+${dur(ms - p)} vs ${prevShort}`;
+    return Math.abs(d) >= 10 ? `${d > 0 ? "+" : "−"}${Math.abs(d)}% vs ${prevShort}` : "";
   }
   // peak times sentence
   const peak = $derived.by(() => {
@@ -159,7 +162,7 @@
       <div class="nm" style="display:flex;align-items:center;gap:8px;min-width:0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{it.name}</span>{#if it.gone}<span class="tag">Uninstalled</span>{/if}{#if it.sub}<span class="muted" style="font-size:13px">{it.sub}</span>{/if}</div>
       {#if it.cat}
         {@const d = delta(it.ms, it.prev)}
-        <div class="sb" style="display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden">{#if tab !== "cats"}<i class="sw" style="background:{catColor(it.cat)}"></i>{catName(it.cat)}{/if}{#if d}{tab !== "cats" ? "\u00a0· " : ""}<span style="color:var(--ink2)">{d}</span>{/if}{#if tab === "cats" && !d}&nbsp;{/if}</div>
+        <div class="sb" style="display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden">{#if tab !== "cats"}<i class="sw" style="background:{catColor(it.cat)}"></i>{catName(it.cat)}{/if}{#if d}{tab !== "cats" ? "\u00a0· " : ""}<span style="color:var(--ink2);overflow:hidden;text-overflow:ellipsis">{d}</span>{/if}{#if tab === "cats" && !d}&nbsp;{/if}</div>
       {/if}
     </div>
     <span class="val">{dur(it.ms)}</span>

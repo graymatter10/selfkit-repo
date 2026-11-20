@@ -212,7 +212,7 @@
     {#if app.view === "today"}
       <div class="statusline" style="position:relative">
         <span class="live" class:off={isPaused() || (app.android.supported && !app.android.usage)}></span>
-        <span>{isPaused() ? pauseLabel() : app.android.supported && !app.android.usage ? "Phone time is off" : recent.length > 1 ? `Recording on ${recent.length} devices` : "Recording"}</span>
+        <span>{isPaused() ? pauseLabel() : app.android.supported && !app.android.usage ? "Phone time is off" : recent.length > 1 ? `Recording · ${recent.length} sources this week` : "Recording"}</span>
         {#if app.android.supported && !app.android.usage && !isPaused()}<button type="button" class="pill pz" style="color:var(--accent-ink)" onclick={() => (app.setup = 1)}>Allow</button>
         {:else if isPaused()}<button type="button" class="pill pz" onclick={resume}><Icon name="play" size={15} /> Resume</button>
         {:else}<button type="button" class="pill pz" aria-haspopup="menu" aria-expanded={app.pauseMenu} onclick={() => (app.pauseMenu = !app.pauseMenu)}><Icon name="pause" size={15} /> Pause</button>{/if}
