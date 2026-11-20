@@ -521,7 +521,17 @@ pub fn filter_tx(d: &Data, flt: &Filter) -> Vec<Value> {
             hay.push_str(&name_of(&d.accounts, s(t, "account")));
             hay.push(' ');
             hay.push_str(&name_of(&d.accounts, s(t, "to_account")));
-            q.split_whitespace().all(|w| hay.contains(w.trim_start_matches('#')))
+            q.split_whitespace().all(|w| {
+                // An amount as the list shows it ("1,234.50", "৳1,234.50") matches by value (L2-16).
+                let num = w.trim_matches(|c: char| !c.is_ascii_digit() && c != '.' && c != ',' && c != '-').replace(',', "");
+                if num.chars().any(|c| c.is_ascii_digit())
+                    && let Ok(n) = num.parse::<f64>()
+                    && (amt.abs() - n.abs()).abs() < 0.005
+                {
+                    return true;
+                }
+                hay.contains(w.trim_start_matches('#'))
+            })
         })
         .map(|t| {
             let mut v = t.clone();
@@ -645,6 +655,7 @@ mod tests {
         assert_eq!(s(&all[0], "id"), "t5", "newest date first");
         let q = |f0: Filter| filter_tx(&d, &f0).iter().map(|v| s(v, "id").to_string()).collect::<Vec<_>>();
         assert_eq!(q(Filter { q: "lunch".into(), ..Default::default() }), vec!["t1"]);
+        assert_eq!(q(Filter { q: "$20.00".into(), ..Default::default() }), vec!["t1"], "amount as shown (L2-16)");
         assert_eq!(q(Filter { q: "#work".into(), ..Default::default() }), vec!["t1"]);
         assert_eq!(q(Filter { category: "bus".into(), ..Default::default() }), vec!["t5", "t2"]);
         assert_eq!(q(Filter { account: "bk".into(), ..Default::default() }), vec!["t4", "t2"]);
