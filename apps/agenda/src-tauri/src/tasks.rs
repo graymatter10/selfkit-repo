@@ -314,13 +314,38 @@ pub struct Completion {
     pub data: Map<String, Value>,
 }
 
-/// Completed-task history, newest first.
+/// Completed-task history, newest first. A done task without its completion record
+/// (done by an older build, an .ics import, or a sync merge that kept another device's
+/// `last_completion`) is listed from the task itself (`task-<id>`), so History and Stats
+/// match the Done list (P4).
 pub fn history(store: &Store) -> Result<Vec<Completion>> {
     let mut v: Vec<Completion> = store
         .list(COMPLETIONS, u32::MAX, 0)?
         .into_iter()
         .map(|r| Completion { id: r.id, data: r.data.as_object().cloned().unwrap_or_default() })
         .collect();
+    let at = |d: &Map<String, Value>| d.get("done_at").and_then(Value::as_i64);
+    for t in store.list(TASKS, u32::MAX, 0)? {
+        let d = normalize(t.data.as_object().cloned().unwrap_or_default());
+        let Some(done) = at(&d) else { continue };
+        let linked = str_of(&d, "last_completion").is_some_and(|c| v.iter().any(|x| x.id == c));
+        if linked || v.iter().any(|x| str_of(&x.data, "task") == Some(t.id.as_str()) && at(&x.data).is_some_and(|a| (a - done).abs() < 60_000)) {
+            continue;
+        }
+        let mut c = Map::new();
+        c.insert("task".into(), json!(t.id));
+        c.insert("title".into(), d.get("title").cloned().unwrap_or(json!("")));
+        c.insert("done_at".into(), json!(done));
+        if let Some(tz) = d.get("tz_offset_min") {
+            c.insert("tz_offset_min".into(), tz.clone());
+        } else {
+            c.insert("tz_offset_min".into(), json!(t.tz_offset));
+        }
+        if let Some(tags) = d.get("tags") {
+            c.insert("tags".into(), tags.clone());
+        }
+        v.push(Completion { id: format!("task-{}", t.id), data: c });
+    }
     v.sort_by_key(|c| std::cmp::Reverse(c.data.get("done_at").and_then(Value::as_i64).unwrap_or(0)));
     Ok(v)
 }
@@ -641,5 +666,10 @@ mod tests {
         let r = toggle(&s, &r.id, now).unwrap();
         assert!(!r.data.contains_key("done_at"));
         assert_eq!(history(&s).unwrap().len(), 2);
+        // A done task without a completion record still shows (P4).
+        s.put(TASKS, Some("old"), &json!({"title": "done elsewhere", "done_at": 1_763_200_000_000_i64})).unwrap();
+        let h = history(&s).unwrap();
+        assert_eq!(h.len(), 3);
+        assert!(h.iter().any(|c| c.id == "task-old" && c.data["title"] == "done elsewhere"));
     }
 }
