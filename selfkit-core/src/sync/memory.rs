@@ -19,7 +19,7 @@ impl Remote for MemoryRemote {
     async fn push(&self, rec: &RemoteRecord, base_rev: i64) -> Result<Option<i64>> {
         let mut g = self.inner.lock().unwrap();
         let (rows, seq) = &mut *g;
-        let pos = rows.iter().position(|r| r.id == rec.id);
+        let pos = rows.iter().position(|r| r.app == rec.app && r.id == rec.id);
         let ok = match pos {
             None => base_rev == 0,
             Some(i) => rows[i].rev == base_rev,
@@ -45,7 +45,7 @@ impl Remote for MemoryRemote {
         Ok(v)
     }
 
-    async fn fetch(&self, id: &str) -> Result<Option<RemoteRecord>> {
-        Ok(self.inner.lock().unwrap().0.iter().find(|r| r.id == id).cloned())
+    async fn fetch(&self, app: &str, id: &str) -> Result<Option<RemoteRecord>> {
+        Ok(self.inner.lock().unwrap().0.iter().find(|r| r.app == app && r.id == id).cloned())
     }
 }

@@ -66,3 +66,6 @@ Encrypted whole-file with XChaCha20-Poly1305 STREAM, stored at `blobs/<uuid>` in
 
 ## Bundles (`.skb`)
 `SKB1` magic + STREAM-encrypted **tar** (streams both ways with flat RAM) containing `manifest.json` (app, range, schema version, device), `records.jsonl`, `files/<id>`. Used for monthly backups, manual export/import, server migration.
+
+## Server rows are per app (R-1, 2026-11-21)
+Record ids are only unique within one app (`settings` in Chrono, Dusk and Reflect; `n-<date>` in Dusk and Chrono), so server migration 2 makes `sk_records`' primary key `(app, id)`; push, update and `Remote::fetch(app, id)` all filter by app. Before, a second app's push hit the first app's row, `fetch(id)` returned the other app's record, and data crossed between apps. A device whose old row was taken over that way finds no row for its app and inserts its record again on the next pass. Older builds refuse a server at schema 2 ("newer server schema"), as designed.

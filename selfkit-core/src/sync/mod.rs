@@ -37,7 +37,8 @@ pub trait Remote: Send + Sync {
     fn push(&self, rec: &RemoteRecord, base_rev: i64) -> impl Future<Output = Result<Option<i64>>> + Send;
     /// Rows of `app` with rev > since, ascending, at most `limit`.
     fn pull(&self, app: &str, since: i64, limit: i64) -> impl Future<Output = Result<Vec<RemoteRecord>>> + Send;
-    fn fetch(&self, id: &str) -> impl Future<Output = Result<Option<RemoteRecord>>> + Send;
+    /// One row of `app` (ids are only unique per app — R-1).
+    fn fetch(&self, app: &str, id: &str) -> impl Future<Output = Result<Option<RemoteRecord>>> + Send;
 }
 
 #[derive(Serialize, Deserialize)]
@@ -168,13 +169,18 @@ pub async fn sync_once<R: Remote>(store: &mut Store, remote: &R, key: &SecretKey
                 }
                 None => {
                     // Someone else changed it: fetch theirs and let the store decide.
-                    if let Some(srv) = remote.fetch(&rec.id).await? {
+                    if let Some(srv) = remote.fetch(store.app(), &rec.id).await? {
                         let theirs = decrypt_record(key, &srv)?;
                         if store.apply_remote(&theirs, srv.rev)? == Applied::Conflict {
                             rep.conflicts += 1;
                         } else if retried.insert(rec.id.clone()) {
                             tried.remove(&rec.id);
                         }
+                    } else if base > 0 && let Some(rev) = remote.push(&rr, 0).await? {
+                        // Our row isn't there (any more) for this app: before R-1 another
+                        // app's record with the same id took it over. Insert ours again.
+                        store.mark_synced(&rec.id, rec.updated_at, rev)?;
+                        rep.pushed += rec.is_user_data() as u64;
                     }
                 }
             }
@@ -226,6 +232,24 @@ mod tests {
         sync_once(&mut a, &remote, &key).await.unwrap();
         sync_once(&mut b, &remote, &key).await.unwrap();
         assert_eq!(b.count("tasks").unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn same_id_in_two_apps_stays_apart() {
+        // R-1: "settings" exists in Chrono and Dusk; on the server they must not overwrite each other.
+        let key = SecretKey::generate();
+        let remote = MemoryRemote::default();
+        let mut chrono = Store::open_in_memory("chrono", "A", &[]).unwrap();
+        let mut dusk = Store::open_in_memory("dusk", "A", &[]).unwrap();
+        chrono.put("chrono_settings", Some("settings"), &json!({"alerts": true})).unwrap();
+        dusk.put("dusk_settings", Some("settings"), &json!({"goal_min": 480})).unwrap();
+        assert_eq!(sync_once(&mut chrono, &remote, &key).await.unwrap().pushed, 1);
+        assert_eq!(sync_once(&mut dusk, &remote, &key).await.unwrap().pushed, 1);
+        let mut dusk2 = Store::open_in_memory("dusk", "B", &[]).unwrap();
+        sync_once(&mut dusk2, &remote, &key).await.unwrap();
+        let r = dusk2.get("settings").unwrap().unwrap();
+        assert_eq!((r.collection.as_str(), r.data["goal_min"].as_i64()), ("dusk_settings", Some(480)));
+        assert_eq!(chrono.get("settings").unwrap().unwrap().collection, "chrono_settings");
     }
 
     /// Attack: a malicious server rewrites the clear metadata (or moves a ciphertext to
