@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| P16, P21, P22 | Chrono: See all → Trends Day of that day; Today tab → today; goals Add/Edit → Settings goals section (+ new form when none) | `apps/chrono/src/App.svelte`, `screens/Trends.svelte`, `screens/Settings.svelte`, `lib/state.svelte.ts` | OPPO |
 | L3-5 / C56 | Chrono rail says "Not recording" + hint when no device reported in 7 days | `apps/chrono/src/App.svelte` | Linux fresh |
 | P24 | partly: Facebook Lite, Telegram web/X packages default to Social. Telegram as Entertainment not reproducible from the defaults ("telegram" and org.telegram.messenger are Social) — likely a stored category override (synced settings); needs the phone's chrono_settings.categories | `apps/chrono/src-tauri/src/categories.rs` | OPPO |
 | P11 / P23 | Hisab: loan save toast + Settings say Android blocks notifications; Chrono: Alerts/Weekly report lines say so | `LoanSheet.svelte`, Hisab + Chrono `Settings.svelte` | OPPO (Don't allow) |

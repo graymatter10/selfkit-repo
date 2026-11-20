@@ -10,11 +10,12 @@
   import Seg from "../components/Seg.svelte";
   import VList from "../components/VList.svelte";
   import AppChanges from "./AppChanges.svelte";
-  let { phone, scroller, initialTab = "apps", onchanges }: { phone: boolean; scroller: HTMLElement | null; initialTab?: Tab; onchanges: () => void } = $props();
+  let { phone, scroller, initialTab = "apps", initialDay, onchanges }: { phone: boolean; scroller: HTMLElement | null; initialTab?: Tab; initialDay?: string; onchanges: () => void } = $props();
   let withGone = $state(true);
   type Tab = "apps" | "sites" | "devices" | "cats";
-  let period = $state<Period>((app.demo.period as Period) || "month");
-  let anchor = $state<string | undefined>(undefined);
+  // "See all" from Today opens the Day view of the day on screen (P16).
+  let period = $state<Period>(initialDay ? "day" : (app.demo.period as Period) || "month");
+  let anchor = $state<string | undefined>(initialDay);
   let v = $state<TrendsView | null>(null);
   let sel = $state(-1);
   let heatSel = $state<[number, number] | null>(null);

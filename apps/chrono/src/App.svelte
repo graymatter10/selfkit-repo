@@ -61,7 +61,9 @@
       app.day = d >= today() ? null : d;
     }
   }
+  let trendsDay = $state<string | undefined>(undefined);
   function go(v: View) {
+    trendsDay = undefined; // only "See all" opens Trends on a day
     app.view = v;
     app.settingsOpen = false;
     app.sourcesOpen = false;
@@ -78,7 +80,7 @@
     else if (app.sourcesOpen) app.sourcesOpen = false;
     else app.settingsOpen = false;
   }
-  function seeAll() { trendsTab = "apps"; go("trends"); }
+  function seeAll() { trendsTab = "apps"; go("trends"); trendsDay = app.day ?? today(); }
 
   // Android Back: one history entry while any layer is open; Back closes the topmost.
   const layered = $derived(phone && (!!app.photo || !!app.noteDay || app.setup > 0 || app.settingsOpen || app.changesOpen || app.pauseMenu || !!app.day || app.view !== "today"));
@@ -180,9 +182,9 @@
   {#if app.changesOpen && !phone}<AppChanges {phone} />
   {:else if app.settingsOpen && !phone}
     {@render settingsBody()}
-  {:else if app.view === "today"}<Today {phone} onseeall={seeAll} onsettings={openSettings} />
+  {:else if app.view === "today"}<Today {phone} onseeall={seeAll} onsettings={() => ((app.goalsFocus = true), openSettings())} />
   {:else if app.view === "timeline"}<Timeline {phone} {scroller} />
-  {:else if app.view === "trends"}<Trends {phone} {scroller} initialTab={trendsTab} onchanges={() => (app.changesOpen = true)} />
+  {:else if app.view === "trends"}<Trends {phone} {scroller} initialTab={trendsTab} initialDay={trendsDay} onchanges={() => (app.changesOpen = true)} />
   {:else}<Report {phone} />{/if}
 {/snippet}
 
@@ -220,7 +222,7 @@
     <div class="content" style="flex:1;overflow-y:auto" bind:this={scroller}>{@render screen()}</div>
     <nav class="tabbar">
       {#each NAVS as n}
-        <button type="button" class="tab" class:on={app.view === n.id} aria-current={app.view === n.id ? "page" : undefined} onclick={() => (app.view === n.id && n.id === "today" ? (app.day = null) : go(n.id))}>
+        <button type="button" class="tab" class:on={app.view === n.id} aria-current={app.view === n.id ? "page" : undefined} onclick={() => (n.id === "today" ? (go("today"), (app.day = null)) : go(n.id))}>
           <span class="ico"><Icon name={n.id} size={22} stroke={1.7} /></span>{n.short}
         </button>
       {/each}

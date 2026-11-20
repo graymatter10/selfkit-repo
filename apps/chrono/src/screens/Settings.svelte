@@ -69,6 +69,14 @@
     n.categories[name] = cat;
     saveSettings(n);
   }
+  let goalsEl: HTMLElement | undefined = $state();
+  // From Today's goals card: scroll to this section, and open the form when there are none (P22).
+  $effect(() => {
+    if (!app.goalsFocus || !goalsEl || !s) return;
+    app.goalsFocus = false;
+    setTimeout(() => goalsEl?.scrollIntoView({ block: "start" }), 60);
+    if (!s.goals.length) newGoal();
+  });
   function newGoal() {
     edit = { id: `g-${Date.now().toString(36)}`, kind: "limit", scope: "category", target: "entertainment", minutes: 60, enabled: true };
     editNew = true;
@@ -175,7 +183,7 @@
 {#snippet goalsCard()}
   {#if s}
     <div class="card">
-      <div class="ch" style="margin-bottom:2px"><h2>Goals and limits</h2><button type="button" class="lnk" onclick={newGoal}><Icon name="plus" size={14} stroke={2.2} /> New</button></div>
+      <div class="ch" style="margin-bottom:2px" bind:this={goalsEl}><h2>Goals and limits</h2><button type="button" class="lnk" onclick={newGoal}><Icon name="plus" size={14} stroke={2.2} /> New</button></div>
       {#if edit && editNew}{@render goalForm(edit)}{/if}
       {#each s.goals as g (g.id)}
         {#if edit && !editNew && edit.id === g.id}{@render goalForm(edit)}

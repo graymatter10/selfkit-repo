@@ -9,6 +9,8 @@ export const app = $state({
   view: "today" as View,
   /** selected day for Today / Timeline (null = today) */
   day: null as string | null,
+  /** Settings opens at "Goals and limits" (the Today card's Edit/Add — P22). */
+  goalsFocus: false,
   /** selected week (any day in it) for the report (null = last complete week) */
   week: null as string | null,
   info: null as Info | null,
