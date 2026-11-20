@@ -94,6 +94,11 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L2-31 | amount fit also measures where the text really ends (WebKitGTK scrollWidth missed it) and refits on resize | `AddPanel.svelte` | Linux 1180×760, 9999999999.99 |
 | L2-4 (retest) | WebKitGTK datetime-edit box made full width so Date/Time sit right | `apps/hisab/src/app.css` | Linux |
 | L2-18 (retest) | "No devices seen" hint on a PC: "Your other devices need Selfkit open (or the agent running)…" | `ui/src/sync/SyncSettings.svelte` | Linux |
+| Hisab capture hint wrap (a8 retest) | hint kept on one line (truncate); compact popup uses the shorter "Enter saves · Delete clears" | `AddPanel.svelte` | Linux capture popup |
+| Agenda L2 (retest, real cause) | list-row buttons: no outline for mouse focus, keyboard ring drawn inside (`outline-offset: -2px`) so the clipped card can't cut it into a left/bottom line; same for Hisab/Dusk `.hl` rows and Chrono `button.row` | `apps/{agenda,hisab,dusk,chrono}/src/app.css` | Linux: click a task, close it, Tab through |
+| Lock "Turn off app lock" PIN not focused (desktop) | input focused on mount and again a frame later (`focusSoon`) instead of `autofocus` | `ui/src/lock/LockSettings.svelte` | Linux |
+| L29 (retest) | 45–55 % reads "about half" | `apps/reflect/src-tauri/src/model.rs`, README | Linux |
+| L32 | Spent tile with unbudgeted spending says "$3 of today's $17 budget" / "… over today's budget (budgeted categories)" | `apps/reflect/src-tauri/src/model.rs`, `stats.md` | Linux |
 | R-2 | keys.json `changed_at`; upload only when newer than the server copy, adopt a newer server copy; LAN-only limit documented | `selfkit-core/src/keys.rs`, `selfkit-appsync/src/server.rs` | longrun sim |
 | R-1 (critical) | server primary key (app, id) via migration 2; push/update/fetch filter by app; lost rows re-inserted; tests same_id_in_two_apps_stays_apart + ignored pg_same_id_two_apps (migrate twice); S3 `blobs/<uuid>` checked, no collision; DECISIONS entry | `selfkit-core/src/sync/{pg,mod,memory}.rs` | sync-e2e + longrun |
 | S-6 | one-shot LAN pass beacons every 700 ms and connects to a peer as soon as its beacon arrives; agent device name prefers the name set on the Sync page | `selfkit-appsync/src/lan.rs`, `selfkit-agent/src/sync_loop.rs` | OPPO ↔ Linux without agent |

@@ -218,7 +218,7 @@
         <span class="text-[22px] font-medium text-muted">{symbol(cur)}</span>
         <span class="leading-none font-semibold tracking-[-1px]" style="font-size: var(--amt, {basePx}px)">{display(app.draft.amount)}</span>{#if !phone}<span class="amt-caret" aria-hidden="true"></span>{/if}
       </div>
-      {#if !phone}<div class="mt-0.5 text-[12px] text-muted">{app.draft.amount ? "Enter saves · Backspace deletes · Delete clears" : "Type an amount · Enter saves"}</div>{/if}
+      {#if !phone}<div class="mt-0.5 truncate whitespace-nowrap text-[12px] text-muted">{app.draft.amount ? (compact ? "Enter saves · Delete clears" : "Enter saves · Backspace deletes · Delete clears") : "Type an amount · Enter saves"}</div>{/if}
     </div>
     <div class="flex shrink-0 flex-col items-end gap-1 pb-0.5">
       <div class="flex items-center gap-1">

@@ -60,6 +60,10 @@
 .press { transition: opacity 120ms; }
 .press:active { opacity: 0.55; }
 .hl:active { background: var(--fill2); }
+/* List rows sit in clipped cards: the outside focus ring showed only as a blue line on the
+   row's left/bottom edge (Agenda L2). Ring drawn inside the row, none for mouse focus. */
+.hl:focus:not(:focus-visible) { outline: none; }
+.hl:focus-visible { outline-offset: -2px; }
 @layer components {
 .card { background: var(--card); border-radius: 18px; box-shadow: var(--shadow); }
 .key { background: var(--key); transition: background 80ms; }
