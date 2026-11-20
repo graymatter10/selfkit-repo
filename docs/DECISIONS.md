@@ -1,5 +1,8 @@
 # Decisions (newest first)
 
+## 2026-11-21 — Hisab PDF export stays Latin-only (L15)
+- The hand-written PDF keeps Helvetica/WinAnsi; Bangla and other scripts print as "?" and the export sheet says to use CSV for them. Reason: readable Bangla needs an embedded font (Noto Sans Bengali subset, ~150–300 KB) *and* OpenType shaping (vowel-sign reordering, conjuncts) — a shaping engine (e.g. rustybuzz) plus CID font writing is too much new code for the last batch before release. Revisit with a PDF library after release.
+
 ## 2026-11-21 — Chrono: uninstalled app's missing time (P15)
 - For release: documented limit — time in an Android app that is uninstalled before Chrono's next import can be missing (Android deletes its raw events and only keeps a daily total). Reason: the fix needs new data-model work (untimed sessions) touching Chrono, Reflect and Dusk, too risky in the last batch before release.
 - First post-release item: reconcile from Android's daily totals into untimed sessions (design in PLANNING.md → Chrono → Next).
