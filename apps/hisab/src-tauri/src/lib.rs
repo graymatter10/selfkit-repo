@@ -91,7 +91,7 @@ fn snapshot(state: State<AppState>, month: String) -> R<Value> {
         })
     };
     recent.sort_by_key(|v| std::cmp::Reverse(key(v)));
-    recent.truncate(6);
+    recent.truncate(8); // desktop Home shows 8 since it has no number pad (2026-11-21)
     Ok(json!({
         "main": main,
         "today": t.format("%Y-%m-%d").to_string(),
@@ -587,7 +587,7 @@ mod shortcut {
         }
         let r = WebviewWindowBuilder::new(app, "capture", WebviewUrl::App("index.html?view=capture".into()))
             .title("Add expense")
-            .inner_size(420.0, 560.0)
+            .inner_size(420.0, 390.0) // no number pad on desktop (2026-11-21), keyboard only
             .resizable(false)
             .decorations(false)
             .always_on_top(true)

@@ -1,5 +1,8 @@
 # Decisions (newest first)
 
+## 2026-11-21 — Hisab: no number pad on desktop (user)
+- Hisab on Linux/Windows (main window, narrow windows and the quick-capture popup) has no on-screen number pad; the amount is typed. Reason (user): a pad is for touch; on a computer it wasted space and mouse clicks. Phones keep the pad. The amount shows as an outlined field with a caret and "Type an amount · Enter saves"; the freed height shows more recent entries; the capture popup is 420×390.
+
 ## 2026-11-20 — Phone mirrors: Dusk nights for Reflect (B2), Agenda/Hisab for Dusk (B4)
 - Reflect on Android gets Dusk's sleep through a read-only copy of Dusk's local `dusk_nights` table: Dusk's provider serves it whole (`/table?name=dusk_nights`, allow-list `SHARED_TABLES` in `selfkit-appsync/src/android.rs`) and `SelfkitMirror` replaces the copy in Reflect's `dusk.db` on each mirror pass. Not chosen: publishing nights as synced records — each device estimates its own nights from its own screen use (phone vs PC), so synced nights would conflict or duplicate across devices; too risky before release. Phone-local only, no sync changes.
 - Dusk on Android mirrors Agenda and Hisab like Reflect (`com.selfkit.sync.MIRROR=agenda,hisab`), so Connections' next-day cards work on the phone. Reason: both apps are usually installed on the same phone; "On computer" read as broken.

@@ -166,11 +166,12 @@
 
   <!-- Amount, currency, account -->
   <div class="flex items-end gap-2 px-1">
-    <div class="min-w-0 flex-1 {shake ? 'animate-[shake_.3s]' : ''}">
+    <div class="min-w-0 flex-1 {shake ? 'animate-[shake_.3s]' : ''} {phone ? '' : 'rounded-[14px] px-2 py-1.5 shadow-[inset_0_0_0_2px_var(--accent)]'}">
       <div class="num flex items-baseline gap-1 truncate {app.draft.amount ? 'text-ink' : 'text-faint'} {app.draft.kind === 'income' && app.draft.amount ? 'text-accent-ink' : ''}" aria-live="polite" aria-label="Amount">
         <span class="text-[22px] font-medium text-muted">{symbol(cur)}</span>
-        <span class="leading-none font-semibold tracking-[-1px]" style="font-size: {amountPx}px">{display(app.draft.amount)}</span>
+        <span class="leading-none font-semibold tracking-[-1px]" style="font-size: {amountPx}px">{display(app.draft.amount)}</span>{#if !phone}<span class="amt-caret" aria-hidden="true"></span>{/if}
       </div>
+      {#if !phone}<div class="mt-0.5 text-[12px] text-muted">{app.draft.amount ? "Enter saves · Backspace deletes · Delete clears" : "Type an amount · Enter saves"}</div>{/if}
     </div>
     <div class="flex shrink-0 flex-col items-end gap-1 pb-0.5">
       <div class="flex items-center gap-1">
@@ -230,7 +231,8 @@
     </p>
   {/if}
 
-  {#if !noteFocus || compact || !phone}
+  <!-- Number pad on phones only; computers type the amount (user, 2026-11-21). -->
+  {#if phone && (!noteFocus || compact)}
     <NumPad onkey={key} {compact} />
   {/if}
   <button type="button" disabled={!canSave} onclick={save}
@@ -240,5 +242,8 @@
 </div>
 
 <style>
+  /* Desktop amount "field": a blinking caret after the number (keyboard entry, no pad). */
+  .amt-caret { display: inline-block; width: 2px; height: 0.9em; margin-left: 2px; align-self: center; background: var(--accent); animation: amt-blink 1s steps(1) infinite; }
+  @keyframes amt-blink { 50% { opacity: 0; } }
   @keyframes -global-shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 </style>
