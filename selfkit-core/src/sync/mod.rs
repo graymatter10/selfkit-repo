@@ -149,6 +149,10 @@ pub async fn sync_once<R: Remote>(store: &mut Store, remote: &R, key: &SecretKey
     let mut rep = SyncReport::default();
     pull(store, remote, key, &mut rep).await?;
     let mut tried: HashSet<String> = HashSet::new();
+    // Records merged with the server's copy after a rejected push get one more try in
+    // this pass (they are dirty again on top of the new rev), so the merge doesn't wait
+    // for the next pass (C9).
+    let mut retried: HashSet<String> = HashSet::new();
     loop {
         let batch: Vec<_> = store.dirty(200)?.into_iter().filter(|(r, _)| !tried.contains(&r.id)).collect();
         if batch.is_empty() {
@@ -168,6 +172,8 @@ pub async fn sync_once<R: Remote>(store: &mut Store, remote: &R, key: &SecretKey
                         let theirs = decrypt_record(key, &srv)?;
                         if store.apply_remote(&theirs, srv.rev)? == Applied::Conflict {
                             rep.conflicts += 1;
+                        } else if retried.insert(rec.id.clone()) {
+                            tried.remove(&rec.id);
                         }
                     }
                 }
