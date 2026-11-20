@@ -60,6 +60,7 @@ const DEFAULT_STATE = {
   pausedUntil: 0, // local pause from the popup (ms; Infinity-like = 8.64e15)
   hostPaused: false, // Chrono / agent pause, as last reported by the agent
   blurred: false, // focus went to another program (WINDOW_ID_NONE), until a browser window is focused
+  notInFront: false, // the agent's tracker sees another program in front (native host `browser_foreground`)
   hostPausedUntil: 0, // its end (ms), 0 = open-ended; expires locally while the host is unreachable (L3-8)
   excludes: [], // Chrono exclude_domains, as last reported by the agent
   idleState: 'active',
@@ -143,7 +144,7 @@ function createTracker(api, env = {}) {
       // event or alarm reopened the session (Firefox: it never ended — C52/L3-6).
       if (opts.focusEvent) s.blurred = !!opts.blurred;
       if (s.cur && t - s.cur.last > GAP_MS) closeCur(s, s.cur.last);
-      const want = s.blurred ? { domain: null, why: 'unfocused' } : await target(s, t);
+      const want = s.blurred || s.notInFront ? { domain: null, why: 'unfocused' } : await target(s, t);
       if (s.cur && s.cur.domain === want.domain) {
         s.cur.last = t;
       } else {
@@ -214,6 +215,21 @@ function createTracker(api, env = {}) {
     if (reply && reply.ok && Number.isFinite(reply.idle_minutes) && reply.idle_minutes > 0) {
       const secs = Math.round(reply.idle_minutes * 60);
       if (secs !== (await load()).idleSecs) await setIdleInterval(secs);
+    } else if (reply && reply.ok && reply.browser_foreground == null && browserName === 'firefox' && (await load()).idleSecs > 60) {
+      // Agent can't tell what's in front (not running / Wayland): Firefox falls back to a
+      // 60 s idle threshold, since it doesn't report losing focus on Linux (L3-6).
+      await setIdleInterval(60);
+    }
+    // The agent sees another program in front: end the session where it was last seen
+    // tracked, and wait until the browser is in front again (L3-6, no new permissions).
+    if (reply && reply.ok && typeof reply.browser_foreground === 'boolean') {
+      await serial(async () => {
+        const s3 = await load();
+        const away = !reply.browser_foreground;
+        if (away && s3.cur) closeCur(s3, s3.cur.last);
+        s3.notInFront = away;
+        await save(s3);
+      });
     }
     // A new Chrono pause or exclude list applies immediately.
     await evaluate(pauseChanged ? 'host-pause' : 'after-flush');

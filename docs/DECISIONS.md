@@ -1,5 +1,8 @@
 # Decisions (newest first)
 
+## 2026-11-21 — Browser extension: "is the browser in front" from the agent (L3-6)
+- Firefox on X11 never reports losing focus, so website time ran on while other apps were in front. Fix without new browser permissions (privacy first): the native host adds `browser_foreground` from the agent's own foreground tracker; the extension ends and pauses sessions when it is `false`. Without the agent (or on Wayland) Firefox falls back to a 60 s idle threshold. Not chosen: a content script on every site (needs "access all websites").
+
 ## 2026-11-21 — Hisab PDF export stays Latin-only (L15)
 - The hand-written PDF keeps Helvetica/WinAnsi; Bangla and other scripts print as "?" and the export sheet says to use CSV for them. Reason: readable Bangla needs an embedded font (Noto Sans Bengali subset, ~150–300 KB) *and* OpenType shaping (vowel-sign reordering, conjuncts) — a shaping engine (e.g. rustybuzz) plus CID font writing is too much new code for the last batch before release. Revisit with a PDF library after release.
 
