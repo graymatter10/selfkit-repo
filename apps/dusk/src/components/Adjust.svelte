@@ -108,7 +108,11 @@
   }
   function onFocus(w: "a" | "b", e: FocusEvent) {
     focused = w;
-    (e.target as HTMLInputElement).select();
+    const el = e.target as HTMLInputElement;
+    el.select();
+    // A mouse click places the caret after focus and undid select(): typing appended
+    // to the old time ("Check the times") — select once the click is done (L4-16).
+    el.addEventListener("mouseup", (m) => (m.preventDefault(), el.select()), { once: true });
   }
   function onBlur(w: "a" | "b") {
     const t = normTime(w === "a" ? a : b);

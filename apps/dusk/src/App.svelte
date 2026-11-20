@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import LockGate from "../../../ui/src/lock/LockGate.svelte"; // App lock (docs/components/app-lock.md)
   // Dusk main window. Phone (< 900 px): top bar, one page, bottom tabs
   // Night / Trends / Connections; settings and Adjust are full pages with a
@@ -30,7 +31,10 @@
   let scroller: HTMLElement | undefined = $state();
   $effect(() => {
     void app.tab;
+    // After the new page has rendered too: Settings kept the Night page's scroll and
+    // opened at the bottom (P30).
     scroller?.scrollTo(0, 0);
+    tick().then(() => scroller?.scrollTo(0, 0));
   });
 
   const TABS: { id: Tab; icon: string; name: string; key: string }[] = [

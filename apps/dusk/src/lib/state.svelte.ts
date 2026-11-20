@@ -180,6 +180,20 @@ export async function saveSettings(s: Settings) {
   await guard(api.settingsSet(s));
   refresh();
 }
+/** Save the rate-sleep shortcut; "" or the error to show under the field (L4-19). */
+export async function saveShortcut(s: Settings): Promise<string> {
+  try {
+    await api.settingsSet(s);
+    app.settings = s;
+    return "";
+  } catch (e) {
+    const msg = String(e).replace(/^Error:\s*/, "");
+    if (msg.startsWith("Saved")) app.settings = s; // stored, but the system refused it
+    return msg;
+  } finally {
+    refresh();
+  }
+}
 
 // ---- Android usage import ------------------------------------------------
 

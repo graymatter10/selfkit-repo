@@ -291,14 +291,21 @@ fn settings_set(app: AppHandle, state: State<AppState>, settings: Settings) -> R
     // Dusk edits only day start and its own shortcut; reload + change just
     // those, so a stale copy can't undo other apps' changes (main currency).
     let accel = settings.shortcuts.get("rate_sleep").cloned().unwrap_or_default();
+    // "banana" used to be saved and only fail in the log (L4-19).
+    #[cfg(desktop)]
+    if !accel.trim().is_empty() && accel.parse::<tauri_plugin_global_shortcut::Shortcut>().is_err() {
+        return Err(format!("“{accel}” isn't a shortcut. Use modifiers and a key, e.g. Super+Shift+S."));
+    }
     let settings = Settings::update(&state.settings.lock().unwrap(), |s| {
         s.day_start_min = settings.day_start_min;
         s.shortcuts.insert("rate_sleep".into(), accel);
     })
     .map_err(e)?;
     #[cfg(desktop)]
-    shortcut::register(&app, &settings);
+    let reg = shortcut::register(&app, &settings);
     let _ = app.emit("sleep-changed", ());
+    #[cfg(desktop)]
+    reg?;
     Ok(())
 }
 
@@ -460,14 +467,17 @@ mod shortcut {
             .build()
     }
 
-    pub fn register(app: &AppHandle, s: &Settings) {
+    /// Err = the system refused the shortcut (taken by another program), shown in Settings (L4-19).
+    pub fn register(app: &AppHandle, s: &Settings) -> Result<(), String> {
         let gs = app.global_shortcut();
         let _ = gs.unregister_all();
         if let Some(accel) = s.shortcuts.get("rate_sleep").filter(|a| !a.is_empty())
             && let Err(e) = gs.register(accel.as_str())
         {
             eprintln!("could not register shortcut {accel}: {e}");
+            return Err(format!("Saved, but {accel} couldn't be set up. Another program may be using it."));
         }
+        Ok(())
     }
 }
 
@@ -518,7 +528,7 @@ pub fn run() {
             #[cfg(desktop)]
             {
                 let s = Settings::load(&app.state::<AppState>().settings.lock().unwrap()).unwrap_or_default();
-                shortcut::register(app.handle(), &s);
+                let _ = shortcut::register(app.handle(), &s);
                 if std::env::args().any(|a| a == "--rate") {
                     shortcut::open_capture(app.handle());
                 }

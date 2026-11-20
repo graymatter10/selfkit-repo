@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| L4-16..L4-19, P28, P30 | Dusk: select on click, averages = nights with main sleep, wider goal, shortcut validated + registration error shown, "< 1 min" nowrap, Settings scroll to top after render | `Adjust.svelte`, `NightPage.svelte`, `SettingsPage.svelte`, `App.svelte`, `lib/state.svelte.ts`, `src-tauri/src/lib.rs` | Linux + OPPO |
 | C51 | documented as a known Linux limitation (lead decision) | `docs/platforms/linux.md` | — |
 | L12 (all apps) | checked: Hisab's `splitNoteTags` is the only #tag parser in the apps; Agenda/Hisab tag cleaning in Rust keeps any characters | — | — |
 | L25 | Chrono: recover.rs (copy of Dusk's) at startup for chrono.db + settings.db, `startup_notice` toast | `apps/chrono/src-tauri/src/{recover,lib}.rs`, `src/lib/{api,state.svelte}.ts` | Linux (damage the DB) |

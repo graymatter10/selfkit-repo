@@ -2,7 +2,7 @@
   // Settings: goals, wind-down reminder (off until turned on), day start,
   // appearance, data sources. Every row says what it is for.
   import { clock, dur, tdisp, toMin } from "../lib/fmt";
-  import { app, bridge, importUsage, refresh, saveGoals, savePrefs, saveSettings } from "../lib/state.svelte";
+  import { app, bridge, importUsage, refresh, saveGoals, savePrefs, saveSettings, saveShortcut } from "../lib/state.svelte";
   import Icon from "./Icon.svelte";
   import Seg from "./Seg.svelte";
   import TimeSheet from "./TimeSheet.svelte";
@@ -34,8 +34,7 @@
     const s = { ...app.settings, shortcuts: { ...app.settings.shortcuts, rate_sleep: shortcut.trim() } };
     const clash = Object.entries(s.shortcuts).find(([k, v]) => k !== "rate_sleep" && v && v.toLowerCase().replace(/\s/g, "") === shortcut.trim().toLowerCase().replace(/\s/g, ""));
     if (clash) return void (shortcutErr = `Already used for ${clash[0].replace("_", " ")}`);
-    shortcutErr = "";
-    await saveSettings(s);
+    shortcutErr = await saveShortcut(s);
   }
   const DAY_STARTS = [0, 60, 120, 180, 240, 300, 360];
 </script>
@@ -52,7 +51,7 @@
         {@render lrow("Sleep goal", "Used for sleep debt")}
         <span class="flex items-center gap-2">
           <button type="button" class="press grid h-11 w-11 place-items-center rounded-[12px] bg-fill text-[18px] font-semibold text-ink2" aria-label="15 minutes less" onclick={() => setGoal(-15)}>−</button>
-          <span class="num w-[66px] text-center font-[650]">{dur(goals.goal_min)}</span>
+          <span class="num w-[76px] text-center font-[650] whitespace-nowrap">{dur(goals.goal_min)}</span>
           <button type="button" class="press grid h-11 w-11 place-items-center rounded-[12px] bg-fill text-[18px] font-semibold text-ink2" aria-label="15 minutes more" onclick={() => setGoal(15)}>+</button>
         </span>
       </div>
