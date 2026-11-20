@@ -22,7 +22,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L11 / P7 | real version in the Settings footer; PRODID without version | `SettingsSheet.svelte`, `ics.rs` | both |
 | L2-1 / C31 | Enter in the note saves on desktop + capture popup | `apps/hisab/src/components/AddPanel.svelte` | Linux |
 | L2-2 / C32 | number pad stays on desktop while the note has focus | same | Linux |
-| P2 | not fixed: alarm was windowed, i.e. `canScheduleExactAlarms()` was false for the plugin despite `USE_EXACT_ALARM`. Needs a device check (`adb shell cmd appops get com.selfkit.agenda SCHEDULE_EXACT_ALARM`, `dumpsys alarm`); ColorOS may also batch alarms of background apps | — | OPPO |
+| P2 | not a Selfkit code bug: OPPO shows USE_EXACT_ALARM granted, exactAllowReason=policy_permission, so the plugin uses setExactAndAllowWhileIdle; the +1m33s window is ColorOS alarm alignment. Proposed: document "may be up to ~2 min late on ColorOS"; setAlarmClock (own Kotlin scheduler) as a post-release option — waiting for the lead | — | — |
 | P3 | reminder notifications use monochrome app icons (Agenda new `ic_stat_agenda`, Hisab existing `ic_stat_hisab`, Dusk new `ic_stat_dusk`) | `apps/*/src-tauri/src/lib.rs`, `res/drawable/ic_stat_*.xml` | OPPO |
 | P4 | done tasks without a completion record are listed from the task (`task-<id>`) in History/Stats | `apps/agenda/src-tauri/src/tasks.rs` | OPPO |
 | P5 | unsaved New Task input kept in localStorage and reopened after a kill | `TaskForm.svelte`, `App.svelte`, `state.svelte.ts` | OPPO |
