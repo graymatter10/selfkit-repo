@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| L2-11 | goal "Take out" can't exceed what is saved (Rust normalize + sheet check) | `apps/hisab/src-tauri/src/model.rs`, `GoalSheet.svelte` | Linux |
 
 ## Still open (not started yet, 2026-11-21 ~01:30)
 C23, C28, C29, C46/L4-10, C47/L4-11, C48/L2-7, C50/C51/L4-12, L4-13, L3-1..5, L15 (Bangla in PDF needs an embedded font), P11, P13, P14 (perf), P15–P20 (Chrono), and anything logged after C51/P20/L16.

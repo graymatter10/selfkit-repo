@@ -27,6 +27,8 @@
     if (!goal) return;
     const a = Number(add);
     if (!(a > 0)) return showToast("Type an amount");
+    const saved = goal.contributions.reduce((t, c) => t + c.amount, 0);
+    if (sign < 0 && a > saved + 0.005) return showToast(`Only ${money(Math.max(0, saved), goal.currency)} is saved`); // L2-11
     const before = { ...goal };
     const r = await saveRec("goals", { ...goal, ...f, target: Number(f.target) || goal.target, contributions: [...goal.contributions, { id: "", date: todayIso(), amount: sign * a, note: "" }] }, goal.id);
     if (r) {

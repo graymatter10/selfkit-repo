@@ -278,6 +278,11 @@ pub fn normalize(coll: &str, data: &Value, main: &str) -> R<Value> {
                 let id = text(&cm, "id");
                 cs.push(json!({"id": if id.is_empty() { selfkit_core::store::new_id() } else { id }, "date": d, "amount": round2(a), "note": text(&cm, "note")}));
             }
+            // "Take out" can't go below zero saved (L2-11).
+            let saved: f64 = cs.iter().filter_map(|c| c["amount"].as_f64()).sum();
+            if saved < -0.005 {
+                return Err("You can't take out more than is saved".into());
+            }
             out.insert("contributions".into(), json!(cs));
             out.insert("archived".into(), json!(b(data, "archived")));
         }
