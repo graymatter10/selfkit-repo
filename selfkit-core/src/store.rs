@@ -257,6 +257,27 @@ fn union_lists(newer: &[Value], older: &[Value]) -> Value {
     Value::Array(out)
 }
 
+/// Both devices changed the same map field (Chrono `categories`, Hisab `rates.manual`,
+/// settings `shortcuts`): keep every key; a key both maps hold with different values takes
+/// the newer side's value (nested maps the same way). A key removed on one side comes back,
+/// like an item removed from a list (R-4).
+fn union_objects(newer: &serde_json::Map<String, Value>, older: &serde_json::Map<String, Value>) -> Value {
+    let mut out = newer.clone();
+    for (k, ov) in older {
+        match (out.get(k), ov) {
+            (None, _) => {
+                out.insert(k.clone(), ov.clone());
+            }
+            (Some(Value::Object(n)), Value::Object(o)) => {
+                let v = union_objects(n, o);
+                out.insert(k.clone(), v);
+            }
+            _ => {}
+        }
+    }
+    Value::Object(out)
+}
+
 impl Store {
     /// Open (or create) an app database and run core + app migrations.
     pub fn open(path: impl AsRef<Path>, app: &str, device_id: &str, app_migrations: &[Migration]) -> Result<Self> {
@@ -570,10 +591,17 @@ impl Store {
                 pick(lv, &mut out);
             } else if cr && !cl {
                 pick(rv, &mut out);
-            } else if empty(lv) != empty(rv) {
-                // Filled on one side, empty on the other (typical when the same record
-                // was created on two devices): keep what was filled in.
+            } else if empty(lv) != empty(rv) && (base == 0 || tl == tr) {
+                // Filled on one side, empty on the other, for a record created on two
+                // devices (no shared history): keep what was filled in. With a shared
+                // history an emptied field is a deliberate change (undone completion,
+                // cleared note) and the newer clock wins below, even when empty (R-5).
                 pick(if empty(lv) { rv } else { lv }, &mut out);
+            } else if empty(lv) != empty(rv) {
+                pick(if tl > tr { lv } else { rv }, &mut out);
+            } else if let (Some(Value::Object(a)), Some(Value::Object(b))) = (lv, rv) {
+                let v = if tl >= tr { union_objects(a, b) } else { union_objects(b, a) };
+                out.insert(k.clone(), v);
             } else if let (Some(Value::Array(a)), Some(Value::Array(b))) = (lv, rv) {
                 let v = if tl >= tr { union_lists(a, b) } else { union_lists(b, a) };
                 out.insert(k.clone(), v);
@@ -1029,6 +1057,27 @@ mod tests {
         let r = ro.get(&id).unwrap().unwrap();
         assert_eq!((r.data["exclude"][0].as_str(), r.fclock.is_empty()), (Some("x"), true));
         assert_eq!(ro.list("settings", 10, 0).unwrap().len(), 1);
+    }
+    #[test]
+    fn maps_merge_key_by_key() {
+        // R-4: phone maps "slack", PC (later) maps "anki"; both keep their keys.
+        let local = plain(json!({"categories": {"code": "work", "slack": "chat"}}), 200, &[("categories", 200)], &["100:A", "200:A"]);
+        let remote = plain(json!({"categories": {"code": "dev", "anki": "study"}}), 300, &[("categories", 300)], &["100:A", "300:B"]);
+        let want = json!({"categories": {"code": "dev", "slack": "chat", "anki": "study"}});
+        assert_eq!(Store::field_merge(&local, &remote), Some(want.clone()));
+        assert_eq!(Store::field_merge(&remote, &local), Some(want));
+    }
+    #[test]
+    fn emptied_field_with_shared_history_newer_wins() {
+        // R-5: B completed at 200; A undid a completion later (300): the task stays open.
+        let local = plain(json!({"title": "t", "done_at": null}), 300, &[("done_at", 300)], &["100:A", "300:A"]);
+        let remote = plain(json!({"title": "t", "done_at": "2026-11-20T09:00"}), 200, &[("done_at", 200)], &["100:A", "200:B"]);
+        assert_eq!(Store::field_merge(&local, &remote), Some(json!({"title": "t", "done_at": null})));
+        assert_eq!(Store::field_merge(&remote, &local), Some(json!({"title": "t", "done_at": null})));
+        // Created on both devices (no shared history): what was filled in is kept.
+        let a = plain(json!({"note": ""}), 300, &[("note", 300)], &["300:A"]);
+        let b = plain(json!({"note": "text"}), 200, &[("note", 200)], &["200:B"]);
+        assert_eq!(Store::field_merge(&a, &b), Some(json!({"note": "text"})));
     }
     #[test]
     fn merge_that_breaks_a_cross_field_rule_is_a_conflict() {
