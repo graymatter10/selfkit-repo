@@ -40,3 +40,4 @@
 
 ## Known limitations
 - **Dropdown lists in dark mode (C51, decided 2026-11-21: not fixed before release).** WebKitGTK opens a native `<select>`'s list as a GTK menu that follows the desktop's GTK theme, not the app's theme or `color-scheme`. With an app in Dark on a light GTK desktop the open list is white (e.g. Dusk "New day starts at", Hisab account/category pickers, Chrono settings). The closed control follows the app theme. Options for later: an in-page listbox in `ui/`, or `GTK_THEME=<theme>:dark` at start when the app theme is dark.
+- **No system keyring (C80, 2026-11-21).** Without a Secret Service (bare i3, no GNOME Keyring/KWallet) the apps keep the sync server and encryption key in `~/.local/share/selfkit/sync/secrets.json` (mode 0600) instead of failing; the Sync page says so. Install a keyring for extra protection: the apps then use it and remove the file copy. LAN sync works either way. The agent still needs a keyring for its own server sync.

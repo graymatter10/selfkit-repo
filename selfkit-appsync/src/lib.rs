@@ -545,6 +545,11 @@ impl AppSync {
             running,
             unlocked: key.is_some(),
             test_key: key.as_ref().is_some_and(|k| k.1),
+            secrets_in_file: !cfg!(target_os = "android")
+                && std::fs::read_to_string(self.cfg.data_dir.join("sync").join("secrets.json"))
+                    .ok()
+                    .and_then(|t| serde_json::from_str::<std::collections::BTreeMap<String, String>>(&t).ok())
+                    .is_some_and(|m| !m.is_empty()),
             encryption_set_up: self.encryption_set_up(),
             server_configured: server.is_some(),
             photos_configured: server.as_ref().is_some_and(|c| c.s3.is_some()),
