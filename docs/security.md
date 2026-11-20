@@ -21,7 +21,7 @@ Out of scope: malware running as the same user / root on a device (it can read t
 ## Crypto and keys
 - **Cipher:** XChaCha20-Poly1305 (24-byte random nonce from the OS CSPRNG) for records; STREAM (BE32, 64 KiB chunks, truncation-detecting) for files and bundles.
 - **Data key:** 32 random bytes (OsRng), encrypts everything.
-- **Passphrase envelope:** Argon2id (m=64 MiB, t=3, p=1, 16-byte salt) → KEK → wraps the data key (AEAD). Change passphrase = rewrap only. Parameters read from a key file are bounded (m ≤ 256 MiB, t ≤ 16, p ≤ 8) because `keys.json` can come from S3/the server (`keys::tests::tampered_kdf_params_are_refused`). Minimum passphrase: 8 characters (UI).
+- **Passphrase envelope:** Argon2id (m=64 MiB, t=3, p=1, 16-byte salt) → KEK → wraps the data key (AEAD). Change passphrase = rewrap only. Parameters read from a key file are bounded (m ≤ 256 MiB, t ≤ 16, p ≤ 8) because `keys.json` can come from S3/the server (`keys::tests::tampered_kdf_params_are_refused`). Minimum passphrase: 12 characters (apps and `selfkit-agent init` — C14).
 - **Recovery key:** 32 random bytes shown once as 13 groups of base32; HKDF-SHA256 → KEK → wraps the same data key. 256-bit, so no brute force.
 - **Key file:** `keys.json` holds only the two envelopes; uploaded to S3 (`bundles/_keys/keys.json`) so a new device can unlock. Anyone holding it can try passphrases offline (Argon2id slows that down): use a long passphrase.
 - **Secrets storage:** data key, Postgres URL, S3 keys. Desktop: OS keychain (`keyring`, service `com.selfkit`). Android: `<data_dir>/sync/secrets.json` sealed with a wrap key that the Android Keystore protects (`SelfkitSecrets`); file mode 0600 inside the app sandbox.

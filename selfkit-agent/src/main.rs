@@ -240,7 +240,7 @@ fn init_keys() -> Result<()> {
     anyhow::ensure!(!kp.exists(), "{} already exists", kp.display());
     eprintln!("Enter a new master passphrase:");
     let pass = read_stdin_line()?;
-    anyhow::ensure!(pass.chars().count() >= 8, "passphrase must be at least 8 characters");
+    anyhow::ensure!(pass.chars().count() >= 12, "passphrase must be at least 12 characters"); // same rule as the apps (C14)
     let (kf, data, rk) = KeyFile::create(&pass, KdfParams::default())?;
     kf.save(&kp)?;
     store_data_key(&data)?;
