@@ -4,7 +4,8 @@
 //! `title, notes, severity 1–5 (Low, Minor, Medium, High, Critical),
 //!  start ("YYYY-MM-DDTHH:MM" local, or "YYYY-MM-DD" = all day), stop (same format),
 //!  reminder_min (minutes before start; absent = off), repeat
-//!  ("daily"|"weekdays"|"weekly"|"monthly"|"yearly"), list, steps [{id,title,done}],
+//!  ("daily"|"weekdays"|"weekly"|"monthly"|"yearly"; repeat_day = day of month a
+//!  monthly/yearly task returns to after a short month clamped it), list, steps [{id,title,done}],
 //!  tags [lowercase words], stage ("doing" = Board column Doing; absent = To do),
 //!  photos [photo record ids], done_at (UTC ms), created_at, last_done_at,
 //!  last_completion (id of the `completions` record written when it was last completed)`.
@@ -321,7 +322,25 @@ pub fn history(store: &Store) -> Result<Vec<Completion>> {
     Ok(v)
 }
 
-fn next_occurrence(repeat: &str, from: NaiveDate) -> Option<NaiveDate> {
+/// `months` after `from`, on day `anchor` clamped to that month's length (Jan 31 →
+/// Feb 28 → Mar 31, not Mar 28; Feb 29 yearly → Feb 28 → Feb 29 in leap years — C21).
+fn add_months_on(from: NaiveDate, months: u32, anchor: u32) -> Option<NaiveDate> {
+    let first = from.with_day(1)?.checked_add_months(Months::new(months))?;
+    let last = (first.checked_add_months(Months::new(1))? - Duration::days(1)).day();
+    first.with_day(anchor.clamp(1, last))
+}
+
+/// The day of month a monthly/yearly task repeats on: `repeat_day` (kept when a short
+/// month clamped the start) while the start still matches it, else the start's day.
+fn repeat_anchor(d: &Map<String, Value>, start: NaiveDate) -> u32 {
+    let last = add_months_on(start, 0, 31).map_or(31, |x| x.day());
+    match d.get("repeat_day").and_then(Value::as_u64).map(|x| x as u32) {
+        Some(a) if (1..=31).contains(&a) && a.min(last) == start.day() => a,
+        _ => start.day(),
+    }
+}
+
+fn next_occurrence(repeat: &str, from: NaiveDate, anchor: u32) -> Option<NaiveDate> {
     Some(match repeat {
         "daily" => from + Duration::days(1),
         "weekly" => from + Duration::days(7),
@@ -332,8 +351,8 @@ fn next_occurrence(repeat: &str, from: NaiveDate) -> Option<NaiveDate> {
             }
             d
         }
-        "monthly" => from.checked_add_months(Months::new(1))?,
-        "yearly" => from.checked_add_months(Months::new(12))?,
+        "monthly" => add_months_on(from, 1, anchor)?,
+        "yearly" => add_months_on(from, 12, anchor)?,
         _ => return None,
     })
 }
@@ -357,8 +376,9 @@ pub fn toggle(store: &Store, id: &str, now: NaiveDateTime) -> Result<TaskView> {
     d.insert("last_completion".into(), json!(cid));
     d.remove("stage");
     if let (Some(rep), Some((start, all_day))) = (repeat, start) {
+        let anchor = repeat_anchor(&d, start.date());
         let mut next = start.date();
-        while let Some(n) = next_occurrence(&rep, next) {
+        while let Some(n) = next_occurrence(&rep, next, anchor) {
             next = n;
             if next > today {
                 break;
@@ -371,6 +391,11 @@ pub fn toggle(store: &Store, id: &str, now: NaiveDateTime) -> Result<TaskView> {
             d.insert("start".into(), json!(fmt_when(start + shift, all_day)));
             if let Some((stop, sad)) = str_of(&d, "stop").and_then(parse_when) {
                 d.insert("stop".into(), json!(fmt_when(stop + shift, sad)));
+            }
+            if next.day() != anchor && matches!(rep.as_str(), "monthly" | "yearly") {
+                d.insert("repeat_day".into(), json!(anchor));
+            } else {
+                d.remove("repeat_day");
             }
             d.insert("last_done_at".into(), json!(time::now_ms()));
             if let Some(Value::Array(steps)) = d.get_mut("steps") {
@@ -505,6 +530,16 @@ mod tests {
         assert!(!t.data.contains_key("done_at"));
         let m = create(&s, NewTask { start: Some("2026-11-30".into()), repeat: Some("monthly".into()), ..nt("rent") }).unwrap();
         assert_eq!(toggle(&s, &m.id, today).unwrap().data["start"], "2026-12-30");
+        // Month-end anchor survives a short month (C21): Jan 31 → Feb 28 → Mar 31.
+        let e = create(&s, NewTask { start: Some("2027-01-31".into()), repeat: Some("monthly".into()), ..nt("card bill") }).unwrap();
+        let jan = NaiveDate::from_ymd_opt(2027, 1, 31).unwrap().and_hms_opt(12, 0, 0).unwrap();
+        let e = toggle(&s, &e.id, jan).unwrap();
+        assert_eq!((e.data["start"].as_str(), e.data["repeat_day"].as_u64()), (Some("2027-02-28"), Some(31)));
+        let e = toggle(&s, &e.id, NaiveDate::from_ymd_opt(2027, 2, 28).unwrap().and_hms_opt(12, 0, 0).unwrap()).unwrap();
+        assert_eq!((e.data["start"].as_str(), e.data.contains_key("repeat_day")), (Some("2027-03-31"), false));
+        let y = create(&s, NewTask { start: Some("2028-02-29".into()), repeat: Some("yearly".into()), ..nt("leap") }).unwrap();
+        let y = toggle(&s, &y.id, NaiveDate::from_ymd_opt(2028, 2, 29).unwrap().and_hms_opt(12, 0, 0).unwrap()).unwrap();
+        assert_eq!(y.data["start"], "2029-02-28");
         let once = create(&s, nt("once")).unwrap();
         assert!(toggle(&s, &once.id, today).unwrap().data.contains_key("done_at"));
     }
