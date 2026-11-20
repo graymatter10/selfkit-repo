@@ -6,6 +6,7 @@ Features: `remote` (Postgres + S3, tokio), `keychain` (OS keychain), `lan` (LAN 
 
 ## Public API at a glance
 - `Store::open(path, app, device_id, app_migrations)`: `put / get / delete / restore / list / list_range / search / count / kv_*`; sync helpers `dirty / mark_synced / apply_remote / apply_peer / changes_since / conflicts / resolve_conflict / import_record / reset_sync_state`.
+- `Store::open_read_only(path, app)` (Reflect/Dusk reading other apps): no migrations; a DB without the `fclock` column (not yet opened by a field-clock build) gets a temp view with empty clocks, so reads work (C8).
 - `keys::KeyFile::create / unlock_passphrase / unlock_recovery / change_passphrase / rotate_recovery / load / save`.
 - `crypto::seal / open` (records), `StreamWriter / StreamReader / encrypt_stream / decrypt_stream` (files).
 - `sync::sync_once(&mut store, &remote, &key)`, `sync::pg::PgRemote::connect(url)` (+ `server_schema_version()`, `known_schema_version()`), `sync::s3::BlobStore::new(cfg)`.

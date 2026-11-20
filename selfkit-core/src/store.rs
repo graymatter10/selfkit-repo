@@ -250,6 +250,16 @@ impl Store {
     pub fn open_read_only(path: impl AsRef<Path>, app: &str) -> Result<Self> {
         let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        // A DB not yet opened by a build with field clocks (core/003) has no `fclock`
+        // column; a temp view with an empty one keeps every query working (C8).
+        let (cols, has_fclock): (i64, i64) = conn.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(name='fclock'), 0) FROM pragma_table_info('records')",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        if cols > 0 && has_fclock == 0 {
+            conn.execute_batch("CREATE TEMP VIEW records AS SELECT rowid AS rowid, *, '{}' AS fclock FROM main.records;")?;
+        }
         Ok(Self { conn, app: app.into(), device_id: String::new() })
     }
 
@@ -974,5 +984,21 @@ mod tests {
         let got = s.get(&r.id).unwrap().unwrap();
         assert_eq!(got.fclock["title"], b.updated_at);
         assert_eq!(got.fclock["due"], r.fclock["due"]);
+    }
+    #[test]
+    fn read_only_without_field_clocks() {
+        // C8: another app's DB from before core/003 (no `fclock` column) still reads.
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("old.db");
+        let id = {
+            let s = Store::open(&p, "chrono", "d", &[]).unwrap();
+            let r = s.put("settings", None, &json!({"exclude": ["x"]})).unwrap();
+            s.conn().execute_batch("ALTER TABLE records DROP COLUMN fclock;").unwrap();
+            r.id
+        };
+        let ro = Store::open_read_only(&p, "chrono").unwrap();
+        let r = ro.get(&id).unwrap().unwrap();
+        assert_eq!((r.data["exclude"][0].as_str(), r.fclock.is_empty()), (Some("x"), true));
+        assert_eq!(ro.list("settings", 10, 0).unwrap().len(), 1);
     }
 }
