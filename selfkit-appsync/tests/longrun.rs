@@ -40,6 +40,7 @@ const HOME_TZ: i64 = 360;
 const SLOT_MIN: [i64; 7] = [7 * 60, 9 * 60, 11 * 60, 13 * 60, 16 * 60, 19 * 60, 22 * 60];
 const PASS1: &str = "long run passphrase one";
 const PASS2: &str = "long run passphrase number two";
+const PASS3: &str = "long run passphrase three, changed on the tablet";
 
 // ---------------------------------------------------------------- rng, dates, clock
 
@@ -600,6 +601,8 @@ struct Ev {
     day_start: (i64, i64),
     currency: i64,
     mini_trip: Option<(i64, i64)>,
+    pass_change2: i64,
+    pass_check: i64,
 }
 
 struct Sim {
@@ -647,9 +650,9 @@ impl Sim {
     fn today(&self) -> String {
         date(self.day)
     }
-    /// Real app ids clash across apps on the server (bugs-longrun.md R-1): `settings` in
-    /// Chrono/Dusk/Reflect, `n-<date>` in Dusk/Chrono. Until that is fixed the run uses
-    /// app-unique ids for Dusk and Reflect unless SELFKIT_LONGRUN_REAL_IDS=1.
+    /// The apps' real ids repeat across apps (`settings` in Chrono/Dusk/Reflect, `n-<date>`
+    /// in Dusk/Chrono; bugs-longrun.md R-1, fixed). SELFKIT_LONGRUN_UNIQUE_IDS=1 makes them
+    /// app-unique (only to rule that out).
     fn night_id(&self, night: &str) -> String {
         if self.real_ids { format!("n-{night}") } else { format!("dn-{night}") }
     }
@@ -1464,9 +1467,11 @@ impl Sim {
         } else if diff.iter().any(|k| long(lm.get(*k)) && long(rm.get(*k))) {
             "long text changed on both"
         } else if l.fclock.is_empty() || r.fclock.is_empty() {
-            "mixed legacy/new clocks"
+            "one side from an old build (no field clocks)"
         } else if diff.is_empty() {
             "same content"
+        } else if l.collection == r.collection && matches!(l.collection.as_str(), "tasks" | "sleep_log" | "loans") {
+            "auto-merge result invalid (left to the user)"
         } else {
             "other (tie?)"
         };
@@ -1481,7 +1486,7 @@ impl Sim {
             label.push_str(" · local copy not edited here");
         }
         *self.conflicts.entry(label.clone()).or_default() += 1;
-        let unexpected = matches!(kind, "other (tie?)" | "same content" | "mixed legacy/new clocks") || (relay && !shared && kind != "delete vs edit");
+        let unexpected = matches!(kind, "other (tie?)" | "same content") || (relay && !shared && kind != "delete vs edit");
         if unexpected {
             let note = format!(
                 "device {} source {} local ver {} remote ver {} hist {}/{} fields {:?}",
@@ -1781,7 +1786,7 @@ impl Sim {
         let mut r = String::new();
         r.push_str(&format!("# Long-run simulation report\n\nSeed {} · {} simulated days ({} → {}) · reached day {} ({}) · {} checks · {} user writes · {} records in the model · {}\n\n",
             std::env::var("SELFKIT_LONGRUN_SEED").unwrap_or("1".into()), self.n, date(self.start), date(self.start + self.n - 1), self.di, self.today(), self.checks, self.seq, self.o.recs.len(),
-            if self.real_ids { "real app ids" } else { "app-unique Dusk/Reflect ids (R-1 workaround)" }));
+            if self.real_ids { "real app ids" } else { "app-unique Dusk/Reflect ids (SELFKIT_LONGRUN_UNIQUE_IDS)" }));
         r.push_str("## Findings (category | app/collection.field → count)\n\n");
         if self.finding_keys.is_empty() {
             r.push_str("None.\n");
@@ -2018,6 +2023,45 @@ impl Sim {
                 self.converge_and_check("stale backup imported").await;
             }
         }
+        if d == e.pass_change2 && self.devs.len() > 3 && self.devs[3].active {
+            // Second change, on the tablet (which unlocked with the first change).
+            let old = self.passphrase.clone();
+            match self.devs[3].syncs[0].1.change_passphrase(&old, PASS3) {
+                Ok(()) => {
+                    self.passphrase = PASS3.into();
+                    println!("LONGRUN day {d}: passphrase changed on tablet-c");
+                }
+                Err(err) => self.finding("passphrase change failed", "keys", "", "", "", "changed".into(), err.to_string(), "tablet-c, current passphrase".into()),
+            }
+        }
+        if d == e.pass_check {
+            // A fresh device a week later (no forced sync first): current passphrase must
+            // unlock, the previous one must not. If not, retry after every device synced
+            // with the server once.
+            let pass = self.passphrase.clone();
+            let e1 = new_phone(&self.root, "probe-e", &self.srv, self.pc_addr);
+            let new_ok = e1.syncs[0].1.unlock(&pass).await.is_ok();
+            let e2 = new_phone(&self.root, "probe-e2", &self.srv, self.pc_addr);
+            let old_ok = pass != PASS1 && e2.syncs[0].1.unlock(PASS1).await.is_ok();
+            if !new_ok || old_ok {
+                self.converge_and_check("before passphrase retry").await;
+                let e3 = new_phone(&self.root, "probe-e3", &self.srv, self.pc_addr);
+                let new_ok2 = e3.syncs[0].1.unlock(&pass).await.is_ok();
+                self.finding(
+                    "new device can't unlock with the current passphrase",
+                    "keys",
+                    "",
+                    "",
+                    "",
+                    "current passphrase unlocks, old one doesn't".into(),
+                    format!("current unlocks: {new_ok}; first passphrase still unlocks: {old_ok}; after a full server sync: current unlocks: {new_ok2}"),
+                    "passphrase changed on phone-a (LAN at home) and later on tablet-c".into(),
+                );
+            }
+            for p in ["probe-e", "probe-e2", "probe-e3"] {
+                let _ = std::fs::remove_dir_all(self.root.join(p));
+            }
+        }
         if d == e.b_lost {
             // Phone B is lost after a final sync; a new phone restores with the recovery key.
             for app in APPS {
@@ -2075,6 +2119,8 @@ async fn longrun_years_of_use() {
         day_start: (f(0.35), f(0.45)),
         currency: f(0.47),
         mini_trip: if n < 300 { Some((f(0.64), f(0.64) + 4)) } else { None },
+        pass_change2: f(0.76),
+        pass_check: f(0.84),
     };
 
     // Day 0: phone A sets up encryption; the PC agent gets the key; phone B unlocks with
@@ -2121,7 +2167,7 @@ async fn longrun_years_of_use() {
         away: false,
         seq: 0,
         checks: 0,
-        real_ids: std::env::var("SELFKIT_LONGRUN_REAL_IDS").as_deref() == Ok("1"),
+        real_ids: std::env::var("SELFKIT_LONGRUN_UNIQUE_IDS").as_deref() != Ok("1"),
     };
     sim.shared_settings(A, |s, _| s["main_currency"] = json!("USD"));
     sim.hisab_setup(A);

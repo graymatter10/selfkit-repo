@@ -128,6 +128,10 @@ jobs:
     if: ${{ startsWith(github.ref_name, 'test/sync-longrun') || inputs.longrun_days != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        days: ${{ fromJSON(inputs.longrun_days && format('[{0}]', inputs.longrun_days) || '[30, 365]') }}
     services:
       postgres:
         image: postgres:17
@@ -135,7 +139,7 @@ jobs:
         ports: ["55432:5432"]
         options: --health-cmd pg_isready --health-interval 5s --health-retries 20
     env:
-      SELFKIT_LONGRUN_DAYS: ${{ inputs.longrun_days || '30' }}
+      SELFKIT_LONGRUN_DAYS: ${{ matrix.days }}
       SELFKIT_LONGRUN_SEED: ${{ inputs.longrun_seed || '1' }}
       SELFKIT_LONGRUN_OUT: ${{ github.workspace }}/longrun-out
     steps:
