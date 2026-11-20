@@ -24,7 +24,7 @@ Reads (read-only, each optional; a missing file = that app isn't installed):
 - `chrono.db`: `app_sessions`, `web_sessions`, `chrono_settings` (exclude lists, device names). Kept in memory per day and updated from records whose `updated_at` changed (a year of sessions is read once).
 - `hisab.db`: `transactions` (expenses, converted to the main currency with `hisab-rates`), `categories` (names, monthly budgets).
 - `agenda.db`: `completions` (falls back to `tasks.done_at`), open `tasks` with a start date (left for today).
-- `dusk.db`: table `dusk_nights` (Dusk's per-night result cache).
+- `dusk.db`: table `dusk_nights` (Dusk's per-night result cache). On a phone it is a copy Dusk's provider hands to the mirror (`/table?name=dusk_nights`, B2), as fresh as Dusk's last estimate.
 - `settings.db` (shared): `day_start_min`, `main_currency`.
 - `<data_dir>/health.json` (agent, schema 1) and the agent IPC socket (`sync_now`, `backup_now`).
 

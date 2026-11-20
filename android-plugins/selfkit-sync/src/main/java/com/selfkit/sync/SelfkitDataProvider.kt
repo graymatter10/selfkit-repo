@@ -15,6 +15,8 @@ import org.json.JSONObject
  * same key). Goes through selfkit-appsync/selfkit-core so history and dirty flags stay right.
  *
  *  query  /changes?store=<app|settings>&since=<lseq>&limit=500  -> lseq, id, collection, data, updated_at, deleted, record (full JSON)
+ *  query  /table?name=<table>  -> one row: sql (CREATE TABLE), rows (JSON array); only the
+ *         local tables listed in selfkit-appsync android.rs SHARED_TABLES (Dusk: dusk_nights)
  *  insert /records  values: store?, collection, id?, data(JSON)  -> /records/<id>
  *  call   "status" | "sync_now" | "settings" | "set_settings" | "schedule" | "conflicts"   (arg/extras "json")
  *         -> Bundle { "json": <result> }
@@ -31,8 +33,13 @@ class SelfkitDataProvider : ContentProvider() {
 
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? {
         guard()
-        if (uri.pathSegments.firstOrNull() != "changes") return null
         val ctx = context!!
+        if (uri.pathSegments.firstOrNull() == "table") {
+            val res = SelfkitSync.call(ctx, "table_rows", JSONObject().put("name", uri.getQueryParameter("name") ?: ""))
+            if (!res.optBoolean("ok")) return null
+            return MatrixCursor(arrayOf("sql", "rows")).apply { addRow(arrayOf<Any?>(res.getString("sql"), res.getString("rows"))) }
+        }
+        if (uri.pathSegments.firstOrNull() != "changes") return null
         val args = JSONObject()
             .put("store", uri.getQueryParameter("store") ?: Meta.app(ctx))
             .put("since", uri.getQueryParameter("since")?.toLongOrNull() ?: 0L)

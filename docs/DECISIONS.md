@@ -1,5 +1,9 @@
 # Decisions (newest first)
 
+## 2026-11-20 — Phone mirrors: Dusk nights for Reflect (B2), Agenda/Hisab for Dusk (B4)
+- Reflect on Android gets Dusk's sleep through a read-only copy of Dusk's local `dusk_nights` table: Dusk's provider serves it whole (`/table?name=dusk_nights`, allow-list `SHARED_TABLES` in `selfkit-appsync/src/android.rs`) and `SelfkitMirror` replaces the copy in Reflect's `dusk.db` on each mirror pass. Not chosen: publishing nights as synced records — each device estimates its own nights from its own screen use (phone vs PC), so synced nights would conflict or duplicate across devices; too risky before release. Phone-local only, no sync changes.
+- Dusk on Android mirrors Agenda and Hisab like Reflect (`com.selfkit.sync.MIRROR=agenda,hisab`), so Connections' next-day cards work on the phone. Reason: both apps are usually installed on the same phone; "On computer" read as broken.
+
 ## 2026-11-20 — Sync bug round (QA-U1..U4, R1), Hisab typing lag, laptop limits
 - Numbers compare by value in sync (`conflict::json_eq`: `5000 == 5000.0`) for conflict diffs, `same_content`, field clocks and the field merge. Reason: Rust writes whole numbers as f64, JS as integers, so every such field looked changed (QA-U3).
 - The conflict screen hides bookkeeping fields (`id`, `created_at`, `updated_at`, `tz_offset`) and shows lists/objects as readable items (one per line, title/name or values without ids/timestamps). Reason: users can't decide between raw JSON or epoch numbers (QA-U2/U3).
