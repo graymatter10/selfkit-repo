@@ -1001,7 +1001,11 @@ impl Sim {
                 tx["source"] = json!("recurring");
                 tx["recurring"] = json!(rid);
                 tx["created_at"] = json!(sim_ms(self.day, SLOT_MIN[0], self.tz));
-                self.put(i, "hisab", "transactions", None, tx);
+                // Like recur::generate (C18): fixed id, an existing one (even deleted) is kept.
+                let tid = format!("rec-{rid}-{}", date(next));
+                if self.devs[i].st("hisab").get(&tid).unwrap().is_none() {
+                    self.put(i, "hisab", "transactions", Some(&tid), tx);
+                }
                 made += 1;
                 let mut k = 1;
                 while Self::occurrence(&freq, start, k) <= next {
