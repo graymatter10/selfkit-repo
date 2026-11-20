@@ -39,6 +39,8 @@ export function addDays(s: string, n: number) {
   return d.toISOString().slice(0, 10);
 }
 export const dayShort = (s: string) => { const d = parseDate(s); return `${DAYS[d.getUTCDay()]} ${d.getUTCDate()}`; };
+/** "16 Nov", the app's own date style (Trends weekly rows used "11/16" — L4-11). */
+export const dayShort = (s: string) => { const d = parseDate(s); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
 export const dayLong = (s: string) => { const d = parseDate(s); return `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
 export const weekday1 = (s: string) => DAYS[parseDate(s).getUTCDay()].slice(0, 1);
 /** "Sat 14 → Sun 15" for a night keyed by its morning. */

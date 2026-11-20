@@ -1,6 +1,6 @@
 <script lang="ts">
   // Trends: 2 weeks / Month / 3 months of nights, the four stats, and bed/wake times.
-  import { dur, hmParts, tdisp } from "../lib/fmt";
+  import { dayShort, dur, hmParts, tdisp } from "../lib/fmt";
   import { app, openTab, show } from "../lib/state.svelte";
   import NightBars from "./NightBars.svelte";
   import RangeChart from "./RangeChart.svelte";
@@ -34,14 +34,14 @@
   </div>
   <div class="mt-3"><StatsGrid {dash} cols={desktop ? 4 : 2} /></div>
   <div class="card mt-3 p-4">
-    <div class="mb-3.5 flex items-center"><h2 class="m-0 flex-1 text-[15px] font-[650]">Bed and wake times</h2><div class="legend"><span><i class="dash"></i>Bedtime goal {tdisp(dash.goals.bedtime)}</span></div></div>
+    <div class="mb-3.5 flex items-center"><h2 class="m-0 flex-1 text-[15px] font-[650]">Bed and wake times{#if span > (desktop ? 30 : 14)}<span class="ml-1.5 text-[12.5px] font-medium text-muted">last {desktop ? 30 : 14} nights</span>{/if}</h2><div class="legend"><span><i class="dash"></i>Bedtime goal {tdisp(dash.goals.bedtime)}</span></div></div>
     <RangeChart nights={dash.nights.slice(-(desktop ? Math.min(span, 30) : Math.min(span, 14)))} bedtimeMin={Number(dash.goals.bedtime.slice(0, 2)) * 60 + Number(dash.goals.bedtime.slice(3))} height={desktop ? 190 : 180} />
   </div>
   {#if span === 90 && dash.weekly.length}
     <div class="card mt-3 p-4">
       <h2 class="m-0 mb-2 text-[15px] font-[650]">Weekly averages</h2>
       {#each dash.weekly.slice(-13).reverse() as w}
-        <div class="flex h-9 items-center gap-3 text-[14px]"><span class="w-28 text-muted">Week of {w.week.slice(5).replace("-", "/")}</span>
+        <div class="flex h-9 items-center gap-3 text-[14px]"><span class="w-28 text-muted">Week of {dayShort(w.week)}</span>
           <div class="h-2 flex-1 overflow-hidden rounded-full bg-fill2"><i class="block h-full rounded-full bg-accent2" style="width:{Math.min(100, (w.avg_min / 600) * 100)}%"></i></div>
           <span class="num w-16 text-right font-semibold">{dur(w.avg_min)}</span></div>
       {/each}
