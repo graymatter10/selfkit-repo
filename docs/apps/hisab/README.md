@@ -16,7 +16,7 @@ Feature notes: [categories.md](categories.md) · [loans.md](loans.md) · [curren
 - **Desktop (≥ 900 px)**: sidebar with all sections and key hints; Home shows summary + stats + recent on the left and the input panel card on the right; sheets open as centred panels.
 - **Quick-capture popup** (desktop): global shortcut (default Super+Shift+E, change in Settings, shared `shortcuts.add_expense`) or `hisab --capture`. Compact add panel; Enter saves and closes, Esc closes (draft kept).
 
-Keyboard (desktop): digits / . / Backspace / Delete (clear) / Enter (save) on Home — also Enter in the note field, which on a phone only closes the keyboard (C31); on a computer the number pad stays visible while the note has focus (C32) · N add · H history · I insights · A accounts · L loans · G goals · R recurring · C categories · / search · , settings · Esc closes the top sheet (asks first if a form has unsaved input).
+Keyboard (desktop): digits / . / Backspace / Delete (clear) / Enter (save) on Home — also Enter in the note field, which on a phone only closes the keyboard (C31); on a computer the number pad stays visible while the note has focus (C32) · N add · H history · I insights · A accounts · L loans · G goals · R recurring · C categories · / search · Ctrl+, settings (plain `,` too, except on Home where it is the decimal point — L2-6) · Esc closes the top sheet (asks first if a form has unsaved input).
 
 Android Back (Tauri `onBackButtonPress`, not webview history: Chrome skips history entries pushed without a tap, which made the second Back leave the app): closes the topmost sheet (a form with unsaved input asks "Discard?"), then the page; on Home it moves the app to the background (`HisabNative.minimize`), with the draft kept.
 
