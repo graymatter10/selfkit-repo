@@ -9,7 +9,6 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | B5 | Lock screen no longer keeps a fixed "Wrong PIN. Try again in 30 s." after the wait ends; the live countdown line shows the wait, then "Wrong PIN." | `ui/src/lock/LockGate.svelte` | OPPO (5 wrong PINs, wait, fingerprint cancel) |
 | B2 | Lead chose option 2: Dusk's provider serves the local `dusk_nights` table (`/table?name=`), `SelfkitMirror` copies it into Reflect's `dusk.db`. Phone-local, no sync change (DECISIONS 2026-11-20) | `selfkit-appsync/src/android.rs`, `android-plugins/selfkit-sync/.../SelfkitDataProvider.kt`, `SelfkitMirror.kt` | OPPO: Dusk and Reflect APKs both new; open Dusk once, then Reflect → Today sleep tile |
 | B4 | Lead chose option 1: Dusk mirrors `agenda,hisab` on Android (manifest + page call on open/foreground); Settings row shows Found / Agenda only / Hisab only / Not found | `apps/dusk/src-tauri/gen/android/app/src/main/AndroidManifest.xml`, `apps/dusk/src/lib/state.svelte.ts`, `SettingsPage.svelte` | OPPO: Dusk Settings + Connections next-day cards |
-
 | B5 / L7 | (updated) after the wait the lock screen says "Enter your PIN" again | `ui/src/lock/LockGate.svelte` | OPPO + Linux |
 | P1 | same as L1 | — | — |
 | L2 | no text caret in buttons (task rows) | `apps/agenda/src/app.css` | Linux |
