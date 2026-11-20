@@ -66,6 +66,13 @@
       }
       return;
     }
+    // Esc closes the Adjust/Nap panel (asking first if edited) wherever focus is (L4-7);
+    // inside the panel its own handler takes it first.
+    if (e.key === "Escape" && app.edit) {
+      e.preventDefault();
+      if (!app.closeGuard?.()) app.edit = null;
+      return;
+    }
     if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || e.altKey || e.metaKey || app.edit) return;
     if (app.tab !== "night") return;
     if (/^[1-5]$/.test(e.key)) rate(shownKey(), Number(e.key));

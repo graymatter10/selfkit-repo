@@ -1,6 +1,6 @@
 <script lang="ts">
   // Trends: 2 weeks / Month / 3 months of nights, the four stats, and bed/wake times.
-  import { dur, hmParts } from "../lib/fmt";
+  import { dur, hmParts, tdisp } from "../lib/fmt";
   import { app, openTab, show } from "../lib/state.svelte";
   import NightBars from "./NightBars.svelte";
   import RangeChart from "./RangeChart.svelte";
@@ -34,7 +34,7 @@
   </div>
   <div class="mt-3"><StatsGrid {dash} cols={desktop ? 4 : 2} /></div>
   <div class="card mt-3 p-4">
-    <div class="mb-3.5 flex items-center"><h2 class="m-0 flex-1 text-[15px] font-[650]">Bed and wake times</h2><div class="legend"><span><i class="dash"></i>Bedtime goal {dash.goals.bedtime}</span></div></div>
+    <div class="mb-3.5 flex items-center"><h2 class="m-0 flex-1 text-[15px] font-[650]">Bed and wake times</h2><div class="legend"><span><i class="dash"></i>Bedtime goal {tdisp(dash.goals.bedtime)}</span></div></div>
     <RangeChart nights={dash.nights.slice(-(desktop ? Math.min(span, 30) : Math.min(span, 14)))} bedtimeMin={Number(dash.goals.bedtime.slice(0, 2)) * 60 + Number(dash.goals.bedtime.slice(3))} height={desktop ? 190 : 180} />
   </div>
   {#if span === 90 && dash.weekly.length}

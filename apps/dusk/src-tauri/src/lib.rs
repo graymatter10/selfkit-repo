@@ -176,6 +176,16 @@ fn log_set(app: AppHandle, state: State<AppState>, night: String, patch: Map<Str
         let _ = data::replace_main(&store, &night, cur.and_then(|c| c.log).as_ref());
         return Err(if w <= b { "Wake time must be after bedtime".into() } else { "That's over 20 hours of sleep. Check the times.".into() });
     }
+    // A typed time later than now (the current night isn't over yet) would count sleep
+    // that hasn't happened (L4-8).
+    let typed = |k: &str| patch.get(k).is_some_and(|x| !x.is_null() && x.as_str().is_none_or(|t| !t.trim().is_empty()));
+    let future = |t: Option<Ms>| t.is_some_and(|t| t > now() + 5 * 60_000);
+    if let Some(x) = v.first()
+        && ((typed("wake") && future(x.wake)) || (typed("bed") && future(x.bed)))
+    {
+        let _ = data::replace_main(&store, &night, cur.and_then(|c| c.log).as_ref());
+        return Err("That time hasn't come yet. Enter times up to now.".into());
+    }
     let _ = data::cache_nights(&store, &v);
     let _ = app.emit("sleep-changed", ());
     v.into_iter().next().ok_or_else(|| "no night".into())
@@ -191,7 +201,32 @@ fn log_replace(app: AppHandle, state: State<AppState>, night: String, before: Op
 
 #[tauri::command]
 fn nap_add(app: AppHandle, state: State<AppState>, night: String, start: String, end: String) -> Res<model::LogEntry> {
-    let l = data::add_nap(&state.store.lock().unwrap(), &night, &start, &end, tz_now()).map_err(e)?;
+    let store = state.store.lock().unwrap();
+    let tz = tz_now();
+    // Refuse a nap that ends in the future (L4-8) or overlaps the main sleep of this
+    // night or the next one, or another nap: it was added on top (L4-6).
+    if let (Some(n), Some(a), Some(b)) = (model::parse_date(&night), model::parse_hhmm(&start), model::parse_hhmm(&end)) {
+        let s = model::local_to_utc(n, a, tz);
+        let mut w = model::local_to_utc(n, b, tz);
+        if w <= s {
+            w += 24 * HOUR;
+        }
+        if w > now() + 5 * 60_000 {
+            return Err("That nap hasn't ended yet. Enter times up to now.".into());
+        }
+        for v in compute(&store, n, n + Duration::days(1), false).map_err(e)? {
+            if let (Some(bed), Some(wake)) = (v.bed, v.wake)
+                && s < wake
+                && w > bed
+            {
+                return Err("This overlaps a night's sleep. Change that night's times instead.".into());
+            }
+            if v.naps.iter().any(|x| matches!((x.bed, x.wake), (Some(b), Some(k)) if s < k && w > b)) {
+                return Err("This overlaps another nap.".into());
+            }
+        }
+    }
+    let l = data::add_nap(&store, &night, &start, &end, tz).map_err(e)?;
     let _ = app.emit("sleep-changed", ());
     Ok(l)
 }

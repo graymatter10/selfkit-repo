@@ -25,11 +25,11 @@
   <div class="card px-4 py-3.5">
     <div class="text-[13px] font-medium text-muted">Consistency</div>
     <div class="num mt-[3px] text-[24px] font-[650] tracking-[-0.02em]">{s14.consistency ?? "–"}<span class="text-[15px] font-[550] text-muted">&nbsp;/ 100</span></div>
-    <div class="mt-[3px] text-[12.5px] text-muted">{s14.bed_sd_min != null ? `Bedtime varies ±${dur(s14.bed_sd_min)}` : "Needs 3 nights"}</div>
+    <div class="mt-[3px] text-[12.5px] text-muted">{s14.consistency != null && s14.bed_sd_min != null ? `Bedtime varies ±${dur(s14.bed_sd_min)}` : "Needs 3 nights"}</div>
   </div>
   <div class="card px-4 py-3.5">
     <div class="text-[13px] font-medium text-muted">Bed on time</div>
-    <div class="num mt-[3px] text-[24px] font-[650] tracking-[-0.02em]">{s7.bedtime_hits}<span class="text-[15px] font-[550] text-muted">&nbsp;of {s7.bedtime_total} nights</span></div>
+    <div class="num mt-[3px] text-[24px] font-[650] tracking-[-0.02em]">{#if s7.bedtime_total}{s7.bedtime_hits}<span class="text-[15px] font-[550] text-muted">&nbsp;of {plural(s7.bedtime_total, "night")}</span>{:else}–{/if}</div>
     <div class="mt-[3px] text-[12.5px] text-muted">By {grace} · goal {tdisp(dash.goals.bedtime)}</div>
   </div>
 </div>
