@@ -4,7 +4,7 @@ Status: **working in Chromium 14x and Firefox 160** (tested live, see Testing). 
 
 ## What it records
 - One session = one continuous stretch of one **domain** in the active tab of the **focused, non-private** window while the user is **active**. Domain = the URL's hostname, lowercased, without port, trailing dot or leading `www.`; only `http(s)` pages. Paths, queries and titles are never read or stored.
-- Not tracked: private/incognito windows and tabs (checked on both window and tab), unfocused browser, idle or locked (`chrome.idle`, default threshold 120 s; going idle back-dates the end by the threshold), non-web pages, Chrono `exclude_domains` (plus subdomains), while paused.
+- Not tracked: private/incognito windows and tabs (checked on both window and tab), unfocused browser (focus moving to another program, `onFocusChanged(WINDOW_ID_NONE)`, closes the session at once — L3-1), idle or locked (`chrome.idle`, default threshold 120 s, or Chrono's "Time away" `idle_minutes` from the native host reply — L3-2; going idle back-dates the end by the threshold), non-web pages, Chrono `exclude_domains` (plus subdomains), while paused.
 - If no heartbeat came for 150 s (browser closed, laptop asleep), the session ends at the last heartbeat. Sessions under 1 s are dropped.
 - Pause: the popup pauses this browser for 15 min, 1 hour or until resumed. Chrono's `paused_until` and the agent's `pause` are applied too: the agent reports them in every reply, and the open session closes right away. The toolbar badge shows "off" while paused.
 

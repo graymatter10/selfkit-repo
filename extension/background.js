@@ -128,7 +128,7 @@ function createTracker(api, env = {}) {
       const t = now();
       if (opts.idleState) s.idleState = opts.idleState;
       if (s.cur && t - s.cur.last > GAP_MS) closeCur(s, s.cur.last);
-      const want = await target(s, t);
+      const want = opts.blurred ? { domain: null, why: 'unfocused' } : await target(s, t);
       if (s.cur && s.cur.domain === want.domain) {
         s.cur.last = t;
       } else {
@@ -194,6 +194,11 @@ function createTracker(api, env = {}) {
         : { at: now(), ok: true, agent: !!reply.agent_running, written: reply.written || 0, pausedUntil: reply.paused_until || null };
       await save(s2);
     });
+    // Chrono's "Time away" threshold (idle_minutes) applies to the browser too (L3-2).
+    if (reply && reply.ok && Number.isFinite(reply.idle_minutes) && reply.idle_minutes > 0) {
+      const secs = Math.round(reply.idle_minutes * 60);
+      if (secs !== (await load()).idleSecs) await setIdleInterval(secs);
+    }
     // A new Chrono pause or exclude list applies immediately.
     await evaluate(pauseChanged ? 'host-pause' : 'after-flush');
     return { ok: !error, error, sent: acked.size };
@@ -254,7 +259,9 @@ function createTracker(api, env = {}) {
       if (tab && tab.active && (change.url || change.status === 'complete')) evaluate('url');
     });
     api.tabs.onRemoved.addListener(() => evaluate('tab-closed'));
-    api.windows.onFocusChanged.addListener(() => evaluate('focus'));
+    // WINDOW_ID_NONE = focus went to another program: close the session now. On X11
+    // getLastFocused().focused can stay true, so it ran until the next 1-min alarm (L3-1).
+    api.windows.onFocusChanged.addListener((windowId) => evaluate('focus', { blurred: api.windows.WINDOW_ID_NONE !== undefined && windowId === api.windows.WINDOW_ID_NONE }));
     api.idle.onStateChanged.addListener((state) => evaluate('idle', { idleState: state }));
     api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       onMessage(msg).then(sendResponse, (e) => sendResponse({ error: String(e) }));

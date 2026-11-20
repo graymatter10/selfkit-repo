@@ -170,6 +170,7 @@ impl Host {
                 "paused": paused,
                 "paused_until": cfg.paused_until.filter(|_| chrono_paused),
                 "exclude_domains": cfg.exclude_domains,
+                "idle_minutes": cfg.idle_minutes,
                 "agent_running": agent.is_some(),
                 "device": self.device,
             });
