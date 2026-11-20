@@ -18,7 +18,7 @@ Feature docs: [ics.md](ics.md) (export/import mapping) · [focus.md](focus.md) (
 - **Quick-capture popup** (desktop): global shortcut (default Super+Shift+T) or `agenda --capture`.
 
 Keyboard (desktop): N new · / search · 1–6 views (Tasks, Upcoming, Calendar, Board, History, Stats) · J/K or ↑/↓ move · X done · E edit · Del delete · Esc close (also the "…" menu, L9).
-Search: every word must start a word of the title, notes, a tag or a step title (the full-text index also holds JSON keys and ids, so "title" or "inbox" used to match every task — C26).
+Search: every word must start a word of the title, notes, a tag or a step title (the full-text index also holds JSON keys and ids, so "title" or "inbox" used to match every task — C26). Words are split at spaces and punctuation only, so Bangla words stay whole (C89).
 
 Android Back: closes the topmost layer (menu, photo, focus sheet, settings, picker, form after asking, details, search, History/Stats → Tasks); with nothing open the app goes to the background. It uses Tauri's `back-button` event (`onBackButtonPress`) instead of history entries: the WebView skips history entries re-added without a tap, so two quick Backs used to leave the app from the details screen (bug found in v0.4 testing). `AgendaBars.toBackground()` in MainActivity.kt leaves the app.
 
