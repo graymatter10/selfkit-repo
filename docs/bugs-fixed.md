@@ -42,6 +42,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | C14 | agent init needs 12 characters | `selfkit-agent/src/main.rs` | — |
 | C15 | settings drop legacy `_clock`; conflict screen hides it | `selfkit-core/src/settings.rs`, `selfkit-appsync/src/conflicts.rs` | — |
 | C16 | marker file + watcher → `data-changed` after shared settings were adopted | `selfkit-appsync/src/{android,tauri_cmds,lib}.rs` | OPPO (two apps open) |
+| C91 | lock screen applies only the newest lock reply (sequence numbers), since commands are async (C13) | `ui/src/lock/LockGate.svelte` | Linux |
 | C17 | MutationObserver keeps new body children inert while locked | `ui/src/lock/LockGate.svelte` | — |
 | C18 | recurring entries id `rec-<item>-<date>` | `apps/hisab/src-tauri/src/recur.rs` | two devices |
 | C19 | seeded Cash/categories fixed ids | `apps/hisab/src-tauri/src/model.rs` | two fresh devices |

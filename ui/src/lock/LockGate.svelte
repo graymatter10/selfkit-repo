@@ -40,8 +40,18 @@
     if (!was && next.enabled && next.locked) onLocked();
     if (was && !(next.enabled && next.locked)) onUnlocked();
   }
+  // Lock commands run in parallel (async, C13), so replies can come back out of order:
+  // apply only replies at least as new as the last applied one (C91).
+  let reqSeq = 0, appliedSeq = 0;
+  async function latest<T>(p: Promise<T>, use: (v: T) => void) {
+    const n = ++reqSeq;
+    const v = await p;
+    if (n < appliedSeq) return;
+    appliedSeq = n;
+    use(v);
+  }
   async function refresh() {
-    try { set(await lockApi.status()); } catch { /* commands not ready yet: ipc retries */ }
+    try { await latest(lockApi.status(), set); } catch { /* commands not ready yet: ipc retries */ }
   }
 
   function onLocked() {
@@ -64,17 +74,20 @@
     busy = true;
     stopTest();
     try {
+      const n = ++reqSeq;
       const r = await lockApi.unlock(value);
+      const fresh = n >= appliedSeq;
+      if (fresh) appliedSeq = n;
       pin = "";
       if (r.result === "ok") {
-        set(r.lock);
+        if (fresh) set(r.lock);
       } else {
         // A wait is shown by the live countdown line, then "Enter your PIN" again; a fixed
         // "Try again in 30 s." in msg stayed on screen after the wait ended (B5, L7).
         msg = "retry_in_ms" in r && r.retry_in_ms > 0 ? "" : wrongText(r, r.lock.kind);
         shake = true;
         setTimeout(() => (shake = false), 420);
-        set(r.lock);
+        if (fresh) set(r.lock);
       }
     } catch (e) {
       msg = String(e);
@@ -86,7 +99,7 @@
   async function useBio() {
     stopTest();
     const r = await biometricPrompt(`Unlock ${appName}`);
-    if (r === "ok") set(await lockApi.unlockBiometric());
+    if (r === "ok") await latest(lockApi.unlockBiometric(), set);
     else if (r.startsWith("error:")) msg = r.slice(6);
   }
 
@@ -105,7 +118,7 @@
   let lastInput = Date.now();
   async function away(ms: number) {
     if (!lockState.view?.enabled) return;
-    try { set(await lockApi.away(ms)); } catch { /* ignore */ }
+    try { await latest(lockApi.away(ms), set); } catch { /* ignore */ }
   }
   const onResume = () => {
     const ms = lockBridge()?.takeAway() ?? -1;
@@ -138,11 +151,11 @@
       const s = lockState.view;
       if (testLeft > 0 && locked) {
         testLeft = Math.max(0, testLeft - 0.25);
-        if (testLeft === 0) { try { set(await lockApi.testUnlock()); } catch { /* not a test build */ } }
+        if (testLeft === 0) { try { await latest(lockApi.testUnlock(), set); } catch { /* not a test build */ } }
       }
       // Desktop idle: no input for the chosen time (at least 1 minute) while open.
       if (!lockBridge() && s?.enabled && !s.locked && !awaySince && now - lastInput >= Math.max(s.timeout_secs, 60) * 1000) {
-        try { set(await lockApi.now()); } catch { /* ignore */ }
+        try { await latest(lockApi.now(), set); } catch { /* ignore */ }
       }
     }, 250);
   });

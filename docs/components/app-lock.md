@@ -43,7 +43,7 @@ Release builds: `release.yml` calls android/linux/windows workflows with `releas
 | What | Where |
 |---|---|
 | Rules: hash/verify, backoff, timeout, file, `AppLock` | `selfkit-core/src/applock.rs` |
-| Tauri commands, all off the UI thread (`#[tauri::command(async)]`, C13; `lock_unlock_biometric` is refused outside Android, C12) (`lock_status`, `lock_unlock`, `lock_unlock_biometric`, `lock_test_unlock`, `lock_enable`, `lock_change`, `lock_disable`, `lock_set_options`, `lock_away`, `lock_now`, `lock_reset`), `LockHandle`, `test_unlock_allowed()` | `selfkit-appsync/src/lock_cmds.rs` (feature `tauri`; feature `lock-test`) |
+| Tauri commands, all off the UI thread (`#[tauri::command(async)]`, C13 — so the lock screen applies only the newest reply, C91; `lock_unlock_biometric` is refused outside Android, C12) (`lock_status`, `lock_unlock`, `lock_unlock_biometric`, `lock_test_unlock`, `lock_enable`, `lock_change`, `lock_disable`, `lock_set_options`, `lock_away`, `lock_now`, `lock_reset`), `LockHandle`, `test_unlock_allowed()` | `selfkit-appsync/src/lock_cmds.rs` (feature `tauri`; feature `lock-test`) |
 | UI ↔ Rust calls, Android bridge type, shared `lockState` | `ui/src/lock/api.svelte.ts` |
 | Lock screen + away/idle tracking + FLAG_SECURE sync | `ui/src/lock/LockGate.svelte` |
 | Settings section | `ui/src/lock/LockSettings.svelte` |
