@@ -257,8 +257,9 @@
       {/each}
       <div class="spacer"></div>
       <div class="status" style="position:relative">
-        <div class="t"><span class="live" class:off={isPaused()}></span>{isPaused() ? "Paused" : "Recording"}</div>
-        <div class="s">{#if isPaused()}{pauseLabel().replace("Paused ", "")}{:else}{recent.length} {recent.length === 1 ? "device" : "devices"}<br />Latest data {ago(latest, app.now)}{/if}</div>
+        <!-- Nothing recorded recently: don't claim "Recording" (L3-5/C56). -->
+        <div class="t"><span class="live" class:off={isPaused() || !recent.length}></span>{isPaused() ? "Paused" : recent.length ? "Recording" : "Not recording"}</div>
+        <div class="s">{#if isPaused()}{pauseLabel().replace("Paused ", "")}{:else if !recent.length}Start the Selfkit agent, or see Devices and sources{:else}{recent.length} {recent.length === 1 ? "device" : "devices"}<br />Latest data {ago(latest, app.now)}{/if}</div>
         {#if isPaused()}<button type="button" class="p" style="color:var(--accent-ink)" onclick={resume}><Icon name="play" size={15} /> Resume</button>
         {:else}<button type="button" class="p" aria-haspopup="menu" aria-expanded={app.pauseMenu} onclick={() => (app.pauseMenu = !app.pauseMenu)}><Icon name="pause" size={15} /> Pause</button>{/if}
         {@render pauseMenu("bottom:52px;left:0")}
