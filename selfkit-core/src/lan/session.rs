@@ -83,6 +83,7 @@ async fn pull_phase<S: AsyncRead + AsyncWrite + Unpin + Send>(
 /// Answer Pulls until the peer says YourTurn/Bye. Returns the ending message.
 async fn serve_phase<S: AsyncRead + AsyncWrite + Unpin + Send>(
     ch: &mut Channel<S>,
+    peer: &str,
     apps: &[String],
     stores: &mut HashMap<String, Store>,
     rep: &mut SessionReport,
@@ -96,8 +97,11 @@ async fn serve_phase<S: AsyncRead + AsyncWrite + Unpin + Send>(
                 let changes = stores[&app].changes_since(since, PAGE)?;
                 let more = changes.len() as u32 == PAGE;
                 let upto = changes.last().map(|(_, l)| *l).unwrap_or(since);
-                rep.sent += changes.iter().filter(|(r, _)| r.is_user_data()).count() as u64;
-                let records = changes.into_iter().map(|(r, _)| r).collect();
+                // Versions written by the asking peer came from it: don't echo them back.
+                // The phone's first push of 6458 Chrono records used to return all of them
+                // on the next pass (S-4). The cursor still moves past them (`upto`).
+                let records: Vec<Record> = changes.into_iter().map(|(r, _)| r).filter(|r| r.device_id != peer).collect();
+                rep.sent += records.iter().filter(|r| r.is_user_data()).count() as u64;
                 ch.send(&Msg::Batch { app, records, upto, more }).await?;
             }
             m @ (Msg::YourTurn | Msg::Bye) => return Ok(m),
@@ -132,10 +136,10 @@ pub async fn run<S: AsyncRead + AsyncWrite + Unpin + Send>(
         Role::Client => {
             pull_phase(&mut ch, &device_id, &common, stores, &mut rep).await?;
             ch.send(&Msg::YourTurn).await?;
-            serve_phase(&mut ch, &common, stores, &mut rep).await?;
+            serve_phase(&mut ch, &device_id, &common, stores, &mut rep).await?;
         }
         Role::Server => {
-            if let Msg::YourTurn = serve_phase(&mut ch, &common, stores, &mut rep).await? {
+            if let Msg::YourTurn = serve_phase(&mut ch, &device_id, &common, stores, &mut rep).await? {
                 pull_phase(&mut ch, &device_id, &common, stores, &mut rep).await?;
                 ch.send(&Msg::Bye).await?;
             }

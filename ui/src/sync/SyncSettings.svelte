@@ -282,7 +282,7 @@
         <section>
           <h3>Details</h3>
           <div class="k-card k-list">
-            <div class="k-row"><div class="k-grow"><div class="k-t">Sync this app</div><div class="k-s">{st.settings.enabled ? "On: Sync now, on open and in the background" : "Off: nothing leaves this device"}</div></div>
+            <div class="k-row"><div class="k-grow"><div class="k-t">Sync this app</div><div class="k-s">{st.settings.enabled ? (st.settings.auto_sync ? "On: Sync now, on open and in the background" : "On: only when you tap Sync now") : "Off: nothing leaves this device"} <!-- S-3 --></div></div>
               {@render toggle(st.settings.enabled, "Sync this app", () => (st!.settings.enabled ? saveSettings({ enabled: false }) : st!.test_key ? (sheet = "enable") : enableSync()))}</div>
             <button type="button" class="k-row k-link k-plain" onclick={openLog}><div class="k-grow"><div class="k-t">Sync log</div><div class="k-s">Last 20 runs, with errors in plain words</div></div>{@render icon("chev", 18)}</button>
             <div class="k-row"><div class="k-grow"><div class="k-t">This device</div><div class="k-s">{st.device_name}{st.pending && st.server_configured ? ` · ${st.pending} change${st.pending === 1 ? "" : "s"} not on the server yet` : ""}</div></div></div>
