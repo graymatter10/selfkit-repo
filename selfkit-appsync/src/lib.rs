@@ -388,12 +388,34 @@ impl AppSync {
         Ok(())
     }
 
-    /// Re-wraps the key with the new passphrase; the next server pass publishes it.
+    /// Re-wraps the key with the new passphrase. Marked unpublished until the server has
+    /// it: call `publish_keyfile` right after (R-6), else the next server pass does it.
     pub fn change_passphrase(&self, old: &str, new: &str) -> Result<()> {
         let mut kf = KeyFile::load(&self.key_file_path())?;
         let k = kf.unlock_passphrase(old)?;
         kf.change_passphrase(&k, new, KdfParams::default())?;
-        kf.save(&self.key_file_path())
+        kf.save(&self.key_file_path())?;
+        std::fs::write(self.keys_unpublished_path(), b"1")?;
+        Ok(())
+    }
+
+    fn keys_unpublished_path(&self) -> std::path::PathBuf {
+        model::sync_dir(&self.cfg.data_dir).join("keys-unpublished")
+    }
+
+    /// Publish `keys.json` now (after a passphrase change), so a new device can unlock with
+    /// the new passphrase without waiting for this device's next server pass — a phone that
+    /// syncs only over LAN at home may not reach the server for days (R-6). Ok(false): no
+    /// server to publish to (none set up, or LAN only).
+    pub async fn publish_keyfile(&self) -> Result<bool> {
+        let Some(cfg) = self.server_config()? else { return Ok(false) };
+        if self.settings().transport == TransportMode::LanOnly {
+            return Ok(false);
+        }
+        let remote = server::connect(&cfg.pg_url).await?;
+        server::upload_keyfile(&remote, cfg.s3.as_ref(), &self.key_file_path()).await?;
+        let _ = std::fs::remove_file(self.keys_unpublished_path());
+        Ok(true)
     }
 
     /// Forget the key on this device (data stays; sync stops until unlocked).
@@ -551,6 +573,7 @@ impl AppSync {
                     .and_then(|t| serde_json::from_str::<std::collections::BTreeMap<String, String>>(&t).ok())
                     .is_some_and(|m| !m.is_empty()),
             encryption_set_up: self.encryption_set_up(),
+            keys_unpublished: server.is_some() && self.keys_unpublished_path().exists(),
             server_configured: server.is_some(),
             photos_configured: server.as_ref().is_some_and(|c| c.s3.is_some()),
             last_attempt_at: st.last_attempt_at,
@@ -780,6 +803,7 @@ impl AppSync {
             }
             server::preflight(&remote, &key).await?;
             server::upload_keyfile(&remote, cfg.s3.as_ref(), &self.key_file_path()).await?;
+            let _ = std::fs::remove_file(self.keys_unpublished_path());
             server::sync_records(&remote, &key, &mut stores, &mut out.report).await?;
             out.transport = Some(Transport::Server);
             out.ok = true;

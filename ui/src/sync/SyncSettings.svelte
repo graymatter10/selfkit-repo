@@ -129,7 +129,11 @@
   async function changePass() {
     err = null;
     if (pass1 !== pass2) return void (err = "The two passphrases differ.");
-    try { await syncApi.changePassphrase(oldPass, pass1); sheet = ""; flash = "Passphrase changed."; } catch (e) { err = String(e); }
+    try {
+      const published = await syncApi.changePassphrase(oldPass, pass1);
+      sheet = "";
+      flash = published || !st?.server_configured ? "Passphrase changed." : "Passphrase changed. New devices can use it after this device next syncs with the server.";
+    } catch (e) { err = String(e); }
   }
   async function enableSync() {
     sheet = "";
@@ -246,7 +250,7 @@
           <h3>Encryption</h3>
           <div class="k-card k-list">
             {#if st.unlocked && !st.test_key}
-              <div class="k-row"><span class="k-mut">{@render icon("lock")}</span><div class="k-grow"><div class="k-t">On · unlocked on this device</div><div class="k-s">Everything is encrypted before it leaves</div></div></div>
+              <div class="k-row"><span class="k-mut">{@render icon("lock")}</span><div class="k-grow"><div class="k-t">On · unlocked on this device</div><div class="k-s">{st.keys_unpublished ? "New passphrase not on the server yet: new devices need the old one until this device syncs with the server" : "Everything is encrypted before it leaves"}</div></div></div>
               <button type="button" class="k-row k-link" onclick={() => { pass1 = pass2 = oldPass = ""; err = null; sheet = "passphrase"; }}><span class="k-grow">Change passphrase</span>{@render icon("chev", 18)}</button>
             {:else if st.encryption_set_up}
               <div class="k-row"><span class="k-mut">{@render icon("lock")}</span><div class="k-grow"><div class="k-t">Locked on this device</div><div class="k-s">Unlock once with your passphrase or recovery key</div></div></div>

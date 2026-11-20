@@ -17,7 +17,7 @@ export interface SyncOutcome {
   error: string | null; detail: string | null; note: string | null; started_at: number; finished_at: number;
 }
 export interface SyncStatus {
-  app: string; device_id: string; device_name: string; owner: Owner; running: boolean; unlocked: boolean; test_key: boolean; secrets_in_file?: boolean;
+  app: string; device_id: string; device_name: string; owner: Owner; running: boolean; unlocked: boolean; test_key: boolean; secrets_in_file?: boolean; keys_unpublished?: boolean;
   encryption_set_up: boolean; server_configured: boolean; photos_configured: boolean;
   last_attempt_at: number | null; last_ok_at: number | null; last_transport: Transport | null; last_peers: string[];
   last_error: string | null; last_note: string | null; pending: number; conflicts: number; peers: SeenPeer[];
@@ -52,7 +52,8 @@ export const syncApi = {
   saveServer: (form: ServerForm) => call<ServerView>("sync_server_set", { form }),
   setupEncryption: (passphrase: string) => call<string>("sync_encryption_setup", { passphrase }),
   unlock: (secret: string, recovery: boolean) => call<void>("sync_unlock", { secret, recovery }),
-  changePassphrase: (old: string, next: string) => call<void>("sync_change_passphrase", { old, new: next }),
+  /** true: the server already has it; false: published on the next server sync (R-6). */
+  changePassphrase: (old: string, next: string) => call<boolean>("sync_change_passphrase", { old, new: next }),
   conflicts: () => call<ConflictView[]>("sync_conflicts"),
   resolve: (store: string, id: string, choice: Choice) => call<void>("sync_resolve", { store, id, choice }),
   log: () => call<SyncOutcome[]>("sync_log"),

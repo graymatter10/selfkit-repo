@@ -165,6 +165,10 @@ pub struct SyncStatus {
     #[serde(default)]
     pub secrets_in_file: bool,
     pub encryption_set_up: bool,
+    /// The passphrase was changed here and the server doesn't have the new keys.json yet
+    /// (R-6): new devices still unlock with the old passphrase until it does.
+    #[serde(default)]
+    pub keys_unpublished: bool,
     pub server_configured: bool,
     pub photos_configured: bool,
     pub last_attempt_at: Option<i64>,

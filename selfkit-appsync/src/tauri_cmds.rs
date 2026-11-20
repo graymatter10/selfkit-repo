@@ -258,15 +258,24 @@ pub async fn sync_unlock(h: State<'_, SyncHandle>, secret: String, recovery: boo
     })
 }
 
+/// Returns whether the server already has the new passphrase (R-6); false = it gets it on
+/// the next server pass (no server reachable now, or none set up).
 #[tauri::command]
-pub fn sync_change_passphrase(h: State<'_, SyncHandle>, old: String, new: String) -> Res<()> {
+pub async fn sync_change_passphrase(h: State<'_, SyncHandle>, old: String, new: String) -> Res<bool> {
     if new.chars().count() < 12 {
         return Err("Use at least 12 characters.".into());
     }
-    h.0.change_passphrase(&old, &new).map_err(|err| match err {
-        selfkit_core::Error::BadKey => "The current passphrase is wrong.".to_string(),
-        other => crate::explain(&other),
-    })
+    let s = h.0.clone();
+    // Argon2 twice: off the async runtime's worker.
+    let s2 = s.clone();
+    tauri::async_runtime::spawn_blocking(move || s2.change_passphrase(&old, &new))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|err| match err {
+            selfkit_core::Error::BadKey => "The current passphrase is wrong.".to_string(),
+            other => crate::explain(&other),
+        })?;
+    Ok(s.publish_keyfile().await.unwrap_or(false))
 }
 
 #[tauri::command]
