@@ -133,6 +133,8 @@
       await draftWritten(); // a queued draft write must not land after this Save
       const t = await api.save<Tx>("transactions", data, undefined, { ...emptyDraft(), ...keep, _t: Date.now() });
       resetDraft(keep);
+      // The clicked category tile kept focus (and its ring) after Save (L2-7).
+      if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
       await refresh();
       const label = dr.kind === "transfer" ? "Moved" : dr.kind === "income" ? "Income saved" : "Saved";
       showToast(`${label} · ${money(t.amount, t.currency)}${dr.kind !== "transfer" ? " · " + catLabel(t) : ""}`, async () => {
