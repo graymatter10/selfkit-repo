@@ -528,7 +528,12 @@ pub fn import(store: &Store, text: &str) -> Result<ImportResult> {
             }
         };
         merged = tasks::normalize(merged);
-        if existing.as_ref().is_some_and(|t| t.data == merged) {
+        // Empty fields ("" notes, [] tags/steps from the form) aren't exported, and numbers
+        // compare by value: a re-import of an unchanged export is "unchanged" (L10).
+        let bare = |m: &Map<String, Value>| {
+            Value::Object(m.iter().filter(|(_, v)| !matches!(v, Value::Null) && v.as_str() != Some("") && v.as_array().is_none_or(|a| !a.is_empty())).map(|(k, v)| (k.clone(), v.clone())).collect())
+        };
+        if existing.as_ref().is_some_and(|t| selfkit_core::conflict::json_eq(&bare(&t.data), &bare(&merged))) {
             res.unchanged += 1;
             continue;
         }
@@ -630,6 +635,19 @@ mod tests {
         let r = import(&a, &text).unwrap();
         assert_eq!((r.kept, r.unchanged), (1, 4));
         assert_eq!(tasks::get(&a, &t.id).unwrap().unwrap().data["title"], "Birthday (edited)");
+    }
+
+    #[test]
+    fn reimport_with_empty_form_fields_is_unchanged() {
+        // L10: tasks saved by the form carry notes "", tags [], steps []; an export drops them.
+        let s = store();
+        let mut d = Map::new();
+        for (k, v) in [("title", json!("Bazar করো 🛒")), ("notes", json!("")), ("tags", json!([])), ("steps", json!([])), ("severity", json!(3)), ("list", json!(tasks::INBOX)), ("created_at", json!(1_763_000_000_000_i64))] {
+            d.insert(k.into(), v);
+        }
+        tasks::put_raw(&s, "t1", d).unwrap();
+        let text = export(&list(&s, Filter::All).unwrap(), &lists(&s).unwrap());
+        assert_eq!(import(&s, &text).unwrap(), ImportResult { unchanged: 1, ..Default::default() });
     }
 
     #[test]
