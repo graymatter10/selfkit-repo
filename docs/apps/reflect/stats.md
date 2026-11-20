@@ -7,7 +7,7 @@ All numbers are computed in Rust; the UI only lays them out.
 - A source's value is "no data" before that app's first record; after it, a day without records counts as 0.
 - **Screen time** = union of all app and website sessions on all devices (phone use while the PC is on counts once), same as Chrono. **Phone** = union of Android sessions. Excluded apps/domains from `chrono_settings` are dropped.
 - **Late phone use** = phone minutes between 00:00 and 05:00 local on that calendar morning.
-- **Spent** = Hisab expenses on that day in the main currency (`hisab-rates`; a time before the day start counts for the day before). **Daily budget** = sum of the monthly category budgets ÷ days in that month.
+- **Spent** = Hisab expenses on that day in the main currency (`hisab-rates`; a time before the day start counts for the day before). **Daily budget** = sum of the monthly category budgets ÷ days in that month; it is compared with spending in categories that have a budget only (split parts per category), like Hisab (C61).
 - **Tasks** = Agenda completions on that day (every completion of a repeating task counts).
 - **Sleep** = Dusk's `dusk_nights` row for the night that ended that morning (`asleep_min`; all-nighter = 0, `none` = no data). Bedtime = local clock of `bed`.
 
