@@ -340,6 +340,56 @@ mod tests {
     }
 
     #[test]
+    fn dst_change_days_with_a_night_rule() {
+        // Rule every day 01:00–03:00 local. Europe/Berlin-style changes in 2026.
+        let mut s = ChronoSettings::default();
+        s.category_rules.push(rule("r1", "domain", "reddit.com", "study", &[1, 2, 3, 4, 5, 6, 7], (1, 0), (3, 0)));
+        let rules = rules_for(&s, 'w', "reddit.com", None);
+        // Spring forward, Sun 29 Mar (day 20541): 02:00 CET → 03:00 CEST at 01:00 UTC.
+        // A session 00:30 CET → 04:00 CEST keeps its start offset (+60), like the
+        // day split: the rule covers 01:00–03:00 in that clock = 00:00–02:00 UTC.
+        let spring = 20541;
+        let (a, b) = (at(spring, 0, 30, 60), at(spring, 4, 0, 120));
+        assert_eq!(b, at(spring, 3, 0, 60));
+        assert_eq!(rule_pieces(&rules, a, b, 60), vec![(at(spring, 1, 0, 60), b, "study".to_string())]);
+        // A session that starts after the change (03:30 CEST) is outside the rule.
+        assert!(rule_pieces(&rules, at(spring, 3, 30, 120), at(spring, 5, 0, 120), 120).is_empty());
+        // Fall back, Sun 25 Oct (day 20751): 03:00 CEST → 02:00 CET at 01:00 UTC; the hour
+        // 02:00–03:00 happens twice and both are inside the rule (each in its own offset).
+        let fall = 20751;
+        let first = rule_pieces(&rules, at(fall, 2, 30, 120), at(fall, 3, 30, 120), 120);
+        assert_eq!(first, vec![(at(fall, 2, 30, 120), at(fall, 3, 0, 120), "study".to_string())]);
+        let second = rule_pieces(&rules, at(fall, 2, 30, 60), at(fall, 3, 30, 60), 60);
+        assert_eq!(second, vec![(at(fall, 2, 30, 60), at(fall, 3, 0, 60), "study".to_string())]);
+        assert_eq!(at(fall, 3, 0, 120), at(fall, 2, 0, 60)); // the change itself
+        assert!(first[0].1 <= second[0].0);
+    }
+
+    #[test]
+    fn one_session_across_two_rule_windows() {
+        let mut s = ChronoSettings::default();
+        s.category_rules.push(rule("r1", "domain", "youtube.com", "work", &[1], (9, 0), (12, 0)));
+        s.category_rules.push(rule("r2", "domain", "youtube.com", "study", &[1], (14, 0), (17, 0)));
+        let p = category_pieces(&s, 'w', "youtube.com", None, at(MON, 11, 0, 0), at(MON, 15, 0, 0), 0);
+        assert_eq!(
+            p,
+            vec![
+                (at(MON, 11, 0, 0), at(MON, 12, 0, 0), "work".to_string()),
+                (at(MON, 12, 0, 0), at(MON, 14, 0, 0), "entertainment".to_string()),
+                (at(MON, 14, 0, 0), at(MON, 15, 0, 0), "study".to_string()),
+            ]
+        );
+        // The same rule on two days: a session Mon 16:00 → Tue 10:00 hits both windows.
+        s.category_rules[0].days = vec![1, 2];
+        s.category_rules[0].end_min = 17 * 60;
+        s.category_rules.remove(1);
+        let p = category_pieces(&s, 'w', "youtube.com", None, at(MON, 16, 0, 0), at(MON + 1, 10, 0, 0), 0);
+        let work: i64 = p.iter().filter(|x| x.2 == "work").map(|x| x.1 - x.0).sum();
+        assert_eq!(work, 2 * H);
+        assert_eq!(p.len(), 3);
+    }
+
+    #[test]
     fn resolution_order_and_priority() {
         let mut s = ChronoSettings::default();
         let t = at(MON, 10, 0, 0);

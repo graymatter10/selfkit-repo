@@ -241,6 +241,73 @@ mod tests {
         assert!(l.alerts && l.domain_excluded("www.x.com"));
     }
 
+    /// Two devices change `category_rules` after sharing version "100:A"; the
+    /// shared core field merge (`Store::field_merge`, lists combined by item id).
+    fn merged(a: Vec<CategoryRule>, b: Vec<CategoryRule>, a_alerts: bool) -> Vec<String> {
+        use selfkit_core::Record;
+        let rec = |rules: Vec<CategoryRule>, at: i64, dev: &str, alerts: bool, rules_at: i64| Record {
+            id: ID.into(),
+            collection: COLLECTION.into(),
+            data: serde_json::json!({"alerts": alerts, "category_rules": rules}),
+            updated_at: at,
+            tz_offset: 0,
+            device_id: dev.into(),
+            deleted: false,
+            hist: vec!["100:A".into(), format!("{at}:{dev}")],
+            fclock: [("alerts".to_string(), if alerts { 100 } else { at }), ("category_rules".to_string(), rules_at)].into_iter().collect(),
+        };
+        let rules_b_at = 300;
+        let l = rec(a, 200, "A", a_alerts, 200);
+        let r = rec(b, 300, "B", true, rules_b_at);
+        let v = Store::field_merge(&l, &r).expect("merges without a conflict");
+        let m: ChronoSettings = serde_json::from_value(v).unwrap();
+        m.category_rules.iter().map(|r| format!("{}:{}:{}", r.id, r.category, r.start_min)).collect()
+    }
+
+    fn cr(id: &str, cat: &str, start: i64) -> CategoryRule {
+        CategoryRule { id: id.into(), target: "youtube.com".into(), kind: "domain".into(), category: cat.into(), days: vec![1], start_min: start, end_min: 600, enabled: true }
+    }
+
+    #[test]
+    fn category_rules_merge_by_id_across_devices() {
+        let base = || vec![cr("r1", "work", 540)];
+        // Each device adds a rule → both kept.
+        let mut a = base();
+        a.push(cr("ra", "study", 60));
+        let mut b = base();
+        b.push(cr("rb", "social", 120));
+        let m = merged(a, b, true);
+        assert_eq!(m, vec!["r1:work:540", "rb:social:120", "ra:study:60"]);
+        // The same rule edited on both → the newer device's copy (B).
+        let m = merged(vec![cr("r1", "study", 540)], vec![cr("r1", "social", 480)], true);
+        assert_eq!(m, vec!["r1:social:480"]);
+        // Only A touched the rules (B changed another field): A's list as it is,
+        // including a deletion and an edit.
+        let l = vec![cr("r2", "work", 0)];
+        let rec = |data: serde_json::Value, at: i64, dev: &str, clocks: &[(&str, i64)]| selfkit_core::Record {
+            id: ID.into(),
+            collection: COLLECTION.into(),
+            data,
+            updated_at: at,
+            tz_offset: 0,
+            device_id: dev.into(),
+            deleted: false,
+            hist: vec!["100:A".into(), format!("{at}:{dev}")],
+            fclock: clocks.iter().map(|(k, t)| (k.to_string(), *t)).collect(),
+        };
+        let la = rec(serde_json::json!({"alerts": true, "category_rules": l}), 200, "A", &[("alerts", 100), ("category_rules", 200)]);
+        let rb = rec(serde_json::json!({"alerts": false, "category_rules": base()}), 300, "B", &[("alerts", 300), ("category_rules", 100)]);
+        let v: ChronoSettings = serde_json::from_value(Store::field_merge(&la, &rb).unwrap()).unwrap();
+        assert_eq!((v.category_rules.len(), v.category_rules[0].id.as_str(), v.alerts), (1, "r2", false));
+        // Known limits of the shared list merge (core `union_lists`), when BOTH devices
+        // changed the list: a rule deleted on one device comes back, and an older edit
+        // of a rule loses to the newer device's unchanged copy of it.
+        let m = merged(vec![], vec![cr("r1", "work", 540), cr("rb", "social", 120)], true);
+        assert_eq!(m, vec!["r1:work:540", "rb:social:120"]);
+        let m = merged(vec![cr("r1", "study", 540)], vec![cr("r1", "work", 540), cr("rb", "social", 120)], true);
+        assert_eq!(m, vec!["r1:work:540", "rb:social:120"]);
+    }
+
     #[test]
     fn category_rules_sanitize_and_cache_key() {
         let st = Store::open_in_memory("chrono", "d", &[]).unwrap();

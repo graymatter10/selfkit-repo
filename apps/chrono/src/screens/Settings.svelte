@@ -265,7 +265,11 @@
     {#if !q && names.length > 6}<button type="button" class="row" style="min-height:48px;justify-content:center;color:var(--accent-ink);font-weight:600;font-size:14px" onclick={() => (showAllCats = !showAllCats)}>{showAllCats ? "Show fewer" : `Show all ${names.length}`}</button>{/if}
     {#if !names.length}<p class="hint" style="margin:8px 0 0">Apps and websites appear here once they have been used.</p>{/if}
     <button type="button" class="row" style="min-height:48px;color:var(--accent-ink);font-weight:600;font-size:14px;gap:6px" onclick={addRule}><Icon name="plus" size={15} stroke={2.2} /> Add time rule</button>
-    <p class="hint" style="margin:6px 0 0">A time rule changes an app's or website's category on certain days and hours. It counts in totals, Focus, goals and alerts.</p>
+    {#if !rules.length}
+      <p class="hint" style="margin:6px 0 0">No time rules yet. Use one when an app or website means different things at different times — for example, YouTube counts as Work on weekdays from 09:00 to 17:00 and as Entertainment the rest of the time.</p>
+    {:else}
+      <p class="hint" style="margin:6px 0 0">A time rule changes a category only on its days and hours, and counts in your totals, Focus, goals and alerts. A rule that ends earlier than it starts runs past midnight and counts on the day it starts. A website rule also covers its subdomains. A rule that is switched off is kept but ignored.</p>
+    {/if}
   </div>
 {/snippet}
 
