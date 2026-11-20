@@ -5,7 +5,7 @@
   // change, so Back, a crash or a restart never loses what was typed.
   import { showToast } from "@selfkit/ui";
   import { api, type Tx } from "../lib/api";
-  import { LOCALE, money, nowHm, shortDate, symbol, todayIso, dayLabel } from "../lib/fmt";
+  import { LOCALE, money, nowHm, shortDate, splitNoteTags, symbol, todayIso, dayLabel } from "../lib/fmt";
   import { addPhoto } from "../lib/photo";
   import { accountById, accounts, app, catById, defaultAccount, draftWritten, emptyDraft, openSheet, persistDraft, rankedCats, refresh, resetDraft, main } from "../lib/state.svelte";
   import CategoryRow from "./CategoryRow.svelte";
@@ -112,11 +112,7 @@
       return;
     }
     // "#tags" in the note become tags.
-    const tags = [...dr.tags];
-    const note = dr.note.replace(/(^|\s)#([\p{L}\p{N}_-]+)/gu, (_, sp, t) => {
-      tags.push(t.toLowerCase());
-      return sp;
-    }).replace(/\s+/g, " ").trim();
+    const { note, tags } = splitNoteTags(dr.note, dr.tags);
     const data: Partial<Tx> = {
       kind: dr.kind, amount: amountNum, currency: cur, date: dr.date || todayIso(), time: dr.time || (dr.date === todayIso() || !dr.date ? nowHm() : ""),
       account: acct?.id ?? "", note, tags, photos: dr.photos, source: "manual",

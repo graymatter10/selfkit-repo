@@ -86,3 +86,15 @@ export function daysBetween(a: string, b: string) {
 }
 
 export const CURRENCIES = ["USD", "EUR", "GBP", "BDT", "INR", "PKR", "NPR", "LKR", "AED", "SAR", "QAR", "KWD", "MYR", "SGD", "JPY", "CNY", "KRW", "THB", "IDR", "PHP", "TRY", "CAD", "AUD", "NZD", "CHF", "SEK", "NOK", "DKK", "ZAR", "NGN", "KES", "EGP", "BRL", "MXN"];
+
+/** "#tags" in a note become tags (lower-case, added to `tags` without duplicates); the
+ *  note keeps the other words. Same rule on the add screen and in the entry editor (C33). */
+export function splitNoteTags(note: string, tags: string[]): { note: string; tags: string[] } {
+  const out = [...tags];
+  const rest = note.replace(/(^|\s)#([\p{L}\p{N}_-]+)/gu, (_, sp, t) => {
+    const tag = t.toLowerCase();
+    if (!out.includes(tag)) out.push(tag);
+    return sp;
+  }).replace(/[^\S\n]+/g, " ").trim(); // keep line breaks of the editor's multi-line note
+  return { note: rest, tags: out };
+}
