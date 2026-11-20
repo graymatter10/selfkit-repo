@@ -82,7 +82,7 @@ Tray icon. Windows activity tracking checked by hand on a real PC (CI only check
 - `src/native_host.rs`: native-messaging framing, `web_sessions` validation/upsert, browser-launch detection.
 - `src/install.rs`: host manifests (Linux files / Windows registry), systemd unit / Windows logon task, i3 snippet.
 - `src/backup.rs`: S3 config, monthly/weekly bundles, retention, state, restore.
-- `src/reminders.rs`: Agenda reminder scan, dedupe, notifications.
+- `src/reminders.rs`: Agenda reminder scan, dedupe, notifications. A reminder in the spring-forward DST gap fires an hour later (C24).
 - `src/health.rs`: error-log tracing layer, CPU/RSS, storage, health document + writer.
 - `src/config.rs`: `agent.json` + env overrides.
 - `src/tracker/mod.rs`, `x11.rs`, `win.rs`: activity probes.

@@ -41,7 +41,12 @@ pub fn fire_at(data: &Value) -> Option<i64> {
         NaiveDate::parse_from_str(start, "%Y-%m-%d").ok()?.and_time(NaiveTime::from_hms_opt(9, 0, 0)?)
     };
     let local = base - Duration::minutes(mins);
-    Local.from_local_datetime(&local).earliest().map(|d| d.timestamp_millis())
+    // A time in the spring-forward gap doesn't exist: fire an hour later instead of never (C24).
+    Local
+        .from_local_datetime(&local)
+        .earliest()
+        .or_else(|| Local.from_local_datetime(&(local + Duration::hours(1))).earliest())
+        .map(|d| d.timestamp_millis())
 }
 
 fn body(data: &Value) -> String {

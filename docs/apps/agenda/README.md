@@ -33,7 +33,7 @@ Android Back: closes the topmost layer (menu, photo, focus sheet, settings, pick
 - Undo = the frontend keeps the previous data and calls `replace_task`; delete undo = `restore_task`.
 
 ## Reminders and notifications
-- Android: `tauri-plugin-notification` schedules exact alarms (`Schedule::At`, allow-while-idle). Small icon: monochrome checkbox `res/drawable/ic_stat_agenda.xml` (the plugin's default was Android's generic "i" — P3). Every change reschedules or cancels; startup reschedules all. Permission is asked the first time a reminder or focus session is started. All-day tasks remind relative to 09:00. Focus sessions schedule one alarm at their end (fixed id).
+- Android: `tauri-plugin-notification` schedules exact alarms (`Schedule::At`, allow-while-idle). A reminder time in the spring-forward DST gap fires an hour later (it was dropped — C24). Small icon: monochrome checkbox `res/drawable/ic_stat_agenda.xml` (the plugin's default was Android's generic "i" — P3). Every change reschedules or cancels; startup reschedules all. Permission is asked the first time a reminder or focus session is started. All-day tasks remind relative to 09:00. Focus sessions schedule one alarm at their end (fixed id).
 - Desktop: a timer thread checks every 5 s, shows due reminders and finishes focus sessions (log + notification).
 
 ## Build and run

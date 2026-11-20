@@ -310,7 +310,12 @@ mod reminders {
 
     fn fire_at_utc(t: &tasks::TaskView) -> Option<chrono::DateTime<chrono::Utc>> {
         let local = tasks::reminder_at(t)?;
-        Local.from_local_datetime(&local).earliest().map(|d| d.with_timezone(&chrono::Utc))
+        // A time in the spring-forward gap doesn't exist: fire an hour later instead of never (C24).
+        Local
+            .from_local_datetime(&local)
+            .earliest()
+            .or_else(|| Local.from_local_datetime(&(local + chrono::Duration::hours(1))).earliest())
+            .map(|d| d.with_timezone(&chrono::Utc))
     }
 
     pub fn body(t: &tasks::TaskView) -> String {
