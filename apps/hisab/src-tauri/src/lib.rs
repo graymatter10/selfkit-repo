@@ -67,6 +67,7 @@ fn boot(state: State<AppState>) -> R<Value> {
     let main = main_currency(&state);
     let store = state.store.lock().unwrap();
     model::seed_defaults(&store, &main)?;
+    let _ = model::merge_seeded_duplicates(&store); // C94
     currency::follow_main(&store, &main)?;
     let made = recur::generate(&store, &main, today())?;
     let prefs = store.kv_get("hisab.prefs").map_err(e)?.and_then(|v| serde_json::from_str::<Value>(&v).ok()).unwrap_or_else(|| json!({}));

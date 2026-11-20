@@ -73,6 +73,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| C94 | at start, unused seeded defaults (acct-cash, cat-*) with a same-name twin from an older device are removed; test | `apps/hisab/src-tauri/src/{model,lib}.rs` | two devices |
 | C92 | Insights stat values: extra font steps + overflow hidden/ellipsis | `Insights.svelte` | OPPO |
 | C93 | notification-blocked hints re-checked when the app comes back (Hisab, Chrono, Dusk; Agenda shows a toast at the time) | Hisab/Chrono `Settings.svelte`, Dusk `state.svelte.ts` | OPPO |
 | P38 | streak names, notes and review rows wrap instead of truncating; today's square outlined on every streak | `StreakCard.svelte`, `ReviewPage.svelte` | OPPO |
