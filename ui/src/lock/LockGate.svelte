@@ -169,7 +169,14 @@
       if (on) el.setAttribute("inert", ""); else el.removeAttribute("inert");
     }
   }
-  $effect(() => { setInert(locked); });
+  $effect(() => {
+    setInert(locked);
+    if (!locked) return;
+    // Toasts, portaled sheets or the conflict bar added while locked are inert too (C17).
+    const mo = new MutationObserver(() => setInert(true));
+    mo.observe(document.body, { childList: true });
+    return () => mo.disconnect();
+  });
 
   function portal(node: HTMLElement) {
     document.body.appendChild(node);
