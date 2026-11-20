@@ -1,5 +1,7 @@
 //! Plain (not encrypted) CSV and PDF export of transactions in a date range.
-//! The PDF is written by hand (Helvetica, A4, WinAnsi text), no library.
+//! The PDF is written by hand (Helvetica, A4, WinAnsi text), no library. Latin only:
+//! other scripts print as "?" (decided 2026-11-21, L15: Bangla needs an embedded font
+//! *and* text shaping for vowel signs/conjuncts; the export sheet points to CSV).
 
 use std::collections::HashMap;
 

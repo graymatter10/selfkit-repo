@@ -10,7 +10,7 @@ Devices on the same network sync directly, with no Postgres needed. Works alongs
 
 ## Sync model (no server revisions)
 - Each record has `hist`: its last 16 versions (`"updated_at:device_id"`), kept by SQLite triggers (`core/002_versions`), and `lseq`, a local change sequence bumped on every content change from any source.
-- A session: hello (device id, name, apps), then each side pulls the other's `changes_since(cursor)` per shared app in pages of 500. Cursor per peer: kv `lan.cursor.<device_id>`. The client pulls first, then says `YourTurn`; the server pulls, then `Bye`.
+- A session: hello (device id, name, apps), then each side pulls the other's `changes_since(cursor)` per shared app in pages of 500. Cursor per peer: kv `lan.cursor.<device_id>`. The client pulls first, then says `YourTurn`; the server pulls, then `Bye`. Records whose current version the asking peer wrote itself are left out of its batches (the cursor still moves past them), so nothing is echoed back (S-4).
 - `Store::apply_peer`: same/older version → ignore. Incoming history contains ours → fast-forward. Ours contains theirs → ignore. Same content under another version → merge histories. Otherwise → conflict (`conflicts.source = 'peer'`; the same Keep A / Keep B / Merge UI).
 - LAN-received records stay `dirty`, so they still reach the server. `hist` also travels inside the encrypted server payload, so a server pull of an edit already received over LAN fast-forwards or is adopted instead of conflicting.
 - Who connects: the lower device id starts the session when a peer appears and every `interval` (2 min). `sync_now` (agent `sync` command) triggers immediately. Static peers by address can be added for networks where broadcast doesn't reach (VPN, emulator).

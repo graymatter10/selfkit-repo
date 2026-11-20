@@ -212,6 +212,13 @@ Features:
 - Optional goals and limits with alerts; a weekly report.
 - Privacy: app names only, exclude list, pause button.
 
+Next (first item after release, decided 2026-11-21 — P15):
+
+- **Reconcile Android usage from daily totals.** Android drops an uninstalled app's raw usage events but keeps its daily aggregate (`queryUsageStats(INTERVAL_DAILY)`, `totalTimeVisible`). Each import also reads the aggregates for the last 2 days; when a package's aggregate is at least **5 min** more than what Chrono imported for that package and day, the difference is stored as one **untimed** `app_sessions` record for that day (app, device, minutes, no clock position).
+- Untimed time counts in day, app, category and device totals, goals and the weekly report; it has no place in the timeline, hours, heatmap, first/last use or "longest session".
+- No double counting: the record is keyed by (device, package, day) and replaced on every reconcile; it is recomputed as aggregate − imported sessions, so later imports of real events shrink it to zero (then deleted).
+- Impact: Reflect's screen time includes it (totals only; late-night phone use ignores it); Dusk ignores it (no time of day, so no sleep evidence).
+
 ### Hisab — money
 
 Tracks income, spending and loans, in USD by default with other currencies per transaction.
@@ -243,6 +250,8 @@ A focused task app that opens to Today.
 - Views: Today, Upcoming, calendar and Kanban board.
 - **Calendar:** two-way CalDAV sync (Nextcloud, Fastmail, iCloud, Radicale; Google needs extra OAuth setup), plus `.ics` export, import and a subscribable feed.
 - Completed-task history, stats and a Pomodoro timer.
+
+Next (after release, decided 2026-11-21 — P2): Android reminders through `AlarmManager.setAlarmClock` (own Kotlin scheduler instead of `tauri-plugin-notification`'s `setExactAndAllowWhileIdle`), which phone makers don't shift; ColorOS currently lines exact alarms up by up to ~1.5 min.
 
 ### Reflect — stats
 

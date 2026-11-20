@@ -44,5 +44,7 @@ jobs:
       - run: bun install
       - name: Frontend builds
         run: for d in apps/*/; do [ -f "$d/package.json" ] && (cd "$d" && bun run build) || true; done
+      - name: Browser extension tests
+        run: bun test extension/test
       - name: Rust tests
         run: cargo test --workspace -j 4 --no-fail-fast

@@ -143,7 +143,10 @@ function whereLabel(t: Task) {
 async function ensureNotifyPermission(t: { start?: string; reminder_min?: number | null }) {
   if (!t.start || t.reminder_min == null) return;
   try {
-    if (!(await isPermissionGranted())) await requestPermission();
+    if (!(await isPermissionGranted()) && (await requestPermission()) !== "granted") {
+      // Refused: the reminder can't show; say so instead of a silent bell (C66).
+      showToast("Reminders need notifications, which Android blocks for Agenda", undefined, 8000);
+    }
   } catch (e) {
     console.warn("notification permission", e);
   }

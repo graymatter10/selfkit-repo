@@ -9,7 +9,9 @@
   import TxRow from "./TxRow.svelte";
   let { desktop = false, panel = $bindable() }: { desktop?: boolean; panel?: AddPanel } = $props();
   const open = (t: Tx) => openSheet({ kind: "tx", id: t.id });
-  const recent = $derived((app.snap?.recent ?? []).slice(0, desktop ? 6 : 3));
+  // Computers have no number pad (2026-11-21): the freed height shows more recent entries.
+  const phone = /Android/i.test(navigator.userAgent);
+  const recent = $derived((app.snap?.recent ?? []).slice(0, desktop ? 8 : phone ? 3 : 6));
 </script>
 
 {#snippet recentList()}

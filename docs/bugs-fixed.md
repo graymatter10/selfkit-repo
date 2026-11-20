@@ -22,7 +22,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L11 / P7 | real version in the Settings footer; PRODID without version | `SettingsSheet.svelte`, `ics.rs` | both |
 | L2-1 / C31 | Enter in the note saves on desktop + capture popup | `apps/hisab/src/components/AddPanel.svelte` | Linux |
 | L2-2 / C32 | number pad stays on desktop while the note has focus | same | Linux |
-| P2 | not fixed: alarm was windowed, i.e. `canScheduleExactAlarms()` was false for the plugin despite `USE_EXACT_ALARM`. Needs a device check (`adb shell cmd appops get com.selfkit.agenda SCHEDULE_EXACT_ALARM`, `dumpsys alarm`); ColorOS may also batch alarms of background apps | — | OPPO |
+| P2 | ColorOS alarm alignment (permission fine, plugin schedules exact). Documented: Agenda README + Android Settings hint; setAlarmClock planned post-release (PLANNING, DECISIONS) | `SettingsSheet.svelte`, docs | — |
 | P3 | reminder notifications use monochrome app icons (Agenda new `ic_stat_agenda`, Hisab existing `ic_stat_hisab`, Dusk new `ic_stat_dusk`) | `apps/*/src-tauri/src/lib.rs`, `res/drawable/ic_stat_*.xml` | OPPO |
 | P4 | done tasks without a completion record are listed from the task (`task-<id>`) in History/Stats | `apps/agenda/src-tauri/src/tasks.rs` | OPPO |
 | P5 | unsaved New Task input kept in localStorage and reopened after a kill | `TaskForm.svelte`, `App.svelte`, `state.svelte.ts` | OPPO |
@@ -72,6 +72,33 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| L3-12 / C83 | goals get `created` (day); Today/report/alerts skip days before it; website targets normalised on save; excluded subdomains already dropped thanks to the L3-10 norm_domain fix | `apps/chrono/src-tauri/src/{settings,stats,alerts}.rs`, `Settings.svelte`, `api.ts` | Linux |
+| L3-11 / C84 | not fixed: can't tell from code which of three causes (device keys differ, website time outside browser-app time, overlaps) gives 38 vs 43; L3-6/C52 fixes remove the main over-count source. Needs the day's web_sessions/app_sessions rows to decide | — | Linux |
+| P35 / C81 | note blurs when the keyboard closes (visualViewport grows), pad comes back | `AddPanel.svelte` | OPPO |
+| P36 / C82 | per-row fallback to unambiguous date formats; row errors wrap; test | `csvimport.rs`, `ImportSheet.svelte` | OPPO |
+| S-5 / C80 | see S-5 above | — | — |
+| L2-17 | covered by the no-number-pad change (d827cf7): the narrow-window panel is ~190 px shorter, the summary above stays visible; retest | — | Linux 800×600 |
+| L2-19 | (a) doc corrected: WebKitGTK can't encode WebP, Linux photos are JPEG; (b) viewer padding symmetric so the photo is centred | `PhotoViewer.svelte`, README | Linux |
+| L4-20 | pending tab opened after Discard | `apps/dusk/src/App.svelte` | Linux |
+| L4-22 | RangeChart axis stretches to the data (ticks every 3 h, 12h labels) | `RangeChart.svelte` | Linux with phone data |
+| L2-16 | History search matches amounts typed with separators/currency sign; test | `stats.rs` | Linux |
+| L2-14 | export falls back to ~/Downloads when xdg-user-dirs is missing | `apps/hisab/src-tauri/src/lib.rs` | Linux i3 |
+| L2-15 | CSV import reads exported splits back ("Food 60.00 + Bills 40.00"); test | `csvimport.rs` | — |
+| S-5 / C80 | sync pass: unreadable secure storage = no server (LAN still runs); desktop secrets fall back to a 0600 file in the data folder while no keychain works (`KeychainOrFile`, test), decision in DECISIONS + security.md | `selfkit-appsync/src/{lib,secrets,tauri_cmds}.rs` | Linux i3 without keyring |
+| P14 | Low (corrected by the OPPO session: no 5 s stall, that was Android's >25 ms overflow bucket). Heaviest frames (85–102 ms GPU) are full repaints of phone Home (Insights → Back, return from the CSV picker). No backdrop blur in Hisab; the candidate is the large soft shadow on the fixed input panel (`shadow-[0_-6px_24px_…]` in Home.svelte). Not changed: it alters the approved look — a smaller shadow or a 1 px top border needs the user's OK (screenshots) | — | OPPO |
+| L3-7..L3-10 | extension: popup looks only, host pause expires locally, Today skips excluded/paused; Chrono norm_domain + addExclusion strip port/www. | `extension/background.js`, `apps/chrono/src-tauri/src/settings.rs`, `Settings.svelte` | Linux Chromium/Firefox |
+| L3-6 / C52 | sticky `blurred` from onFocusChanged(WINDOW_ID_NONE) + 30 s alarm; plus (lead decision) native host `browser_foreground` from the agent's tracker: false closes/holds sessions; null → Firefox idle 60 s. Tests: agent `browser_foreground_matches_the_calling_browser`, extension 3 new tests, extension tests added to ci.yml | `extension/background.js`, `extension/test`, `selfkit-agent/src/native_host.rs`, `.github/workflows/ci.yml` | Firefox + Chromium Linux |
+| C79 | extension `excluded()` normalises stored entries | `extension/background.js` | — |
+| P13 | loan pill text shared (`loanPill`), reminder time in the locale clock (`clockText`); the native date picker look is the system's (not changed) | `lib/fmt.ts`, `Loans.svelte`, `LoanSheet.svelte` | OPPO |
+| L15 | decision: PDF stays Latin-only (Bangla needs font + shaping); export sheet note, README, DECISIONS | `ExportSheet.svelte`, `export.rs`, docs | — |
+| S-3 | "Sync this app" subtitle says "only when you tap Sync now" when Automatic is off | `ui/src/sync/SyncSettings.svelte` | all apps |
+| S-4 | LAN serve skips versions written by the asking peer (no echo); test asserts sent counts | `selfkit-core/src/lan/{session,mod}.rs` | OPPO ↔ Linux (big Chrono) |
+| P15 / C67 | documented limit (README + App changes hint) + Chrono Settings → This phone battery tip (reuses the Sync bridge, only when not exempt); daily-total reconcile planned post-release | `docs`, `AppChanges.svelte`, `apps/chrono/src/screens/Settings.svelte` | OPPO |
+| C66 (Agenda, Dusk) | Agenda toast when a reminder can't show; Dusk wind-down line says notifications are off | `apps/agenda/src/lib/state.svelte.ts`, `apps/dusk/src/lib/state.svelte.ts`, `SettingsPage.svelte` | OPPO |
+| S-1 / C72 | "Here" pill only while sync + LAN on and last pass OK | `ui/src/sync/SyncSettings.svelte` | OPPO ↔ Linux |
+| S-2 / C73 | partly: "no Selfkit PC found on this network" wording; pending for LAN-only not possible with the current dirty flag (documented) | `selfkit-appsync/src/lib.rs` | OPPO ↔ Linux |
+| L29–L31 | Reflect: share words up to "most", "No X data yet" for installed apps + no badge without data, Dusk since = first night with data | `apps/reflect/src-tauri/src/{model,lib}.rs`, `ConnCard.svelte` | Linux |
+| user 2026-11-21 | Hisab: no number pad on computers; outlined amount field with caret + hint; 8/6 recent entries; capture popup 420×390 | `AddPanel.svelte`, `Home.svelte`, `Capture.svelte`, `src-tauri/src/lib.rs`, DECISIONS | Linux + Windows |
 | L3-4 / C55 | Windows installer test now does a real native-messaging round trip (status message → ok) besides the existing registry/manifest checks | `installer/windows/test-installers.ps1` | windows.yml |
 | L3-3 / C54 | extension shipped with the agent (.deb /usr/share/selfkit-agent/extension, tarball extension/, Windows $INSTDIR\extension); How to add names the real paths; package test checks it | `installer/linux/{build-agent-packages,test-packages}.sh`, `installer/windows/agent.nsi`, `apps/chrono/src/screens/Sources.svelte` | linux.yml + windows.yml |
 | L3-1 / C52 | extension closes the session on onFocusChanged(WINDOW_ID_NONE) | `extension/background.js` | Linux Chromium |
@@ -89,7 +116,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L25 | Chrono: recover.rs (copy of Dusk's) at startup for chrono.db + settings.db, `startup_notice` toast | `apps/chrono/src-tauri/src/{recover,lib}.rs`, `src/lib/{api,state.svelte}.ts` | Linux (damage the DB) |
 | P16, P21, P22 | Chrono: See all → Trends Day of that day; Today tab → today; goals Add/Edit → Settings goals section (+ new form when none) | `apps/chrono/src/App.svelte`, `screens/Trends.svelte`, `screens/Settings.svelte`, `lib/state.svelte.ts` | OPPO |
 | L3-5 / C56 | Chrono rail says "Not recording" + hint when no device reported in 7 days | `apps/chrono/src/App.svelte` | Linux fresh |
-| P24 | partly: Facebook Lite, Telegram web/X packages default to Social. Telegram as Entertainment not reproducible from the defaults ("telegram" and org.telegram.messenger are Social) — likely a stored category override (synced settings); needs the phone's chrono_settings.categories | `apps/chrono/src-tauri/src/categories.rs` | OPPO |
+| P24 | Facebook Lite / Telegram variants default to Social. "Telegram = Entertainment" on the OPPO is a stored user choice: the synced chrono_settings.categories has {"Telegram": "entertainment"}, and the Settings → Categories UI keys overrides by app name (Settings.svelte `n.categories[name]`), no default ever mapped Telegram to entertainment. Kept (not a bug); change it in Settings → Categories | `categories.rs` | — |
 | P11 / P23 | Hisab: loan save toast + Settings say Android blocks notifications; Chrono: Alerts/Weekly report lines say so | `LoanSheet.svelte`, Hisab + Chrono `Settings.svelte` | OPPO (Don't allow) |
 | L4-14 / C62 | time sheet focuses the dial whenever there is a keyboard (not the Android app), not only at ≥ 900 px | `TimeSheet.svelte` | Linux narrow window |
 | L4-15 / C63 | note counters "n / 500" from 400 chars | `Adjust.svelte` | Linux |

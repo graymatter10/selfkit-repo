@@ -19,6 +19,20 @@
   // Phone-only note rules: Enter = keyboard "done" (blur), and the pad hides under the
   // on-screen keyboard. On a computer Enter saves (C31) and the pad stays (C32).
   const phone = /Android/i.test(navigator.userAgent);
+  // Android Back closes the keyboard but leaves the note focused, so neither keyboard
+  // nor pad showed (P35): when the viewport grows back while the note has focus, blur it.
+  let noteEl: HTMLInputElement | undefined = $state();
+  $effect(() => {
+    const vv = window.visualViewport;
+    if (!phone || !vv) return;
+    let last = vv.height;
+    const onResize = () => {
+      if (vv.height > last + 80 && noteFocus && document.activeElement === noteEl) noteEl?.blur();
+      last = vv.height;
+    };
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  });
   function noteKey(e: KeyboardEvent) {
     if (e.key !== "Enter") return;
     if (!phone && canSave) return void (e.preventDefault(), save());
@@ -166,11 +180,12 @@
 
   <!-- Amount, currency, account -->
   <div class="flex items-end gap-2 px-1">
-    <div class="min-w-0 flex-1 {shake ? 'animate-[shake_.3s]' : ''}">
+    <div class="min-w-0 flex-1 {shake ? 'animate-[shake_.3s]' : ''} {phone ? '' : 'rounded-[14px] px-2 py-1.5 shadow-[inset_0_0_0_2px_var(--accent)]'}">
       <div class="num flex items-baseline gap-1 truncate {app.draft.amount ? 'text-ink' : 'text-faint'} {app.draft.kind === 'income' && app.draft.amount ? 'text-accent-ink' : ''}" aria-live="polite" aria-label="Amount">
         <span class="text-[22px] font-medium text-muted">{symbol(cur)}</span>
-        <span class="leading-none font-semibold tracking-[-1px]" style="font-size: {amountPx}px">{display(app.draft.amount)}</span>
+        <span class="leading-none font-semibold tracking-[-1px]" style="font-size: {amountPx}px">{display(app.draft.amount)}</span>{#if !phone}<span class="amt-caret" aria-hidden="true"></span>{/if}
       </div>
+      {#if !phone}<div class="mt-0.5 text-[12px] text-muted">{app.draft.amount ? "Enter saves · Backspace deletes · Delete clears" : "Type an amount · Enter saves"}</div>{/if}
     </div>
     <div class="flex shrink-0 flex-col items-end gap-1 pb-0.5">
       <div class="flex items-center gap-1">
@@ -209,7 +224,7 @@
   <div class="flex items-center gap-1.5">
     <label class="flex h-10 min-w-0 flex-1 items-center rounded-[12px] bg-fill2 px-3">
       <span class="sr">Note</span>
-      <input bind:value={app.draft.note} placeholder={app.draft.kind === "transfer" ? "Note" : "Note, #tag"} enterkeyhint="done" class="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
+      <input bind:this={noteEl} bind:value={app.draft.note} placeholder={app.draft.kind === "transfer" ? "Note" : "Note, #tag"} enterkeyhint="done" class="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
         onfocus={() => (noteFocus = true)} onblur={() => setTimeout(() => (noteFocus = false), 120)} onkeydown={noteKey} />
     </label>
     <label class="press relative flex h-10 shrink-0 items-center gap-1 rounded-[12px] bg-fill2 px-2.5 text-[13px] font-medium {app.draft.date && app.draft.date !== todayIso() ? 'text-accent-ink' : 'text-ink2'}">
@@ -230,7 +245,8 @@
     </p>
   {/if}
 
-  {#if !noteFocus || compact || !phone}
+  <!-- Number pad on phones only; computers type the amount (user, 2026-11-21). -->
+  {#if phone && (!noteFocus || compact)}
     <NumPad onkey={key} {compact} />
   {/if}
   <button type="button" disabled={!canSave} onclick={save}
@@ -240,5 +256,8 @@
 </div>
 
 <style>
+  /* Desktop amount "field": a blinking caret after the number (keyboard entry, no pad). */
+  .amt-caret { display: inline-block; width: 2px; height: 0.9em; margin-left: 2px; align-self: center; background: var(--accent); animation: amt-blink 1s steps(1) infinite; }
+  @keyframes amt-blink { 50% { opacity: 0; } }
   @keyframes -global-shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 </style>

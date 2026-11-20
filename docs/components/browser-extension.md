@@ -51,3 +51,12 @@ Finished sessions wait in `storage.local.queue` until the agent confirms them. A
 
 ## Shipped with the agent (L3-3)
 The extension folder (without `test/`) is installed with the agent: Linux `.deb` → `/usr/share/selfkit-agent/extension`, tarball → `extension/`, Windows → `%LOCALAPPDATA%\Programs\Selfkit Agent\extension` (agent.nsi). Chrono → Devices and sources → How to add points there; the stable Chrome id comes from `key` in manifest.json.
+
+## Fixes 2026-11-21 (L3-7…L3-10)
+- The popup only looks (`state` doesn't run `evaluate`): opening it took focus and split the session, then showed "Browser not in front" (L3-7).
+- A Chrono pause with an end (`paused_until` from the reply → `hostPausedUntil`) expires locally, also while the native host can't be reached (L3-8).
+- "Today in this browser" leaves out excluded sites and time the host would drop while paused (L3-9).
+- Chrono's "Never track" stores sites like the agent: lowercase, no `www.`, no port (`settings.rs` `norm_domain`, Settings `addExclusion` — L3-10).
+- Focus (C52, also L3-1/L3-6): `onFocusChanged(WINDOW_ID_NONE)` sets `blurred`, which holds until a browser window is focused again or the user switches tabs; while blurred no session runs, whatever `getLastFocused()` says (on X11 it keeps reporting the browser focused). The alarm runs every 30 s, so a missed focus change costs at most half a minute. Exclude entries are normalised before matching (`www.`, port, scheme — C79).
+- Program in front (L3-6, decided 2026-11-21, no new browser permissions): the native host asks the running agent for its tracker's current foreground app and adds `browser_foreground: true|false|null` to every reply (`native_host::browser_foreground`: Firefox ↔ firefox/librewolf/…, Chrome ↔ chrom*/msedge/brave/…). `false` closes the open session at its last tracked moment and keeps `notInFront` until a reply says `true`; replies come with every flush (alarm every 30 s). `null` = can't tell (agent not running, idle/locked, **Wayland**, where the tracker sees no windows): Firefox then uses a 60 s idle threshold (unless Chrono sets `idle_minutes`), Chromium keeps its focus events. Limits: without a running agent on X11/Windows, Firefox on Linux can still over-count while another app is in front for up to the idle threshold.
+- Tests: `bun test extension/test` now also runs in CI (`ci.yml`).

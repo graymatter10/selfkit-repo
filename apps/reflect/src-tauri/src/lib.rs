@@ -213,7 +213,8 @@ fn sources_status(state: State<AppState>) -> Res<SourcesOut> {
             ("chrono".into(), cx.chrono.and_then(|c| c.first).map(model::date_str)),
             ("hisab".into(), cx.hisab.and_then(|h| h.first).map(model::date_str)),
             ("agenda".into(), cx.agenda.and_then(|a| a.first).map(model::date_str)),
-            ("dusk".into(), cx.nights.first().map(|n| n.night.clone())),
+            // First night with real data: the cache also holds empty ("none") nights (L31).
+            ("dusk".into(), cx.nights.iter().find(|n| n.source != "none").map(|n| n.night.clone())),
         ];
         SourcesOut { has: cx.has, found, first, mobile: cfg!(mobile) }
     }))

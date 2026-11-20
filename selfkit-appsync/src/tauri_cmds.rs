@@ -292,7 +292,10 @@ pub fn default_handle(app: &str, data_dir: std::path::PathBuf) -> selfkit_core::
     #[cfg(all(target_os = "android", feature = "android"))]
     let secrets: Arc<dyn crate::SecretStore> = Arc::new(crate::android::secrets(&data_dir));
     #[cfg(not(target_os = "android"))]
-    let secrets: Arc<dyn crate::SecretStore> = Arc::new(crate::secrets::KeychainSecrets);
+    let secrets: Arc<dyn crate::SecretStore> = Arc::new(crate::secrets::KeychainOrFile {
+        keychain: crate::secrets::KeychainSecrets,
+        file: crate::secrets::FileSecrets::new(data_dir.join("sync").join("secrets.json"), None),
+    });
     #[cfg(all(target_os = "android", not(feature = "android")))]
     let secrets: Arc<dyn crate::SecretStore> = Arc::new(crate::secrets::FileSecrets::new(data_dir.join("sync").join("secrets.json"), None));
     let cfg = crate::AppSyncConfig::new(app, data_dir, secrets);

@@ -25,7 +25,7 @@
 <svelte:window onkeydown={keys} />
 {#if app.ready}
   <div class="flex h-screen flex-col gap-2 overflow-hidden bg-card px-4 pt-3 pb-4">
-    <div class="flex items-center justify-between"><b class="text-[15px]">Add expense</b><span class="text-[12px] text-muted">Enter saves · Esc closes</span></div>
+    <div class="flex items-center justify-between"><b class="text-[15px]">Add expense</b><span class="text-[12px] text-muted">Type the amount · Enter saves · Esc closes</span></div>
     <AddPanel bind:this={panel} compact onsaved={() => setTimeout(close, 500)} />
   </div>
 {/if}

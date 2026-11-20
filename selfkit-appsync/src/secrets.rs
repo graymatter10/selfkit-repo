@@ -111,6 +111,48 @@ impl SecretStore for FileSecrets {
     }
 }
 
+/// Desktop: the OS keychain, and a 0600 file in the data folder only while the keychain
+/// can't be used (no Secret Service, e.g. bare i3) — C80/S-5, decided 2026-11-21. The file
+/// is within the threat model (docs/security.md: same-user malware can read the keychain
+/// and the plaintext DB anyway); a working keychain always wins.
+pub struct KeychainOrFile<K: SecretStore> {
+    pub keychain: K,
+    pub file: FileSecrets,
+}
+
+impl<K: SecretStore> SecretStore for KeychainOrFile<K> {
+    fn get(&self, name: &str) -> Result<Option<String>> {
+        match self.keychain.get(name) {
+            Ok(Some(v)) => Ok(Some(v)),
+            // Nothing in the keychain: a value saved while it was unavailable.
+            Ok(None) => self.file.get(name).or(Ok(None)),
+            Err(Error::Keychain(_)) => self.file.get(name),
+            Err(e) => Err(e),
+        }
+    }
+    fn set(&self, name: &str, value: &str) -> Result<()> {
+        match self.keychain.set(name, value) {
+            Ok(()) => {
+                let _ = self.file.delete(name); // the keychain copy is the one that counts
+                Ok(())
+            }
+            Err(Error::Keychain(e)) => {
+                tracing::warn!("keychain unavailable ({e}); storing {name} in the data folder (0600)");
+                self.file.set(name, value)
+            }
+            Err(e) => Err(e),
+        }
+    }
+    fn delete(&self, name: &str) -> Result<()> {
+        let k = self.keychain.delete(name);
+        self.file.delete(name)?;
+        match k {
+            Err(Error::Keychain(_)) | Ok(()) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+}
+
 /// The OS keychain (desktop). Same service/entries as `selfkit-agent set-secret` / `unlock`.
 #[cfg(not(target_os = "android"))]
 pub struct KeychainSecrets;
@@ -125,6 +167,40 @@ impl SecretStore for KeychainSecrets {
     }
     fn delete(&self, name: &str) -> Result<()> {
         selfkit_core::keychain::delete(name)
+    }
+}
+
+#[cfg(test)]
+mod fallback_tests {
+    use super::*;
+
+    struct Broken;
+    impl SecretStore for Broken {
+        fn get(&self, _: &str) -> Result<Option<String>> {
+            Err(Error::Keychain("no Secret Service".into()))
+        }
+        fn set(&self, _: &str, _: &str) -> Result<()> {
+            Err(Error::Keychain("no Secret Service".into()))
+        }
+        fn delete(&self, _: &str) -> Result<()> {
+            Err(Error::Keychain("no Secret Service".into()))
+        }
+    }
+
+    #[test]
+    fn file_is_used_only_while_the_keychain_is_unavailable() {
+        // C80/S-5: a desktop without a keyring can still save the server and the key.
+        let dir = tempfile::tempdir().unwrap();
+        let file = || FileSecrets::new(dir.path().join("secrets.json"), None);
+        let s = KeychainOrFile { keychain: Broken, file: file() };
+        s.set("pg-url", "postgres://x").unwrap();
+        assert_eq!(s.get("pg-url").unwrap().as_deref(), Some("postgres://x"));
+        // A working keychain wins and the file copy goes away.
+        let ok = KeychainOrFile { keychain: MemorySecrets::default(), file: file() };
+        assert_eq!(ok.get("pg-url").unwrap().as_deref(), Some("postgres://x"), "saved earlier in the file");
+        ok.set("pg-url", "postgres://y").unwrap();
+        assert_eq!(file().get("pg-url").unwrap(), None);
+        assert_eq!(ok.get("pg-url").unwrap().as_deref(), Some("postgres://y"));
     }
 }
 

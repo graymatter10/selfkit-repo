@@ -162,10 +162,14 @@ export function applyTheme() {
 }
 darkQuery.addEventListener("change", () => applyTheme());
 
+/** Android refused notifications: the wind-down line says so (C66). */
+export const notifyBlocked = $state({ v: false });
+if (/Android/i.test(navigator.userAgent)) isPermissionGranted().then((g) => (notifyBlocked.v = !g)).catch(() => {});
+
 export async function savePrefs(p: DevicePrefs) {
   if (p.winddown_on && !app.prefs.winddown_on) {
     try {
-      if (!(await isPermissionGranted())) await requestPermission();
+      if (!(await isPermissionGranted())) notifyBlocked.v = (await requestPermission()) !== "granted";
     } catch (e) {
       console.warn("notification permission", e);
     }

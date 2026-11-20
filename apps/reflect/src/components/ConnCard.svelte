@@ -5,7 +5,16 @@
   import { APP_NAMES, unitValue } from "../lib/fmt";
   import Icon from "./Icon.svelte";
   import Src from "./Src.svelte";
+  import { app } from "../lib/state.svelte";
   let { c, sym, desk = false, open = false, ontoggle }: { c: Conn; sym: string; desk?: boolean; open?: boolean; ontoggle: () => void } = $props();
+  // "Needs Chrono" for an app that is installed but has no data yet reads wrong (L30).
+  function missingText(m: string): string {
+    const name = m.startsWith("Needs ") ? m.slice(6) : "";
+    const key = (Object.entries(APP_NAMES) as [string, string][]).find(([, n]) => n === name)?.[0];
+    const found = key && app.sources?.found.find(([k]) => k === key)?.[1];
+    if (found) return `No ${name} data yet. This link shows up once ${name} has recorded some.`;
+    return name ? `${m}. This link shows up once it's on this device.` : `${m}.`;
+  }
   const STR = ["No clear link", "Weak link", "Moderate link", "Strong link"];
   const scale = $derived(Math.max(...c.groups.map((g) => g.value), 1) * 1.15);
   const fmt = (v: number) => unitValue(c.unit, sym, v);
@@ -30,18 +39,18 @@
 {#if !c.available}
   <div class="missing px-4 py-3.5">
     <div class="flex items-center gap-2 text-[12.5px] font-semibold text-muted"><span class="min-w-0 flex-1 truncate">{c.topic}</span><Src apps={c.apps} /></div>
-    <p class="mt-1.5 text-[14px] text-ink2">{c.missing}. {c.missing.startsWith("Needs") ? "This link shows up once it's on this device." : ""}</p>
+    <p class="mt-1.5 text-[14px] text-ink2">{missingText(c.missing)}</p>
   </div>
 {:else}
   <div class="card {desk ? 'px-[22px] pt-[18px] pb-0.5' : 'px-4 pt-4 pb-1'}">
     {#if desk}
       <div class="grid grid-cols-2 items-center gap-9">
-        <div><div class="flex items-center gap-2 text-[12.5px] font-semibold text-muted">{@render badge()}<span class="truncate">{c.topic}</span></div>
+        <div><div class="flex items-center gap-2 text-[12.5px] font-semibold text-muted">{#if c.enough}{@render badge()}{/if}<span class="truncate">{c.topic}</span></div>
           <div class="mt-2.5 text-[19px] leading-[1.3] font-[650] tracking-[-0.015em] {c.enough ? '' : 'text-muted'}">{c.finding}</div></div>
         {#if c.enough}{@render bars()}{/if}
       </div>
     {:else}
-      <div class="flex items-center gap-2 text-[12.5px] font-semibold text-muted"><span class="min-w-0 flex-1 truncate">{c.topic}</span>{@render badge()}</div>
+      <div class="flex items-center gap-2 text-[12.5px] font-semibold text-muted"><span class="min-w-0 flex-1 truncate">{c.topic}</span>{#if c.enough}{@render badge()}{/if}</div>
       <div class="mt-2 mb-3 text-[17px] leading-[1.3] font-[650] tracking-[-0.015em] {c.enough ? '' : 'text-[15px] text-muted'}">{c.finding}</div>
       {#if c.enough}{@render bars()}{/if}
     {/if}

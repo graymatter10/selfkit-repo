@@ -42,7 +42,14 @@
     { id: "trends", icon: "trend", name: "Trends", key: "Ctrl 2" },
     { id: "connections", icon: "link", name: "Connections", key: "Ctrl 3" },
   ];
-  const closeEdit = () => (app.edit = null);
+  // A tab asked for while "Discard your changes?" was showing opens once the panel
+  // closes (Discard); it was dropped before (L4-20). Stale after a minute (Keep editing).
+  let pendingTab: { t: Tab; at: number } | null = null;
+  const closeEdit = () => {
+    app.edit = null;
+    if (pendingTab && Date.now() - pendingTab.at < 60_000) openTab(pendingTab.t);
+    pendingTab = null;
+  };
 
   // Android Back (Tauri's back-button hook, no history tricks): the open form
   // may ask first ("Discard your changes?"), then the top layer closes:
@@ -67,6 +74,7 @@
       if (t) {
         e.preventDefault();
         if (!app.edit || !app.closeGuard?.()) (app.edit = null), openTab(t);
+        else pendingTab = { t, at: Date.now() };
       }
       return;
     }

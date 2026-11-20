@@ -34,7 +34,13 @@ function domainOf(url) {
 
 /** An exclude entry matches the domain itself and its subdomains. */
 function excluded(domain, list) {
-  return (list || []).some((e) => domain === e || domain.endsWith('.' + e));
+  // Entries normalised like domains (www./port/scheme/case), so "www.youtube.com" or
+  // "localhost:5173" typed in Chrono still match (C79).
+  return (list || []).map(normEntry).some((e) => e && (domain === e || domain.endsWith('.' + e)));
+}
+
+function normEntry(e) {
+  return String(e || '').trim().toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '').replace(/\.$/, '').replace(/^www\./, '');
 }
 
 function localDay(ms) {
@@ -53,6 +59,9 @@ const DEFAULT_STATE = {
   queue: [], // finished sessions not yet confirmed by the agent
   pausedUntil: 0, // local pause from the popup (ms; Infinity-like = 8.64e15)
   hostPaused: false, // Chrono / agent pause, as last reported by the agent
+  blurred: false, // focus went to another program (WINDOW_ID_NONE), until a browser window is focused
+  notInFront: false, // the agent's tracker sees another program in front (native host `browser_foreground`)
+  hostPausedUntil: 0, // its end (ms), 0 = open-ended; expires locally while the host is unreachable (L3-8)
   excludes: [], // Chrono exclude_domains, as last reported by the agent
   idleState: 'active',
   idleSecs: DEFAULT_IDLE_SECS,
@@ -91,7 +100,8 @@ function createTracker(api, env = {}) {
     if (!c) return;
     end = Math.max(c.start, Math.min(end, now()));
     if (end - c.start < MIN_MS) return;
-    addToday(s, c.domain, c.start, end);
+    // Excluded sites (or time the host will drop) aren't shown in "Today in this browser" (L3-9).
+    if (!excluded(c.domain, s.excludes || []) && !(s.hostPaused && !(s.hostPausedUntil && end >= s.hostPausedUntil))) addToday(s, c.domain, c.start, end);
     // The agent already has exactly this version (sent while it was live).
     if (s.ackedLive && s.ackedLive.id === c.id && s.ackedLive.end === end) return;
     s.queue.push({ id: c.id, domain: c.domain, start: c.start, end, tz_offset: -new Date(c.start).getTimezoneOffset() });
@@ -99,9 +109,10 @@ function createTracker(api, env = {}) {
   }
 
   /** What should be tracked right now, and why (not). */
-  async function target(s, t) {
+  async function target(s, t, opts = {}) {
     if (s.pausedUntil > t) return { domain: null, why: 'paused' };
-    if (s.hostPaused) return { domain: null, why: 'chrono-paused' };
+    // A Chrono pause with an end expires here too, also while the host can't be reached (L3-8).
+    if (s.hostPaused && !(s.hostPausedUntil && t >= s.hostPausedUntil)) return { domain: null, why: 'chrono-paused' };
     if (s.idleState !== 'active') return { domain: null, why: s.idleState };
     let win;
     try {
@@ -109,7 +120,8 @@ function createTracker(api, env = {}) {
     } catch {
       return { domain: null, why: 'no-window' };
     }
-    if (!win || !win.focused) return { domain: null, why: 'unfocused' };
+    // The popup is its own window and takes focus: when it asks, ignore focus (L3-7).
+    if (!win || (!win.focused && !opts.ignoreFocus)) return { domain: null, why: 'unfocused' };
     if (win.incognito) return { domain: null, why: 'private' };
     const tabs = await api.tabs.query({ active: true, windowId: win.id });
     const tab = tabs && tabs[0];
@@ -127,8 +139,12 @@ function createTracker(api, env = {}) {
       const s = await load();
       const t = now();
       if (opts.idleState) s.idleState = opts.idleState;
+      // Focus left the browser (WINDOW_ID_NONE): stay "unfocused" until a browser window
+      // gets focus again. On X11 getLastFocused() keeps saying focused, so the next tab
+      // event or alarm reopened the session (Firefox: it never ended — C52/L3-6).
+      if (opts.focusEvent) s.blurred = !!opts.blurred;
       if (s.cur && t - s.cur.last > GAP_MS) closeCur(s, s.cur.last);
-      const want = opts.blurred ? { domain: null, why: 'unfocused' } : await target(s, t);
+      const want = s.blurred || s.notInFront ? { domain: null, why: 'unfocused' } : await target(s, t);
       if (s.cur && s.cur.domain === want.domain) {
         s.cur.last = t;
       } else {
@@ -148,7 +164,7 @@ function createTracker(api, env = {}) {
 
   function updateBadge(s, t) {
     if (!api.action || !api.action.setBadgeText) return;
-    const paused = s.pausedUntil > t || s.hostPaused;
+    const paused = s.pausedUntil > t || (s.hostPaused && !(s.hostPausedUntil && t >= s.hostPausedUntil));
     try {
       api.action.setBadgeText({ text: paused ? 'off' : '' });
       if (api.action.setBadgeBackgroundColor) api.action.setBadgeBackgroundColor({ color: '#6b7280' });
@@ -187,6 +203,7 @@ function createTracker(api, env = {}) {
       if (reply && reply.ok) {
         pauseChanged = s2.hostPaused !== !!reply.paused;
         s2.hostPaused = !!reply.paused;
+        s2.hostPausedUntil = reply.paused_until || 0;
         s2.excludes = Array.isArray(reply.exclude_domains) ? reply.exclude_domains : [];
       }
       s2.last = error
@@ -198,6 +215,21 @@ function createTracker(api, env = {}) {
     if (reply && reply.ok && Number.isFinite(reply.idle_minutes) && reply.idle_minutes > 0) {
       const secs = Math.round(reply.idle_minutes * 60);
       if (secs !== (await load()).idleSecs) await setIdleInterval(secs);
+    } else if (reply && reply.ok && reply.browser_foreground == null && browserName === 'firefox' && (await load()).idleSecs > 60) {
+      // Agent can't tell what's in front (not running / Wayland): Firefox falls back to a
+      // 60 s idle threshold, since it doesn't report losing focus on Linux (L3-6).
+      await setIdleInterval(60);
+    }
+    // The agent sees another program in front: end the session where it was last seen
+    // tracked, and wait until the browser is in front again (L3-6, no new permissions).
+    if (reply && reply.ok && typeof reply.browser_foreground === 'boolean') {
+      await serial(async () => {
+        const s3 = await load();
+        const away = !reply.browser_foreground;
+        if (away && s3.cur) closeCur(s3, s3.cur.last);
+        s3.notInFront = away;
+        await save(s3);
+      });
     }
     // A new Chrono pause or exclude list applies immediately.
     await evaluate(pauseChanged ? 'host-pause' : 'after-flush');
@@ -218,8 +250,12 @@ function createTracker(api, env = {}) {
   async function onMessage(msg) {
     switch (msg && msg.type) {
       case 'state': {
-        const s = await evaluate('popup');
-        return { ...s, now: now(), browser: browserName };
+        // Look only: opening the popup took focus from the browser and used to close
+        // (split) the session and show "Browser not in front" (L3-7).
+        const s = await load();
+        const t = now();
+        const want = await target(s, t, { ignoreFocus: true });
+        return { ...s, status: s.cur && s.cur.domain === want.domain ? 'tracking' : want.why, now: t, browser: browserName };
       }
       case 'pause': {
         const until = msg.minutes ? now() + msg.minutes * 60_000 : 8.64e15;
@@ -248,20 +284,22 @@ function createTracker(api, env = {}) {
 
   /** Wire up browser events (called once per background start). */
   function install() {
-    api.alarms.create('tick', { periodInMinutes: 1 });
+    // 30 s (the minimum Chrome allows): a missed focus change costs at most half a minute (C52).
+    api.alarms.create('tick', { periodInMinutes: 0.5 });
     api.alarms.onAlarm.addListener(async (a) => {
       if (a.name !== 'tick') return;
       await evaluate('alarm');
       await flush();
     });
-    api.tabs.onActivated.addListener(() => evaluate('tab'));
+    // Switching tabs means the user is in the browser: it also ends a "blurred" state (C52).
+    api.tabs.onActivated.addListener(() => evaluate('tab', { focusEvent: true, blurred: false }));
     api.tabs.onUpdated.addListener((_id, change, tab) => {
       if (tab && tab.active && (change.url || change.status === 'complete')) evaluate('url');
     });
     api.tabs.onRemoved.addListener(() => evaluate('tab-closed'));
     // WINDOW_ID_NONE = focus went to another program: close the session now. On X11
     // getLastFocused().focused can stay true, so it ran until the next 1-min alarm (L3-1).
-    api.windows.onFocusChanged.addListener((windowId) => evaluate('focus', { blurred: api.windows.WINDOW_ID_NONE !== undefined && windowId === api.windows.WINDOW_ID_NONE }));
+    api.windows.onFocusChanged.addListener((windowId) => evaluate('focus', { focusEvent: true, blurred: api.windows.WINDOW_ID_NONE !== undefined && windowId === api.windows.WINDOW_ID_NONE }));
     api.idle.onStateChanged.addListener((state) => evaluate('idle', { idleState: state }));
     api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       onMessage(msg).then(sendResponse, (e) => sendResponse({ error: String(e) }));

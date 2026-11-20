@@ -301,6 +301,10 @@ pub struct Row {
     pub to_account: String,
     pub to_amount: f64,
     pub tags: Vec<String>,
+    /// Split parts `[(category id, amount)]` read back from Hisab's own export, where a
+    /// split is written as "Food 60.00 + Bills 40.00" in the category column (L2-15).
+    #[serde(default)]
+    pub splits: Vec<(String, f64)>,
     pub duplicate: bool,
     pub error: String,
 }
@@ -327,6 +331,9 @@ fn data_of(r: &Row) -> Value {
     if r.kind == "transfer" {
         v["to_account"] = json!(r.to_account);
         v["to_amount"] = json!(r.to_amount);
+    }
+    if r.splits.len() > 1 {
+        v["splits"] = json!(r.splits.iter().map(|(c, a)| json!({"category": c, "amount": a})).collect::<Vec<_>>());
     }
     v
 }
@@ -362,7 +369,10 @@ pub fn preview(store: &Store, t: &Table, m: &Mapping, account: &str, main: &str)
         };
         // Date (and time).
         let dv = cell(r, m.date);
-        match parse_date(&dv, &m.date_format) {
+        // Another row format is fine when it can't be misread (month names, year first):
+        // "16 Nov 2026" in a dd/mm/yyyy file was rejected (P36).
+        const UNAMBIGUOUS: &[&str] = &["%Y-%m-%d", "%Y/%m/%d", "%d %b %Y", "%d-%b-%Y", "%d-%b-%y", "%d %B %Y", "%b %d, %Y", "%B %d, %Y"];
+        match parse_date(&dv, &m.date_format).or_else(|| UNAMBIGUOUS.iter().find_map(|f| parse_date(&dv, f))) {
             Some((d, tm)) => {
                 row.date = d.format("%Y-%m-%d").to_string();
                 row.time = tm;
@@ -415,7 +425,21 @@ pub fn preview(store: &Store, t: &Table, m: &Mapping, account: &str, main: &str)
         } else if !row.kind.is_empty() {
             let name = cell(r, m.category);
             row.category_name = name.clone();
-            match cat_by_name.get(&(row.kind.clone(), name.to_lowercase())) {
+            // "Food 60.00 + Bills 40.00" (Hisab export of a split): read the parts back.
+            if row.kind == "expense" && name.contains(" + ") {
+                let parts: Option<Vec<(String, f64)>> = name
+                    .split(" + ")
+                    .map(|p| {
+                        let (n, a) = p.trim().rsplit_once(' ')?;
+                        Some((cat_by_name.get(&(row.kind.clone(), n.trim().to_lowercase()))?.clone(), a.trim().parse::<f64>().ok()?))
+                    })
+                    .collect();
+                if let Some(parts) = parts.filter(|p| p.len() > 1 && (p.iter().map(|x| x.1).sum::<f64>() - row.amount).abs() < 0.01) {
+                    row.category = parts[0].0.clone();
+                    row.splits = parts;
+                }
+            }
+            if row.splits.is_empty() { match cat_by_name.get(&(row.kind.clone(), name.to_lowercase())) {
                 Some(id) => row.category = id.clone(),
                 None => {
                     let (id, nm) = fallback(&row.kind);
@@ -424,7 +448,7 @@ pub fn preview(store: &Store, t: &Table, m: &Mapping, account: &str, main: &str)
                         row.category_name = nm;
                     }
                 }
-            }
+            } }
         }
         row.tags = cell(r, m.tags).split([' ', ',']).map(|x| x.trim_start_matches('#').to_lowercase()).filter(|x| !x.is_empty()).collect();
         // Same validation as a hand-made entry.
@@ -519,6 +543,12 @@ mod tests {
         assert_eq!(detect_date_format(["04/15/2026", "04/03/2026"].into_iter()), "%m/%d/%Y");
         assert_eq!(detect_date_format(["15 Nov 2026"].into_iter()), "%d %b %Y");
         assert_eq!(parse_date("2026-11-15T14:30:00", "%Y-%m-%d").unwrap().1, "14:30");
+        // P36: a different but unambiguous date in a day-first file is read.
+        let st = store();
+        let t = parse("Date,Description,Amount\n15/11/2026,Bus,-40\n16 Nov 2026,Tea,-15\n").unwrap();
+        let m = guess(&t);
+        let p = preview(&st, &t, &m, &cash(&st), "BDT").unwrap();
+        assert_eq!((p.ok, p.errors, p.rows[1].date.as_str()), (2, 0, "2026-11-16"), "{:?}", p.rows);
     }
 
     /// Hisab's own export round-trips: kinds, categories, accounts, transfers, tags.
@@ -552,6 +582,22 @@ mod tests {
             st.delete(id).unwrap();
         }
         assert_eq!(preview(&st, &t, &m, &cash(&st), "BDT").unwrap().ok, 3);
+    }
+
+    #[test]
+    fn split_entry_survives_export_and_import() {
+        // L2-15: a split is exported as "Food 60.00 + Bills 40.00" in the category column.
+        let st = store();
+        let csv = "date,time,type,amount,currency,amount_main,main_currency,account,to_account,to_amount,category,tags,note,source\n\
+            2026-11-04,,expense,100.00,BDT,100.00,BDT,Cash,,,Food 60.00 + Bills 40.00,,Groceries and power,manual\n";
+        let t = parse(csv).unwrap();
+        let m = guess(&t);
+        let p = preview(&st, &t, &m, &cash(&st), "BDT").unwrap();
+        assert_eq!(p.ok, 1, "{:?}", p.rows);
+        assert_eq!(p.rows[0].splits.len(), 2);
+        let ids = import(&st, &p.rows, "BDT", "b9").unwrap();
+        let saved = model::get(&st, &ids[0]).unwrap().unwrap();
+        assert_eq!(saved["splits"].as_array().map(Vec::len), Some(2));
     }
 
     /// A bank statement: ';' separated, day-first dates, debit/credit columns,
