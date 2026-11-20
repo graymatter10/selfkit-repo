@@ -1221,7 +1221,8 @@ pub fn review(cx: &Ctx, kind: &str, offset: i32, week_start: u8, defs: &[StreakD
                 && total > 0.0
             {
                 let share = v / total;
-                let part = if share > 0.45 { "almost half" } else if share > 0.3 { "about a third" } else if share > 0.2 { "about a quarter" } else { "the biggest share" };
+                // 62 % isn't "almost half" (L29).
+                let part = if share > 0.75 { "most" } else if share > 0.55 { "more than half" } else if share > 0.45 { "almost half" } else if share > 0.3 { "about a third" } else if share > 0.2 { "about a quarter" } else { "the biggest share" };
                 r.worth.push(Worth { icon: "coin".into(), text: format!("{c} took the most money: {}, {part} of the month.", money(&cx.sym, v)) });
             }
         }
