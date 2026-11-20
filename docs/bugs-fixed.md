@@ -52,6 +52,30 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | C26 | search filtered to task text | `tasks.rs` | — |
 | C27 | `device_id` exclusive create | `selfkit-core/src/paths.rs` | — |
 | C30 | completion id per occurrence `c-<task>-<start>` | `tasks.rs` | two devices |
+| L2-3 / C33 | "#tags" in the editor's note become tags (`splitNoteTags`) | `apps/hisab/src/lib/fmt.ts`, `AddPanel.svelte`, `TxSheet.svelte` | Linux |
+| L2-4 / C34 | selects right-aligned on WebKitGTK, date/time wrapper pushed right, Note/Tags left | `TxSheet.svelte`, `apps/hisab/src/app.css` | Linux |
+| L2-5 / C40 | partly: a failing Undo now shows "Couldn't undo: …" (all apps). Whether the click arrives on WebKitGTK still needs a real-mouse check | `ui/src/toast.svelte.ts` | Linux (real mouse) |
+| L2-6 / C41 | Ctrl+, opens Settings from Home too | `apps/hisab/src/App.svelte` | Linux |
+| L2-8 / C49 | rates shown in the direction ≥ 1, typed values converted back | `apps/hisab/src/components/Settings.svelte` | Linux + OPPO |
+| L4-1 / C35 | wider, smaller-font desktop time fields in 12h | `apps/dusk/src/components/Adjust.svelte` | Linux 12h |
+| L4-2 / C36 | `tdisp` for Bed on time, day start list, Trends legend | `StatsGrid.svelte`, `SettingsPage.svelte`, `TrendsPage.svelte` | Linux 12h |
+| L4-3 / C37 | singular counts (Dusk, Hisab, Chrono) | `StatsGrid.svelte`, `Timeline.svelte`, Hisab `Insights`/`Categories`, Chrono `Today` | — |
+| L4-4 / C38 | "–" for sleep debt / bed on time without nights | `StatsGrid.svelte` | Linux |
+| L4-5 / C39 | minute arrow keys carry the hour | `TimeDial.svelte` | Linux |
+| L4-6 / C42 | overlapping naps refused | `apps/dusk/src-tauri/src/lib.rs` (`nap_add`) | Linux |
+| L4-7 / C44 | Esc closes Adjust/Nap wherever focus is | `apps/dusk/src/App.svelte` | Linux |
+| L4-8 / C43 | future bed/wake/nap times refused | `lib.rs` (`log_set`, `nap_add`) | Linux |
+| L4-9 / C45 | "Needs 3 nights" until the score exists | `StatsGrid.svelte` | Linux |
+| L12 | `\p{M}` in the #tag pattern (Bangla) | `apps/hisab/src/lib/fmt.ts` | OPPO |
+| L13 | strict quartile buckets, biggest day darkest | `apps/hisab/src/charts/Heatmap.svelte` | Linux |
+| L14 / P10 | net worth chart: 0 line labelled, negative min labelled | `apps/hisab/src/charts/Trend.svelte` | both |
+| L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
+| P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
+| P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+
+## Still open (not started yet, 2026-11-21 ~01:30)
+C23, C28, C29, C46/L4-10, C47/L4-11, C48/L2-7, C50/C51/L4-12, L4-13, L3-1..5, L15 (Bangla in PDF needs an embedded font), P11, P13, P14 (perf), P15–P20 (Chrono), and anything logged after C51/P20/L16.
+
 ## Decisions taken (lead, 2026-11-20)
 - B2 → provider-shared `dusk_nights` (not synced night records: each device has its own estimate, would conflict/duplicate).
 - B4 → Dusk mirrors Agenda/Hisab like Reflect.
