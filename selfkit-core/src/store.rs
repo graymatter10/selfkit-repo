@@ -215,6 +215,32 @@ fn stamp_clocks(old: Option<&Record>, data: &Value, now: i64) -> std::collection
     clock
 }
 
+/// Cross-field rules of the apps' own validation that an automatic field merge must
+/// keep (C20): Agenda `tasks` stop not before start (and no stop without a start), Dusk
+/// `sleep_log` wake after bed and at most 20 h later, Hisab `loans` repayments not more
+/// than the amount. Keep in sync with tasks.rs / dusk data.rs / hisab model.rs.
+fn merge_is_valid(collection: &str, v: &Value) -> bool {
+    match collection {
+        "tasks" => {
+            let when = |k: &str| v.get(k).and_then(Value::as_str).filter(|s| !s.is_empty()).map(|s| if s.len() == 10 { format!("{s}T00:00") } else { s.to_string() });
+            match (when("start"), when("stop")) {
+                (None, Some(_)) => false,
+                (Some(a), Some(b)) => b >= a,
+                _ => true,
+            }
+        }
+        "sleep_log" => match (v.get("bed").and_then(Value::as_i64), v.get("wake").and_then(Value::as_i64)) {
+            (Some(b), Some(w)) => w > b && w - b <= 20 * 3_600_000,
+            _ => true,
+        },
+        "loans" => {
+            let paid: f64 = v.get("repayments").and_then(Value::as_array).map(|a| a.iter().filter_map(|r| r.get("amount").and_then(Value::as_f64)).sum()).unwrap_or(0.0);
+            v.get("amount").and_then(Value::as_f64).is_none_or(|amount| paid <= amount + 0.005)
+        }
+        _ => true,
+    }
+}
+
 /// Merge two versions of a list field changed on both devices: items (objects with an
 /// `id`, or plain values) from both sides; the same item changed on both → the newer
 /// side's copy. Known limit: an item removed on one device while the other device also
@@ -561,7 +587,10 @@ impl Store {
                 return None;
             }
         }
-        Some(Value::Object(out))
+        // Fields merged one by one can break a rule that spans several fields; such a
+        // result goes to the conflict screen instead (C20).
+        let v = Value::Object(out);
+        merge_is_valid(&local.collection, &v).then_some(v)
     }
 
     /// An open conflict whose other version is now part of an incoming record's
@@ -1000,5 +1029,16 @@ mod tests {
         let r = ro.get(&id).unwrap().unwrap();
         assert_eq!((r.data["exclude"][0].as_str(), r.fclock.is_empty()), (Some("x"), true));
         assert_eq!(ro.list("settings", 10, 0).unwrap().len(), 1);
+    }
+    #[test]
+    fn merge_that_breaks_a_cross_field_rule_is_a_conflict() {
+        // C20: phone moves the task to Fri 10-11, PC (later) sets stop Thu 12:00.
+        let base = |c: &[(&str, i64)], h: &str, data: Value, at: i64| plain(data, at, c, &["100:A", h]);
+        let local = base(&[("start", 200), ("stop", 200)], "200:A", json!({"title": "t", "start": "2026-11-20T10:00", "stop": "2026-11-20T11:00"}), 200);
+        let remote = base(&[("start", 100), ("stop", 300)], "300:B", json!({"title": "t", "start": "2026-11-18T10:00", "stop": "2026-11-19T12:00"}), 300);
+        assert_eq!(Store::field_merge(&local, &remote), None);
+        assert!(merge_is_valid("tasks", &json!({"start": "2026-11-20", "stop": "2026-11-20T09:00"})));
+        assert!(!merge_is_valid("sleep_log", &json!({"bed": 10, "wake": 5})));
+        assert!(!merge_is_valid("loans", &json!({"amount": 100, "repayments": [{"amount": 60}, {"amount": 50}]})));
     }
 }
