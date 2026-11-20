@@ -314,8 +314,9 @@ mod tests {
         }
         assert_eq!(sync_once(&mut a, &remote, &key).await.unwrap().pushed, 601);
         assert_eq!(sync_once(&mut b, &remote, &key).await.unwrap().pulled, 601); // >1 page
-        a.put("tasks", Some(&t.id), &json!({"title": "A"})).unwrap();
-        b.put("tasks", Some(&t.id), &json!({"title": "B"})).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20)); // both edits newer than the shared version
+        a.put("tasks", Some(&t.id), &json!({"title": "pg\nA"})).unwrap(); // long text: a real conflict
+        b.put("tasks", Some(&t.id), &json!({"title": "pg\nB"})).unwrap();
         sync_once(&mut a, &remote, &key).await.unwrap();
         assert_eq!(sync_once(&mut b, &remote, &key).await.unwrap().conflicts, 1);
         remote.meta_set("k", "v1").await.unwrap();

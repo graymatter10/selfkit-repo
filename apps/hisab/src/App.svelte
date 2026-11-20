@@ -153,7 +153,7 @@
   {:else if p === "categories"}<Categories {desktop} />
   {:else if p === "settings"}<Settings {desktop} />
   {:else if p === "sync"}<div class={desktop ? "max-w-[1100px]" : ""}><SyncSettings phone={!desktop} onconflicts={() => go("conflicts")} /></div>
-  {:else if p === "conflicts"}<div class={desktop ? "card flex h-[calc(100vh-120px)] max-w-[1100px] flex-col overflow-hidden" : "-mx-4 -mb-6 flex h-[calc(100dvh-64px)] flex-col"}><Conflicts phone={!desktop} onclose={back} names={{ transactions: "Hisab transaction", loans: "Loan", accounts: "Account", categories: "Category", goals: "Savings goal", recurring: "Recurring payment", rates: "Exchange rates" }} /></div>
+  {:else if p === "conflicts"}<div class={desktop ? "card flex h-[calc(100vh-120px)] max-w-[1100px] flex-col overflow-hidden" : "flex min-h-0 flex-1 flex-col"}><Conflicts phone={!desktop} onclose={back} names={{ transactions: "Hisab transaction", loans: "Loan", accounts: "Account", categories: "Category", goals: "Savings goal", recurring: "Recurring payment", rates: "Exchange rates" }} /></div>
   {:else if p === "more"}<More />{/if}
 {/snippet}
 
@@ -205,7 +205,12 @@
             <button type="button" aria-label="Back" class="press flex h-10 w-10 items-center justify-center rounded-full" onclick={back}><Ic name="back" size={24} stroke={2.1} /></button>
             <h1 class="m-0 flex-1 truncate text-[22px] font-bold tracking-[-0.5px]">{TITLES[page()]}</h1>
           </header>
-          <div class="min-h-0 flex-1 overflow-y-auto px-4 pt-1 pb-[calc(env(safe-area-inset-bottom)+48px)]">{@render pageBody(page())}</div>
+          {#if page() === "conflicts"}
+            <!-- Fill the space under the header exactly (QA-U1): the conflict screen has its own scroll and a bottom bar padded by the nav-bar inset. -->
+            <div class="flex min-h-0 flex-1 flex-col">{@render pageBody(page())}</div>
+          {:else}
+            <div class="min-h-0 flex-1 overflow-y-auto px-4 pt-1 pb-[calc(env(safe-area-inset-bottom)+48px)]">{@render pageBody(page())}</div>
+          {/if}
         </div>
       {/key}
     {/if}

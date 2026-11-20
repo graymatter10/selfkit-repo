@@ -44,6 +44,7 @@ while :; do
   fi
   if [ "$ac" = 0 ] && [ "$bat" -lt "$LOW" ]; then
     log "battery ${bat}% < ${LOW}% on battery: saving work and shutting down"
+    mkdir -p "$Q"; echo "POWER: battery ${bat}% < ${LOW}% on battery: saving work and powering off now" > "$Q/req-$(date +%s%N)-power"
     snapshot
     pkill -TERM -u "$(id -u)" -x -f 'rustc|cargo|bun|node|java|Xvfb' 2>/dev/null
     for p in $(pgrep -u "$(id -u)" -x 'rustc|cargo|java|Xvfb|bun'); do kill -TERM "$p" 2>/dev/null; done

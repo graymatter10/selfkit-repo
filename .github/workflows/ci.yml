@@ -45,4 +45,4 @@ jobs:
       - name: Frontend builds
         run: for d in apps/*/; do [ -f "$d/package.json" ] && (cd "$d" && bun run build) || true; done
       - name: Rust tests
-        run: cargo test --workspace -j 4
+        run: cargo test --workspace -j 4 --no-fail-fast

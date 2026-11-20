@@ -25,6 +25,13 @@ class SelfkitSyncBridge(private val activity: Activity) {
         (px / activity.resources.displayMetrics.density).toInt()
     } catch (t: Throwable) { 0 }
 
+    /** Is the Selfkit companion app (com.selfkit.companion) installed? Without it the "companion" owner would
+     *  silently stop syncing (bugs.md QA-U4), so the Sync screen only offers it when this is true. */
+    @JavascriptInterface
+    fun companionInstalled(): Boolean = try {
+        activity.packageManager.getPackageInfo("com.selfkit.companion", 0); true
+    } catch (t: Throwable) { false }
+
     /** Re-apply the periodic job after the sync settings changed (owner, automatic). */
     @JavascriptInterface
     fun schedule() {

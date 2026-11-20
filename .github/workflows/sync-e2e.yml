@@ -64,7 +64,7 @@ jobs:
       - name: Rust scenarios (selfkit-appsync, incl. Postgres/S3) + core
         env:
           SELFKIT_QA_KNOWN_BUGS: "1" # also run the sync QA repro tests for bugs being fixed
-        run: cargo test -p selfkit-appsync -p selfkit-core -- --include-ignored
+        run: cargo test --no-fail-fast -p selfkit-appsync -p selfkit-core -- --include-ignored
       - name: Process scenarios (real agents, kill -9, faketime, test key)
         run: SK_BIN="$CARGO_TARGET_DIR/debug" SK_WORK="$RUNNER_TEMP" bash dev/sync-e2e.sh
       - uses: oven-sh/setup-bun@v2

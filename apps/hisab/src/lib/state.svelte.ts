@@ -50,6 +50,14 @@ function freshDate(d: Draft): Draft {
   return d.amount ? d : { ...d, date: "", currency: "" };
 }
 
+function localDraftT(): number {
+  try {
+    return Number(JSON.parse(localStorage.getItem(DRAFT_KEY) || "null")?._t) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 function loadDraft(): Draft {
   try {
     const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
@@ -84,21 +92,45 @@ export const back = () => {
 export const openSheet = (s: Sheet) => (app.sheets = [...app.sheets, s]);
 export const closeSheet = () => (app.sheets = app.sheets.slice(0, -1));
 
+// Draft persistence while typing (0.1.5 lag fix): every key used to write the
+// draft to SQLite through a main-thread command 120 ms later, so the number pad
+// stalled whenever the database was busy (e.g. a sync pass). Now the command runs
+// off the UI thread (Rust `#[tauri::command(async)]`), each change goes to
+// localStorage at once and to SQLite after DB_IDLE_MS without typing, plus at once
+// when the app is hidden. Both copies carry `_t` (ms) and boot takes the newer.
+// localStorage alone is not durable on a kill (WebView flushes it lazily: a key
+// typed 0.3 s before a force-stop was lost on the OPPO), hence the short delay.
+const DB_IDLE_MS = 300;
 let saveTimer: ReturnType<typeof setTimeout>;
-function writeDraft() {
-  const s = JSON.stringify(app.draft);
+let dbTimer: ReturnType<typeof setTimeout>;
+let dbChain: Promise<unknown> = Promise.resolve();
+function writeLocal(): string {
+  const s = JSON.stringify({ ...app.draft, _t: Date.now() });
   try {
     localStorage.setItem(DRAFT_KEY, s);
   } catch {}
-  if (app.ready) api.draftSet(JSON.parse(s)).catch(() => {});
+  return s;
+}
+function writeDb(s = JSON.stringify({ ...app.draft, _t: Date.now() })) {
+  clearTimeout(dbTimer);
+  // Chained, so an older draft can never land after a newer one.
+  if (app.ready) dbChain = dbChain.then(() => api.draftSet(JSON.parse(s))).catch(() => {});
+}
+function writeDraft() {
+  clearTimeout(saveTimer);
+  writeDb(writeLocal());
 }
 export function persistDraft() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(writeDraft, 120);
+  saveTimer = setTimeout(writeLocal, 120);
+  clearTimeout(dbTimer);
+  dbTimer = setTimeout(() => writeDb(), DB_IDLE_MS);
 }
+/** Wait until queued draft writes are in SQLite (Save runs after them). */
+export const draftWritten = () => dbChain;
 // Leaving the app (Back, home, task switch): write now, not after the delay.
-document.addEventListener("visibilitychange", () => document.hidden && (clearTimeout(saveTimer), writeDraft()));
-window.addEventListener("pagehide", () => (clearTimeout(saveTimer), writeDraft()));
+document.addEventListener("visibilitychange", () => document.hidden && writeDraft());
+window.addEventListener("pagehide", () => writeDraft());
 export function resetDraft(keep: Partial<Draft> = {}) {
   app.draft = { ...emptyDraft(), ...keep };
   writeDraft();
@@ -156,7 +188,10 @@ export async function init() {
   try {
     const b = await api.boot();
     app.prefs = b.prefs ?? {};
-    if (b.draft && typeof b.draft === "object") app.draft = freshDate({ ...emptyDraft(), ...b.draft });
+    // The newer of the SQLite draft and the localStorage one (see writeDraft).
+    if (b.draft && typeof b.draft === "object" && ((b.draft as { _t?: number })._t ?? 0) >= localDraftT()) {
+      app.draft = freshDate({ ...emptyDraft(), ...b.draft });
+    }
     applyTheme();
     await refresh();
     app.ready = true;
