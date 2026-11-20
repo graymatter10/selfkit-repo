@@ -168,7 +168,7 @@ fn vtodo(t: &TaskView, lists: &[ListInfo], out: &mut String) {
 /// A whole VCALENDAR with one VTODO per task.
 pub fn export(list: &[TaskView], lists: &[ListInfo]) -> String {
     let mut out = String::new();
-    for l in ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Selfkit//Agenda 0.4//EN", "CALSCALE:GREGORIAN", "X-WR-CALNAME:Agenda"] {
+    for l in ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Selfkit//Agenda//EN" /* no version: it went stale (L11) */, "CALSCALE:GREGORIAN", "X-WR-CALNAME:Agenda"] {
         fold(l, &mut out);
     }
     for t in list {
