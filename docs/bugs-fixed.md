@@ -95,7 +95,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | P13 | loan pill text shared (`loanPill`), reminder time in the locale clock (`clockText`); the native date picker look is the system's (not changed) | `lib/fmt.ts`, `Loans.svelte`, `LoanSheet.svelte` | OPPO |
 | L15 | decision: PDF stays Latin-only (Bangla needs font + shaping); export sheet note, README, DECISIONS | `ExportSheet.svelte`, `export.rs`, docs | — |
 | S-3 | "Sync this app" subtitle says "only when you tap Sync now" when Automatic is off | `ui/src/sync/SyncSettings.svelte` | all apps |
-| S-4 | LAN serve skips versions written by the asking peer (no echo); test asserts sent counts | `selfkit-core/src/lan/{session,mod}.rs` | OPPO ↔ Linux (big Chrono) |
+| S-4 + C85 | LAN serve skips versions written by the asking peer only when its cursor > 0 (a fresh database with the same device id pulls from 0 and gets its own records back); tests for both | `selfkit-core/src/lan/{session,mod}.rs` | OPPO ↔ Linux |
 | P15 / C67 | documented limit (README + App changes hint) + Chrono Settings → This phone battery tip (reuses the Sync bridge, only when not exempt); daily-total reconcile planned post-release | `docs`, `AppChanges.svelte`, `apps/chrono/src/screens/Settings.svelte` | OPPO |
 | C66 (Agenda, Dusk) | Agenda toast when a reminder can't show; Dusk wind-down line says notifications are off | `apps/agenda/src/lib/state.svelte.ts`, `apps/dusk/src/lib/state.svelte.ts`, `SettingsPage.svelte` | OPPO |
 | S-1 / C72 | "Here" pill only while sync + LAN on and last pass OK | `ui/src/sync/SyncSettings.svelte` | OPPO ↔ Linux |

@@ -363,6 +363,12 @@ mod tests {
         b["hisab"].put("transactions", Some(&id), &json!({"note": "n\nfive"})).unwrap();
         let (ra, rb, _) = sync_pair(&keys, &mut a, &mut b).await;
         assert_eq!((ra.conflicts, rb.conflicts), (1, 1));
+
+        // C85: A loses its database (same device id); a fresh pull from B restores A's own
+        // records, which the S-4 echo filter must not hold back.
+        let mut a_fresh = stores("A");
+        let (ra2, _, _) = sync_pair(&keys, &mut a_fresh, &mut b).await;
+        assert_eq!(a_fresh["agenda"].count("tasks").unwrap(), 1201, "own tasks come back ({ra2:?})");
     }
 
     #[tokio::test]
