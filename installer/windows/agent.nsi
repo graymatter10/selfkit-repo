@@ -155,7 +155,7 @@ Function un.DataPage
   Pop $0
   ${NSD_CreateLabel} 0 0 100% 48u "The agent will be stopped and removed, with its autostart entry and browser connection.$\r$\n$\r$\nYour Selfkit data is kept unless you tick the box below. App data (Agenda, Hisab, ...) is never deleted here."
   Pop $0
-  ${NSD_CreateCheckbox} 0 60u 100% 12u "Also delete the Selfkit agent's data (agent settings, logs, local backups)"
+  ${NSD_CreateCheckbox} 0 60u 100% 12u "Also delete the Selfkit agent's data (agent settings, logs; app backups are kept)"
   Pop $DeleteDataBox
   ${If} $DeleteData = 1
     ${NSD_Check} $DeleteDataBox

@@ -184,8 +184,13 @@ function Test-Agent {
   $null = Run $setup @('/S', '/NOSTART')
   Check (Test-Path $exe) "reinstalled (/NOSTART)"
   Check (-not (Agent-Running)) "/NOSTART did not start the agent"
+  New-Item -ItemType Directory -Force -Path "$Data\backups\agenda" | Out-Null
+  Set-Content "$Data\backups\agenda\keep.skb" 'x'
+  Set-Content "$Data\backups\state.json" '{}'
   $null = Run "$inst\uninstall.exe" @('/S', '/DELETEDATA')
   Check (Wait-Until { -not (Test-Path $exe) -and -not (Test-Path $key) }) "uninstall /DELETEDATA removed agent"
+  Check (Test-Path "$Data\backups\agenda\keep.skb") "apps' local backups kept (C99)"
+  Check (-not (Test-Path "$Data\backups\state.json")) "agent backup schedule deleted"
   Check (-not (Test-Path "$Data\agent.json")) "agent.json deleted"
   Check (-not (Test-Path "$Data\logs")) "agent logs deleted"
   Check (Test-Path "$Data\canary-keep.txt") "shared data kept"

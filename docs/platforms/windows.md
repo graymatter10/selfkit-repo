@@ -34,7 +34,7 @@ Where things go:
 Uninstalling **keeps your data** by default, so reinstalling carries on where you were.
 
 - **One app:** the uninstall page has an unchecked box **"Also delete my Selfkit data for <App>"**. Ticked, it deletes only that app's data in the Selfkit data folder (below) plus its WebView data (`%APPDATA%\com.selfkit.<app>`, `%LOCALAPPDATA%\com.selfkit.<app>`). Other apps' data and shared files are never touched.
-- **Agent:** unchecked box **"Also delete the Selfkit agent's data"**: `agent.json`, `health.json`, `agent-reminders.json`, `logs\`, `backups\` (local backup copies).
+- **Agent:** unchecked box **"Also delete the Selfkit agent's data"**: `agent.json`, `health.json`, `agent-reminders.json`, `logs\`, `backups\state.json` (backup schedule). The apps' local backup copies (`backups\<app>\`) are kept: they go with that app's own "delete my data" or "delete ALL" (C99).
 - **Selfkit (all apps):** unchecked box **"Also delete ALL my Selfkit data on this PC"**: the whole data folder, `%LOCALAPPDATA%\Selfkit`, every app's WebView data.
 - Data you synced to your own server or other devices is never touched.
 

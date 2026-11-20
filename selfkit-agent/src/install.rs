@@ -252,34 +252,58 @@ mod tests {
     }
 
     /// Real round trip on Windows: manifests + HKCU keys written, then removed. Uses a
-    /// temporary LOCALAPPDATA; the HKCU keys are the real per-user ones, so it only runs
-    /// with --ignored (CI on windows-latest does).
+    /// temporary LOCALAPPDATA, but the HKCU keys are the real per-user ones, so it is
+    /// ignored by default, refuses to run outside CI (`CI=true`, set by GitHub Actions),
+    /// and puts back any value that was there before (C100). windows.yml runs it.
     #[cfg(windows)]
     #[test]
-    #[ignore = "writes HKCU registry keys; run on CI with --ignored"]
+    #[ignore = "writes HKCU registry keys; CI only (windows.yml runs it with --ignored)"]
     fn windows_native_host_round_trip() {
+        if std::env::var("CI").ok().as_deref() != Some("true") {
+            eprintln!("skipped: only runs on CI (CI=true)");
+            return;
+        }
+        let reg = |args: &[&str]| std::process::Command::new("reg").args(args).output().unwrap();
         let tmp = std::env::temp_dir().join(format!("selfkit-nh-{}", std::process::id()));
+        let (_, cj, _, keys) = windows_native_host_targets(&tmp);
+        // Remember what was registered before, to restore it afterwards.
+        let before: Vec<(String, Option<String>)> = keys
+            .iter()
+            .map(|(k, _)| {
+                let o = reg(&["query", k, "/ve"]);
+                let v = o.status.success().then(|| {
+                    let out = String::from_utf8_lossy(&o.stdout).to_string();
+                    out.lines().find_map(|l| l.split_once("REG_SZ").map(|(_, v)| v.trim().to_string())).unwrap_or_default()
+                });
+                (k.clone(), v)
+            })
+            .collect();
         // SAFETY: test-only; no other thread in this test reads LOCALAPPDATA.
         unsafe { std::env::set_var("LOCALAPPDATA", &tmp) };
         let exe = PathBuf::from(r"C:\Program Files\x\selfkit-agent.exe");
         let mut o = NativeHostOpts { exe: exe.clone(), extra_ids: vec![], profile_dirs: vec![], uninstall: false };
         let done = install_native_host(&o).unwrap();
-        assert_eq!(done.iter().filter(|d| d.starts_with("registered")).count(), 4, "{done:?}");
-        let (_, cj, _, keys) = windows_native_host_targets(&tmp);
         let m: Value = serde_json::from_slice(&std::fs::read(&cj).unwrap()).unwrap();
-        assert_eq!(m["path"], exe.display().to_string());
+        let mut registered = vec![];
         for (k, f) in &keys {
-            let out = std::process::Command::new("reg").args(["query", k, "/ve"]).output().unwrap();
-            assert!(out.status.success(), "{k} missing");
-            assert!(String::from_utf8_lossy(&out.stdout).contains(&f.display().to_string()), "{k} value");
+            let out = reg(&["query", k, "/ve"]);
+            registered.push(out.status.success() && String::from_utf8_lossy(&out.stdout).contains(&f.display().to_string()));
         }
         o.uninstall = true;
         install_native_host(&o).unwrap();
-        for (k, _) in &keys {
-            assert!(!std::process::Command::new("reg").args(["query", k]).output().unwrap().status.success(), "{k} still there");
+        let removed: Vec<bool> = keys.iter().map(|(k, _)| !reg(&["query", k]).status.success()).collect();
+        let manifest_gone = !cj.exists();
+        for (k, v) in &before {
+            if let Some(v) = v {
+                reg(&["add", k, "/ve", "/t", "REG_SZ", "/d", v, "/f"]);
+            }
         }
-        assert!(!cj.exists());
         let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(done.iter().filter(|d| d.starts_with("registered")).count(), 4, "{done:?}");
+        assert_eq!(m["path"], exe.display().to_string());
+        assert!(registered.iter().all(|b| *b), "keys registered: {registered:?}");
+        assert!(removed.iter().all(|b| *b), "keys removed: {removed:?}");
+        assert!(manifest_gone);
     }
 
     #[cfg(not(windows))]

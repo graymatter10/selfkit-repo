@@ -46,7 +46,8 @@
   Pop $R9
 !macroend
 
-; Delete the agent's own files (settings, health, reminders state, logs, local backups).
+; Delete the agent's own files (settings, health, reminders state, logs, backup schedule).
+; The apps' local backup copies (backups\<a>\) belong to each app and stay (C99).
 !macro SK_DELETE_AGENT_DATA
   Push $R9
   !insertmacro SK_DATA_DIR
@@ -55,7 +56,8 @@
   Delete "$R9\health.json"
   Delete "$R9\agent-reminders.json"
   RMDir /r "$R9\logs"
-  RMDir /r "$R9\backups"
+  Delete "$R9\backups\state.json"
+  RMDir "$R9\backups"
   RMDir "$R9"
   Pop $R9
 !macroend
