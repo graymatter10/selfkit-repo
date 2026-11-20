@@ -20,11 +20,14 @@
   let ov = $state<Overview | null>(null);
   const year = $derived(Number(month.slice(0, 4)));
 
+  // Replies can arrive out of order (async commands): keep only the newest (C7).
+  let seq = 0;
   $effect(() => {
     void app.rev;
     const m = month;
-    api.trends(m).then((t) => (tr = t));
-    api.snapshot(m).then((s) => (ov = s.overview));
+    const n = ++seq;
+    api.trends(m).then((t) => n === seq && (tr = t));
+    api.snapshot(m).then((s) => n === seq && (ov = s.overview));
   });
 
   function step(n: number) {

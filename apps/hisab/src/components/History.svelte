@@ -33,13 +33,17 @@
   }
 
   let timer: ReturnType<typeof setTimeout>;
+  let seq = 0; // replies can arrive out of order (async commands): keep only the newest (C7)
   $effect(() => {
     const [f, t] = range();
     const flt: Filter = { q, kind, category, account, tag, from: f, to: t, min: min ? Number(min) : undefined, max: max ? Number(max) : undefined };
     void app.rev;
     clearTimeout(timer);
     timer = setTimeout(async () => {
-      list = await api.transactions(flt);
+      const n = ++seq;
+      const r = await api.transactions(flt);
+      if (n !== seq) return;
+      list = r;
       loading = false;
     }, q ? 120 : 0);
   });
