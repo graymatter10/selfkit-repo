@@ -113,7 +113,7 @@
         {@render stat("Income", money(tr.lifetime.income, cur))}
         {@render stat("Net worth", money(ov.net_worth, cur), ov.net_worth < 0 ? "text-danger" : "")}
       </div>
-      <p class="m-0 px-1 text-[13px] text-muted">{tr.lifetime.count} entries{tr.lifetime.first ? ` since ${shortDate(tr.lifetime.first)}` : ""}</p>
+      <p class="m-0 px-1 text-[13px] text-muted">{tr.lifetime.count} {tr.lifetime.count === 1 ? "entry" : "entries"}{tr.lifetime.first ? ` since ${shortDate(tr.lifetime.first)}` : ""}</p>
       <div class="grid gap-3 {desktop ? 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : 'grid-cols-[minmax(0,1fr)]'}">
         <div class={card}><h3 class={h2}>Years</h3><Bars items={tr.years.map((y) => ({ label: y.year, key: y.year, spent: y.spent, income: y.income }))} /></div>
         <div class={card}><h3 class={h2}>Net worth over time</h3><Trend values={tr.networth.map((n) => n.value)} labels={tr.networth.map((n) => monthName(n.month, true))} /></div>

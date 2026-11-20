@@ -29,7 +29,8 @@
     const lead = usual ? "About a usual day for you" : diff < 0 ? "A quieter day" : "A busier day";
     return { lead, amount: `${dur(Math.abs(diff))} ${diff >= 0 ? "more" : "less"}`, avg: dur(avg) };
   });
-  const phoneRows = $derived(v ? [["Screen turned on", `${v.pickups} times`], ["Unlocked", `${v.unlocks} times`], ["Notifications", `${v.notifications}`]] : []);
+  const times = (n: number) => `${n} ${n === 1 ? "time" : "times"}`; // "1 time" (C37)
+  const phoneRows = $derived(v ? [["Screen turned on", times(v.pickups)], ["Unlocked", times(v.unlocks)], ["Notifications", `${v.notifications}`]] : []);
   const weekDiff = $derived(v ? v.week_so_far - v.last_week_same : 0);
 </script>
 
