@@ -4,12 +4,55 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 
 | Bug | Fix | Files | Needs device retest |
 |-----|-----|-------|---------------------|
-| L1 | Starts/Ends picker opens on the day of its default time (next full hour / start + 1 h), not always today | `apps/agenda/src/components/WhenSheet.svelte` | Linux (set clock or wait until 23:xx) |
+| L1 / P1 | Starts/Ends picker opens on the day of its default time (next full hour / start + 1 h), not always today | `apps/agenda/src/components/WhenSheet.svelte` | Linux (set clock or wait until 23:xx) |
 | B3 | PIN set-up sheet keeps message, Next and "Use a passphrase instead" rows on every step (hidden, not removed), so the pad stays put at "Repeat the PIN" | `ui/src/lock/LockSettings.svelte` | OPPO (all 5 apps share it) |
 | B5 | Lock screen no longer keeps a fixed "Wrong PIN. Try again in 30 s." after the wait ends; the live countdown line shows the wait, then "Wrong PIN." | `ui/src/lock/LockGate.svelte` | OPPO (5 wrong PINs, wait, fingerprint cancel) |
 | B2 | Lead chose option 2: Dusk's provider serves the local `dusk_nights` table (`/table?name=`), `SelfkitMirror` copies it into Reflect's `dusk.db`. Phone-local, no sync change (DECISIONS 2026-11-20) | `selfkit-appsync/src/android.rs`, `android-plugins/selfkit-sync/.../SelfkitDataProvider.kt`, `SelfkitMirror.kt` | OPPO: Dusk and Reflect APKs both new; open Dusk once, then Reflect → Today sleep tile |
 | B4 | Lead chose option 1: Dusk mirrors `agenda,hisab` on Android (manifest + page call on open/foreground); Settings row shows Found / Agenda only / Hisab only / Not found | `apps/dusk/src-tauri/gen/android/app/src/main/AndroidManifest.xml`, `apps/dusk/src/lib/state.svelte.ts`, `SettingsPage.svelte` | OPPO: Dusk Settings + Connections next-day cards |
 
+| B5 / L7 | (updated) after the wait the lock screen says "Enter your PIN" again | `ui/src/lock/LockGate.svelte` | OPPO + Linux |
+| P1 | same as L1 | — | — |
+| L2 | no text caret in buttons (task rows) | `apps/agenda/src/app.css` | Linux |
+| L3 | Esc in a task form field closes / asks to discard | `apps/agenda/src/App.svelte` | Linux |
+| L4 | server form checked before secure storage; keyring hint on Linux | `selfkit-appsync/src/tauri_cmds.rs`, `explain.rs`, `ui/src/sync/SyncSettings.svelte` | Linux without keyring |
+| L5 | not a code bug: release installers must be built by the release workflows (`SELFKIT_RELEASE=1`, which disables `lock-test`/test key) | — | lead |
+| L6 | lock screen shows the full lock file path | `selfkit-appsync/src/lock_cmds.rs`, `selfkit-core/src/applock.rs`, `ui/src/lock/*` | Linux |
+| L8 | search Cancel fits in the desktop header | `apps/agenda/src/App.svelte` | Linux |
+| L9 | Esc closes the "…" menu; view keys wait while it is open | `apps/agenda/src/App.svelte` | Linux |
+| L10 | .ics re-import of an unchanged export = unchanged (empty fields ignored, numbers by value) | `apps/agenda/src-tauri/src/ics.rs` | Linux |
+| L11 / P7 | real version in the Settings footer; PRODID without version | `SettingsSheet.svelte`, `ics.rs` | both |
+| L2-1 / C31 | Enter in the note saves on desktop + capture popup | `apps/hisab/src/components/AddPanel.svelte` | Linux |
+| L2-2 / C32 | number pad stays on desktop while the note has focus | same | Linux |
+| P2 | not fixed: alarm was windowed, i.e. `canScheduleExactAlarms()` was false for the plugin despite `USE_EXACT_ALARM`. Needs a device check (`adb shell cmd appops get com.selfkit.agenda SCHEDULE_EXACT_ALARM`, `dumpsys alarm`); ColorOS may also batch alarms of background apps | — | OPPO |
+| P3 | reminder notifications use monochrome app icons (Agenda new `ic_stat_agenda`, Hisab existing `ic_stat_hisab`, Dusk new `ic_stat_dusk`) | `apps/*/src-tauri/src/lib.rs`, `res/drawable/ic_stat_*.xml` | OPPO |
+| P4 | done tasks without a completion record are listed from the task (`task-<id>`) in History/Stats | `apps/agenda/src-tauri/src/tasks.rs` | OPPO |
+| P5 | unsaved New Task input kept in localStorage and reopened after a kill | `TaskForm.svelte`, `App.svelte`, `state.svelte.ts` | OPPO |
+| P6 | long words wrap in the details title and steps | `TaskDetail.svelte` | OPPO |
+| P8 | not fixed: needs profiling (no concrete cause) | — | — |
+| C1–C3 | clockless records stamp only changed fields; one clockless side = conflict; imports stamp restored fields | `selfkit-core/src/store.rs` | sync tests |
+| C4 | not fixed: reminders after a WorkManager sync with Agenda closed need an Agenda-specific hook (Kotlin → Agenda JNI to reschedule, or SyncWorker hook); bigger than a bug fix — lead decision | — | — |
+| C5 | lock stop time kept per process (companion object) | `apps/*/…/SelfkitLock.kt` | OPPO ("Don't keep activities") |
+| C6 | Forgot PIN wrong passphrase counts as a wrong attempt with waits | `lock_cmds.rs`, `applock.rs` | both |
+| C7 | newest reply wins (Overview, Insights, History) | `apps/hisab/src/lib/state.svelte.ts`, `Insights.svelte`, `History.svelte` | Linux |
+| C8 | read-only stores on DBs without `fclock` (temp view) | `selfkit-core/src/store.rs` | Windows mixed versions |
+| C9 | merged record pushed again in the same pass | `selfkit-core/src/sync/mod.rs` | sync |
+| C10 | pending draft write flushed before Save | `apps/hisab/src/lib/state.svelte.ts` | — |
+| C11 | not fixed (documented limit): clock set forward ends a lock wait; monotonic clocks stop in deep sleep / restart with the process | `docs/components/app-lock.md` | — |
+| C12 | `lock_unlock_biometric` refused outside Android | `lock_cmds.rs` | — |
+| C13 | all lock commands `#[tauri::command(async)]` | `lock_cmds.rs` | Linux |
+| C14 | agent init needs 12 characters | `selfkit-agent/src/main.rs` | — |
+| C15 | settings drop legacy `_clock`; conflict screen hides it | `selfkit-core/src/settings.rs`, `selfkit-appsync/src/conflicts.rs` | — |
+| C16 | marker file + watcher → `data-changed` after shared settings were adopted | `selfkit-appsync/src/{android,tauri_cmds,lib}.rs` | OPPO (two apps open) |
+| C17 | MutationObserver keeps new body children inert while locked | `ui/src/lock/LockGate.svelte` | — |
+| C18 | recurring entries id `rec-<item>-<date>` | `apps/hisab/src-tauri/src/recur.rs` | two devices |
+| C19 | seeded Cash/categories fixed ids | `apps/hisab/src-tauri/src/model.rs` | two fresh devices |
+| C20 | merge result checked against cross-field rules, else conflict | `selfkit-core/src/store.rs` | sync |
+| C21 | `repeat_day` anchor for monthly/yearly repeats (Rust + calendar preview) | `tasks.rs`, `time.ts`, `api.ts` | — |
+| C22 / C25 | CSV dedupe only against existing entries (+kind, account); DR/CR as own word | `apps/hisab/src-tauri/src/csvimport.rs` | — |
+| C24 | DST gap reminders fire an hour later | `apps/agenda/src-tauri/src/lib.rs`, `selfkit-agent/src/reminders.rs` | — |
+| C26 | search filtered to task text | `tasks.rs` | — |
+| C27 | `device_id` exclusive create | `selfkit-core/src/paths.rs` | — |
+| C30 | completion id per occurrence `c-<task>-<start>` | `tasks.rs` | two devices |
 ## Decisions taken (lead, 2026-11-20)
 - B2 → provider-shared `dusk_nights` (not synced night records: each device has its own estimate, would conflict/duplicate).
 - B4 → Dusk mirrors Agenda/Hisab like Reflect.
