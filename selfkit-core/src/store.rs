@@ -108,6 +108,9 @@ pub fn new_id() -> String {
     uuid::Uuid::now_v7().to_string()
 }
 
+/// Collection of the device directory (one record per device: name, platform).
+pub const DEVICES: &str = "devices";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Record {
     pub id: String,
@@ -130,9 +133,15 @@ impl Record {
     pub fn ver(&self) -> String {
         format!("{}:{}", self.updated_at, self.device_id)
     }
+    /// Counts as a user change in sync reports ("12 changes pulled"). The device
+    /// directory (`devices`, shared settings DB) syncs like any record but is
+    /// bookkeeping: counting it made every pass report one change too many.
+    pub fn is_user_data(&self) -> bool {
+        self.collection != DEVICES
+    }
     /// Same user-visible content (ignores who/when).
     pub fn same_content(&self, o: &Record) -> bool {
-        self.data == o.data && self.deleted == o.deleted && self.collection == o.collection
+        crate::conflict::json_eq(&self.data, &o.data) && self.deleted == o.deleted && self.collection == o.collection
     }
 }
 
@@ -194,7 +203,7 @@ fn stamp_clocks(old: Option<&Record>, data: &Value, now: i64) -> std::collection
     let old_obj = old.and_then(|o| o.data.as_object()).unwrap_or(&empty);
     let new_obj = data.as_object().unwrap_or(&empty);
     for k in old_obj.keys().chain(new_obj.keys()) {
-        if old_obj.get(k) != new_obj.get(k) || !clock.contains_key(k) {
+        if !crate::conflict::opt_eq(old_obj.get(k), new_obj.get(k)) || !clock.contains_key(k) {
             clock.insert(k.clone(), now);
         }
     }
@@ -378,7 +387,7 @@ impl Store {
     /// Full-text search (FTS5 query syntax). Matches JSON text of live records.
     pub fn search(&self, collection: Option<&str>, query: &str, limit: u32) -> Result<Vec<Record>> {
         let mut st = self.conn.prepare_cached(
-            "SELECT r.id, r.collection, r.data, r.updated_at, r.tz_offset, r.device_id, r.deleted, r.hist
+            "SELECT r.id, r.collection, r.data, r.updated_at, r.tz_offset, r.device_id, r.deleted, r.hist, r.fclock
              FROM records_fts f JOIN records r ON r.rowid=f.rowid
              WHERE records_fts MATCH ?1 AND r.deleted=0 AND (?2 IS NULL OR r.collection=?2)
              ORDER BY rank LIMIT ?3",
@@ -508,7 +517,7 @@ impl Store {
                     out.insert(k.clone(), v.clone());
                 }
             };
-            if lv == rv {
+            if crate::conflict::opt_eq(lv, rv) {
                 pick(lv, &mut out);
                 continue;
             }
@@ -652,7 +661,7 @@ impl Store {
         // Field clocks of the result: the winning side's, edits made here now are "now".
         let now = time::now_ms();
         let fclock = {
-            let differs = |a: &Value, b: &Value, k: &String| a.get(k) != b.get(k);
+            let differs = |a: &Value, b: &Value, k: &String| !crate::conflict::opt_eq(a.get(k), b.get(k));
             let keys: Vec<String> = local.fclock.keys().chain(remote.fclock.keys()).cloned().collect();
             match &how {
                 Resolution::KeepRemote => remote.fclock.clone(),
@@ -790,7 +799,7 @@ mod tests {
         Store::open(&p, "x", "d", M).unwrap();
         let s = Store::open(&p, "x", "d", M).unwrap();
         let n: i64 = s.conn().query_row("SELECT count(*) FROM schema_migrations", [], |r| r.get(0)).unwrap();
-        assert_eq!(n, 3); // core/001, core/002, x/001
+        assert_eq!(n, 4); // core/001, core/002, core/003_field_clocks, x/001
     }
 
     /// A remote edit made by another device on top of `base`.
@@ -799,6 +808,14 @@ mod tests {
         r.data = data;
         r.device_id = dev.into();
         r.updated_at = base.updated_at + dt;
+        // Like Store::put on the other device: changed fields get its clock.
+        if let Some(o) = r.data.as_object() {
+            for (k, v) in o {
+                if base.data.get(k) != Some(v) {
+                    r.fclock.insert(k.clone(), r.updated_at);
+                }
+            }
+        }
         r.hist.push(r.ver());
         r
     }
@@ -819,13 +836,15 @@ mod tests {
         assert_eq!(s.get(&r.id).unwrap().unwrap().data["title"], "b");
         assert_eq!(s.apply_remote(&remote, 6).unwrap(), Applied::Unchanged);
 
-        // dirty local + concurrent remote edit -> conflict, not pushed
-        s.put("tasks", Some(&r.id), &json!({"title": "local"})).unwrap();
-        let remote2 = edit(&remote, "dev-b", json!({"title": "remote"}), 10);
+        // dirty local + concurrent remote edit of long text -> conflict, not pushed
+        // (short fields changed on both sides merge automatically, newer wins)
+        std::thread::sleep(std::time::Duration::from_millis(20)); // both edits newer than the shared version
+        s.put("tasks", Some(&r.id), &json!({"title": "b\nlocal"})).unwrap();
+        let remote2 = edit(&remote, "dev-b", json!({"title": "b\nremote"}), 10);
         assert_eq!(s.apply_remote(&remote2, 7).unwrap(), Applied::Conflict);
         assert!(s.dirty(10).unwrap().is_empty());
         let c = s.conflicts().unwrap();
-        assert_eq!((c[0].local.data["title"].as_str(), c[0].remote.data["title"].as_str()), (Some("local"), Some("remote")));
+        assert_eq!((c[0].local.data["title"].as_str(), c[0].remote.data["title"].as_str()), (Some("b\nlocal"), Some("b\nremote")));
         s.resolve_conflict(&r.id, Resolution::Merged(json!({"title": "both"}))).unwrap();
         assert!(s.conflicts().unwrap().is_empty());
         let (d, base) = s.dirty(10).unwrap().pop().unwrap();
@@ -868,10 +887,10 @@ mod tests {
         assert_eq!(a.apply_peer(&rb).unwrap(), Applied::Updated);
         // Old version arriving late is ignored.
         assert_eq!(a.apply_peer(&r2).unwrap(), Applied::Unchanged);
-        // Concurrent edits -> conflict on both sides.
+        // Concurrent edits of long text -> conflict on both sides (short fields auto-merge).
         std::thread::sleep(std::time::Duration::from_millis(2));
-        let xa = a.put("tasks", Some(&r0.id), &json!({"t": "xa"})).unwrap();
-        let xb = b.put("tasks", Some(&r0.id), &json!({"t": "xb"})).unwrap();
+        let xa = a.put("tasks", Some(&r0.id), &json!({"t": "x\nxa"})).unwrap();
+        let xb = b.put("tasks", Some(&r0.id), &json!({"t": "x\nxb"})).unwrap();
         assert_eq!(a.apply_peer(&xb).unwrap(), Applied::Conflict);
         assert_eq!(b.apply_peer(&xa).unwrap(), Applied::Conflict);
         assert_eq!(a.conflicts().unwrap()[0].source, "peer");
@@ -880,7 +899,7 @@ mod tests {
         b.resolve_conflict(&r0.id, Resolution::KeepLocal).unwrap();
         let bb = b.get(&r0.id).unwrap().unwrap();
         assert_eq!(a.apply_peer(&bb).unwrap(), Applied::Unchanged); // same content, hist merged
-        assert_eq!(a.get(&r0.id).unwrap().unwrap().data, json!({"t": "xb"}));
+        assert_eq!(a.get(&r0.id).unwrap().unwrap().data, json!({"t": "x\nxb"}));
         // Next edits on either side fast-forward, no false conflict.
         std::thread::sleep(std::time::Duration::from_millis(2));
         let na = a.put("tasks", Some(&r0.id), &json!({"t": "after"})).unwrap();

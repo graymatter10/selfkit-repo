@@ -10,7 +10,8 @@
   const o = $derived(app.overview!);
   const t = $derived(o.today);
   const found = $derived(Object.fromEntries(app.sources?.found ?? []) as Record<AppKey, boolean>);
-  const missing = $derived((["hisab", "dusk", "agenda", "chrono"] as AppKey[]).filter((k) => !t.has[k]));
+  // Only apps that aren't on this device; an installed app with no data today is not "missing" (QA-R1).
+  const missing = $derived((["hisab", "dusk", "agenda", "chrono"] as AppKey[]).filter((k) => !t.has[k] && !found[k]));
   const anyData = $derived(t.has.chrono || t.has.hisab || t.has.agenda || t.has.dusk);
   const names: Record<AppKey, string> = { chrono: "Chrono", hisab: "Hisab", agenda: "Agenda", dusk: "Dusk" };
   const list = (a: AppKey[]) => a.map((k) => names[k]).join(a.length === 2 ? " and " : ", ").replace(/, ([^,]*)$/, " and $1");
@@ -32,7 +33,7 @@
 {/snippet}
 {#snippet missingNote()}
   {#if missing.length && anyData}
-    <div class="hint"><Icon name="box" size={20} /><div><b>{missing.length === 1 ? `${list(missing)} isn't` : `${list(missing)} aren't`} on this device</b>{o.mobile ? "On phones, Reflect can't read other apps yet. That comes later." : "Install them and their stats show up here by themselves. Nothing to set up."}</div></div>
+    <div class="hint"><Icon name="box" size={20} /><div><b>{missing.length === 1 ? `${list(missing)} isn't` : `${list(missing)} aren't`} on this device</b>Install them and their stats show up here by themselves. Nothing to set up.</div></div>
   {/if}
 {/snippet}
 
@@ -41,7 +42,7 @@
     <span class="mx-auto grid h-14 w-14 place-items-center rounded-[16px] bg-accent-soft text-accent"><Icon name="bars" size={26} stroke={2.2} /></span>
     <h1 class="headline mt-5">Nothing to show yet.</h1>
     <p class="subline">Reflect brings together Chrono (screen time), Hisab (money), Agenda (tasks) and Dusk (sleep). It only reads them and never changes anything.</p>
-    <p class="subline">{o.mobile ? "On phones, apps can't share their data with Reflect yet. That comes later. For now, open Reflect on your PC." : "Install one of them, use it for a day, and your summary appears here."}</p>
+    <p class="subline">Install one of them, use it for a day, and your summary appears here.</p>
   </div>
 {:else if desktop}
   <div class="max-w-[1000px]">

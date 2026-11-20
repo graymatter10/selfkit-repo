@@ -89,16 +89,6 @@ impl Dev {
     }
 }
 
-/// Tests for open bugs (bugs.md ids) only run with SELFKIT_QA_KNOWN_BUGS=1, so they
-/// don't break CI until fixed. Remove the guard when the bug is fixed.
-fn skip_known_bug(id: &str) -> bool {
-    if std::env::var("SELFKIT_QA_KNOWN_BUGS").is_ok() {
-        return false;
-    }
-    eprintln!("skipped: open bug {id} (set SELFKIT_QA_KNOWN_BUGS=1 to run)");
-    true
-}
-
 fn free_port() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
 }
@@ -176,16 +166,13 @@ fn tx(amount: f64, note: &str) -> Value {
 
 // ---------------------------------------------------------------- shared settings
 
-/// KNOWN BUG (QA-S1): two devices change *different* shared settings (main currency on
+/// Was bug (QA-S1): two devices change *different* shared settings (main currency on
 /// one, day start on the other) before syncing. `Settings::update` keeps fields apart
 /// inside one device, but across devices the single settings record conflicts (and the
 /// conflict lands in the `settings` store, which no app screen explains). Expected: both
 /// changes kept, no conflict.
 #[tokio::test]
 async fn qa_lan_shared_settings_changed_on_two_devices_keep_both() {
-    if skip_known_bug("QA-S1") {
-        return;
-    }
     let key = SecretKey::generate();
     let pc = spawn_pc(&key, "Linux PC").await;
     let a = dev("hisab", "OPPO", &key, None, TransportMode::LanOnly, &[pc.addr]);
@@ -444,13 +431,10 @@ async fn qa_lan_tz_offset_and_timestamps_survive() {
     assert_eq!((got.tz_offset, got.updated_at), (local.tz_offset, local.updated_at));
 }
 
-/// KNOWN BUG (QA-S3). Status after LAN-only use with no server: pending should not count records that were
+/// Was bug (QA-S3). Status after LAN-only use with no server: pending should not count records that were
 /// merely *received* from the PC (they are not "changes saved here").
 #[tokio::test]
 async fn qa_lan_pending_counts_only_local_changes() {
-    if skip_known_bug("QA-S3") {
-        return;
-    }
     let key = SecretKey::generate();
     let pc = spawn_pc(&key, "Linux PC").await;
     pc.store("agenda").put("tasks", None, &task("made on the PC")).unwrap();
@@ -477,9 +461,12 @@ async fn qa_server_conflict_resolved_on_one_device_clears_elsewhere() {
     for d in [&a, &b, &c] {
         d.sync().await;
     }
-    a.put("tasks", Some(&t), task("A"));
-    b.put("tasks", Some(&t), task("B"));
-    c.put("tasks", Some(&t), task("C"));
+    // Long notes changed everywhere stay a real conflict (short fields auto-merge since
+    // field clocks); the title carries the version for the checks below.
+    let edit = |title: &str| { let mut v = task(title); v["notes"] = json!(format!("Shared first line\n{title} wrote this")); v };
+    a.put("tasks", Some(&t), edit("A"));
+    b.put("tasks", Some(&t), edit("B"));
+    c.put("tasks", Some(&t), edit("C"));
     a.sync().await;
     assert_eq!(b.sync().await.report.conflicts, 1);
     assert_eq!(c.sync().await.report.conflicts, 1);
@@ -525,13 +512,10 @@ async fn qa_server_delete_on_both_sides_is_not_a_conflict() {
     assert_eq!(a.nconflicts() + b.nconflicts(), 0);
 }
 
-/// KNOWN BUG (QA-S1, server path): different shared settings changed on two devices.
+/// Was bug (QA-S1, server path): different shared settings changed on two devices.
 #[tokio::test]
 #[ignore]
 async fn qa_server_shared_settings_changed_on_two_devices_keep_both() {
-    if skip_known_bug("QA-S1") {
-        return;
-    }
     let key = SecretKey::generate();
     let srv = server(false).await;
     let a = dev("hisab", "OPPO", &key, Some(&srv), TransportMode::ServerOnly, &[]);
@@ -551,16 +535,13 @@ async fn qa_server_shared_settings_changed_on_two_devices_keep_both() {
     );
 }
 
-/// KNOWN BUG (QA-S2): encryption set up in an *app* (phone) writes keys.json only locally;
+/// Was bug (QA-S2): encryption set up in an *app* (phone) writes keys.json only locally;
 /// nothing uploads it to S3, so a second device can't unlock with the passphrase or the
 /// recovery key ("unlock downloads keys.json from S3 when missing" only works if the agent
 /// set it up). Expected: a fresh device with the same server unlocks with the recovery key.
 #[tokio::test]
 #[ignore]
 async fn qa_server_recovery_key_on_new_device_after_phone_setup() {
-    if skip_known_bug("QA-S2") {
-        return;
-    }
     let srv = server(true).await;
     let d1 = tempfile::tempdir().unwrap();
     let a = dev_in(d1, "agenda", "OPPO", None, Some(&srv), TransportMode::ServerOnly, &[]);
@@ -599,7 +580,7 @@ async fn qa_server_passphrase_change_and_fresh_device_restore() {
     assert!(b.sync.unlock("old pass").await.is_err(), "old passphrase must stop working");
     b.sync.unlock("new pass").await.unwrap();
     let o = b.sync().await;
-    assert_eq!(o.report.pulled, 51);
+    assert_eq!(o.report.pulled, 51); // the device directory record isn't counted
     assert_eq!(b.store().count("transactions").unwrap(), 41);
     assert_eq!(a.dump(), b.dump());
     // Recovery key still works too.
@@ -665,14 +646,11 @@ async fn qa_three_devices_lan_and_server_all_edit() {
 
 // ---------------------------------------------------------------- field-level / list merges
 
-/// KNOWN BUG (QA-S1, general case): different fields of the same record edited on two devices
+/// Was bug (QA-S1, general case): different fields of the same record edited on two devices
 /// (title on A, severity on B) always become a conflict the user must settle by hand.
 /// Expected: non-overlapping field edits merge automatically.
 #[tokio::test]
 async fn qa_lan_different_fields_of_one_task_merge_automatically() {
-    if skip_known_bug("QA-S1") {
-        return;
-    }
     let key = SecretKey::generate();
     let pc = spawn_pc(&key, "Linux PC").await;
     let a = dev("agenda", "OPPO", &key, None, TransportMode::LanOnly, &[pc.addr]);
@@ -696,15 +674,12 @@ async fn qa_lan_different_fields_of_one_task_merge_automatically() {
     );
 }
 
-/// KNOWN BUG (QA-S5): a repayment added to the same Hisab loan on two devices. The conflict
+/// Was bug (QA-S5): a repayment added to the same Hisab loan on two devices. The conflict
 /// screen offers the whole `repayments` list from A or from B; every choice (Keep A, Keep B,
 /// Merge) loses one repayment. Same for Agenda `steps` (subtasks) and any other list field.
 /// Expected: a way to keep both list items (union by item id).
 #[tokio::test]
 async fn qa_lan_loan_repayments_added_on_two_devices_both_kept() {
-    if skip_known_bug("QA-S5") {
-        return;
-    }
     let key = SecretKey::generate();
     let pc = spawn_pc(&key, "Linux PC").await;
     let a = dev("hisab", "OPPO", &key, None, TransportMode::LanOnly, &[pc.addr]);

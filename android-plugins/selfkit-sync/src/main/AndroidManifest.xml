@@ -24,6 +24,8 @@
         <provider android:authorities="com.selfkit.agenda.provider" />
         <provider android:authorities="com.selfkit.dusk.provider" />
         <provider android:authorities="com.selfkit.reflect.provider" />
+        <!-- The future Selfkit companion (owner "companion"); checked by SelfkitSyncBridge.companionInstalled. -->
+        <package android:name="com.selfkit.companion" />
     </queries>
 
     <application>

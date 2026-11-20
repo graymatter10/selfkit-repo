@@ -19,13 +19,41 @@ pub struct FieldDiff {
     pub remote: Option<Value>,
 }
 
+/// JSON equality where numbers compare by value: `5000` (JS/integer) equals `5000.0`
+/// (Rust f64). Plain `==` on `Value` treats them as different, which made every whole
+/// number written by the other side show up as a change (bugs.md QA-U3).
+pub fn json_eq(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => match (x.as_i64(), y.as_i64()) {
+            (Some(i), Some(j)) => i == j,
+            _ => match (x.as_u64(), y.as_u64()) {
+                (Some(i), Some(j)) => i == j,
+                _ => x.as_f64() == y.as_f64(),
+            },
+        },
+        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(a, b)| json_eq(a, b)),
+        (Value::Object(x), Value::Object(y)) => {
+            x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| json_eq(v, w)))
+        }
+        _ => a == b,
+    }
+}
+
+pub(crate) fn opt_eq(a: Option<&Value>, b: Option<&Value>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => json_eq(a, b),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
 /// Top-level fields that differ between two JSON objects.
 pub fn field_diffs(local: &Value, remote: &Value) -> Vec<FieldDiff> {
     let empty = Map::new();
     let (l, r) = (local.as_object().unwrap_or(&empty), remote.as_object().unwrap_or(&empty));
     let keys: BTreeSet<&String> = l.keys().chain(r.keys()).collect();
     keys.into_iter()
-        .filter(|k| l.get(*k) != r.get(*k))
+        .filter(|k| !opt_eq(l.get(*k), r.get(*k)))
         .map(|k| FieldDiff { key: k.clone(), local: l.get(k).cloned(), remote: r.get(k).cloned() })
         .collect()
 }
@@ -106,6 +134,15 @@ mod tests {
         assert_eq!(d.iter().map(|f| f.key.as_str()).collect::<Vec<_>>(), ["prio", "tag", "title"]);
         let m = merge_fields(&l, &r, &HashMap::from([("title".into(), Side::Remote), ("prio".into(), Side::Remote)]));
         assert_eq!(m, json!({"title": "b", "done": false, "tag": "x", "prio": 1}));
+    }
+
+    #[test]
+    fn numbers_compare_by_value() {
+        let l = json!({"amount": 5000.0, "list": [{"a": 1.0}], "x": 1});
+        let r = json!({"amount": 5000, "list": [{"a": 1}], "x": 1.5});
+        let d = field_diffs(&l, &r);
+        assert_eq!(d.iter().map(|f| f.key.as_str()).collect::<Vec<_>>(), ["x"]);
+        assert!(!json_eq(&json!(-1), &json!(u64::MAX)));
     }
 
     #[test]

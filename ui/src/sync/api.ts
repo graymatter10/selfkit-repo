@@ -59,10 +59,12 @@ export const syncApi = {
 };
 
 /** Android JS bridge from android-plugins/selfkit-sync (SelfkitSyncBridge); absent on desktop. */
-interface Bridge { needsBatteryTip(): boolean; openBatterySettings(): void; schedule(): void; runNow(): void; bottomInset?(): number }
+interface Bridge { needsBatteryTip(): boolean; openBatterySettings(): void; schedule(): void; runNow(): void; bottomInset?(): number; companionInstalled?(): boolean }
 
 /** Bottom system bar height in px (Android bridge; CSS env() is 0 on some WebViews). */
 export const bottomInset = (): number => { try { return bridge()?.bottomInset?.() ?? 0; } catch { return 0; } };
+/** Selfkit companion installed (Android only; older bridges without the check say no). */
+export const companionInstalled = (): boolean => { try { return bridge()?.companionInstalled?.() ?? false; } catch { return false; } };
 export const bridge = (): Bridge | null => ((globalThis as unknown as { SelfkitSync?: Bridge }).SelfkitSync ?? null);
 
 export function ago(now: number, t: number | null | undefined): string {
@@ -87,10 +89,28 @@ const LABELS: Record<string, string> = {
 /** "note_before" -> "Before bed"; unknown keys: "some_field" -> "Some field". */
 export const label = (k: string) => LABELS[k] ?? (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, " ");
 
+/** One list item / object as readable text (bugs.md QA-U3): its title or name, else its
+ * values without ids and timestamps, e.g. a repayment -> "1000 · 2026-11-15". */
+function item(x: unknown): string {
+  if (x === null || typeof x !== "object") return show(x);
+  const o = x as Record<string, unknown>;
+  const head = o.title ?? o.name ?? o.text ?? o.label;
+  if (head !== undefined && head !== null && head !== "") return String(head) + (o.done === true ? " ✓" : "");
+  const parts = Object.entries(o)
+    .filter(([k, v]) => k !== "id" && !/(^|_)(id|at)$/.test(k) && v !== null && v !== undefined && v !== "")
+    .map(([, v]) => (typeof v === "object" ? item(v) : show(v)));
+  return parts.length ? parts.join(" · ") : "—";
+}
+
 export function show(v: unknown): string {
   if (v === undefined || v === null || v === "") return "—";
   if (typeof v === "boolean") return v ? "Yes" : "No";
-  if (Array.isArray(v)) return v.length ? v.map((x) => (typeof x === "object" ? (x && ((x as Record<string, unknown>).title ?? (x as Record<string, unknown>).name ?? JSON.stringify(x))) : String(x))).join(", ") : "—";
-  if (typeof v === "object") return JSON.stringify(v);
+  if (typeof v === "number") return String(Number.isInteger(v) ? v : Math.round(v * 100) / 100);
+  if (Array.isArray(v)) {
+    if (!v.length) return "—";
+    // Lists of objects: one item per line; plain values: comma list.
+    return v.some((x) => x && typeof x === "object") ? v.map(item).join("\n") : v.map((x) => show(x)).join(", ");
+  }
+  if (typeof v === "object") return item(v);
   return String(v);
 }

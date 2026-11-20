@@ -87,13 +87,13 @@ E2() {
   "$BIN/sksync" --dir "$a" --app hisab sync >"$LOG/e2-first.log" 2>&1 & pid=$!   # the binary itself, so kill -9 hits it
   wait_for 120 bash -c "[ \"\$(psql '${pg%%\?*}' -qAtc 'SELECT count(*) FROM sk_records' 2>/dev/null || echo 0)\" -ge 500 ]" || fail "push never started"
   kill -9 $pid; wait $pid 2>/dev/null || true
-  local n; n=$(q "$pg" "SELECT count(*) FROM sk_records")
+  local n; n=$(q "$pg" "SELECT count(*) FROM sk_records WHERE collection <> 'devices'")
   [ "$n" -lt 10000 ] || fail "push finished before the kill ($n)"
   [ -f "$a/sync/hisab.lock" ] || fail "expected a stale lock file after kill -9"
   ok "killed with $n/10000 rows on the server (stale lock left behind)"
   sk --dir "$a" --app hisab sync >"$LOG/e2-resume.log" || true
   jq -e '.ok and .ran and .report.conflicts==0' "$LOG/e2-resume.log" >/dev/null || fail "resume: $(cat "$LOG/e2-resume.log")"
-  [ "$(q "$pg" "SELECT count(*) FROM sk_records")" = 10000 ] || fail "server count after resume"
+  [ "$(q "$pg" "SELECT count(*) FROM sk_records WHERE collection <> 'devices'")" = 10000 ] || fail "server count after resume"
   sk --dir "$a" --app hisab status | jq -e '.pending==0 and .conflicts==0' >/dev/null || fail "pending after resume"
   sk --dir "$b" --app hisab --key "$KEY" --pg "$pg" --mode server sync | jq -e '.report.pulled==10000' >/dev/null || fail "second device pull"
   ok "resume took over the stale lock; 10000 rows exactly once; second device pulled 10000"

@@ -4,7 +4,7 @@
   // --sync-accent, --sync-accent-soft, --sync-on-accent, --sync-surface, --sync-sunk,
   // --sync-line, --sync-ink, --sync-muted, --sync-danger, --sync-ok, --sync-radius.
   import { onDestroy, onMount } from "svelte";
-  import { ago, bottomInset, bridge, syncApi, type ServerForm, type ServerView, type SyncOutcome, type SyncSettings, type SyncStatus } from "./api";
+  import { ago, bottomInset, bridge, companionInstalled, syncApi, type ServerForm, type ServerView, type SyncOutcome, type SyncSettings, type SyncStatus } from "./api";
 
   let { phone = false, onconflicts }: { phone?: boolean; onconflicts?: () => void } = $props();
 
@@ -63,15 +63,19 @@
     await load();
   }
 
+  // QA-U4: "companion" chosen but no companion app on the phone -> nothing syncs; say so.
+  const hasCompanion = companionInstalled();
+  const orphan = $derived(!!st && st.owner === "companion" && !hasCompanion);
   const head = $derived.by(() => {
     if (!st) return { title: "", sub: "" };
+    if (orphan) return { title: "Not syncing", sub: "The Selfkit companion isn't installed" };
     const [title, ...rest] = (busy ? "Syncing…" : st.headline).split(" · ");
     let sub = rest.join(" · ");
     const last = st.last_ok_at && st.last_ok_at >= (st.last_attempt_at ?? 0) ? st.last_peers : [];
     if (!busy && st.last_transport === "lan" && last.length > 1) sub += ` · also ${last.slice(1).join(", ")}`;
     return { title, sub };
   });
-  const kind = $derived(!st ? "" : !st.unlocked ? "lock" : busy || st.running ? "sync" : st.last_error && (st.last_attempt_at ?? 0) > (st.last_ok_at ?? 0) ? "off" : st.last_transport === "lan" ? "wifi" : "cloud");
+  const kind = $derived(!st ? "" : orphan ? "off" : !st.unlocked ? "lock" : busy || st.running ? "sync" : st.last_error && (st.last_attempt_at ?? 0) > (st.last_ok_at ?? 0) ? "off" : st.last_transport === "lan" ? "wifi" : "cloud");
   const nextIn = $derived(st?.next_auto_at ? Math.max(1, Math.round((st.next_auto_at - now) / 60000)) : null);
   const host = (url: string) => { try { return new URL(url.replace(/^postgres(ql)?:/, "http:")).host; } catch { return url; } };
   const dbName = (url: string) => { try { return new URL(url.replace(/^postgres(ql)?:/, "http:")).pathname.slice(1); } catch { return ""; } };
@@ -170,7 +174,10 @@
             <div class="k-ic" class:k-spin={kind === "sync"}>{@render icon(kind)}</div>
             <div class="k-grow"><div class="k-h">{head.title}</div>{#if head.sub}<div class="k-when">{head.sub}</div>{/if}</div>
           </div>
-          {#if !st.settings.enabled && st.owner !== "companion"}
+          {#if orphan}
+            <p class="k-note k-warn">This app was set to let the Selfkit companion sync it, but the companion isn't on this phone.</p>
+            <div class="k-acts"><button type="button" class="k-btn k-pri" onclick={() => saveSettings({ owner: "app" })}>Let this app sync</button></div>
+          {:else if !st.settings.enabled && st.owner !== "companion"}
             <p class="k-note">Keeps this app's data the same on your devices: directly on the same Wi-Fi, or through your own server.</p>
             <div class="k-acts"><button type="button" class="k-btn k-pri" onclick={() => (st!.test_key ? (sheet = "enable") : enableSync())}>Turn on sync</button></div>
           {:else if st.owner !== "companion"}
@@ -244,10 +251,10 @@
           <div class="k-card k-pad">
             <div class="k-seg" role="radiogroup" aria-label="Who syncs this app">
               {#each st.platform === "android" ? [["app", "This app"], ["companion", "Selfkit companion"]] : [["agent", "Background agent"], ["app", "This app"]] as [id, name]}
-                <button type="button" role="radio" aria-checked={st.owner === id} class:k-on={st.owner === id} onclick={() => saveSettings({ owner: id as SyncSettings["owner"] })}>{name}</button>
+                <button type="button" role="radio" aria-checked={st.owner === id} class:k-on={st.owner === id} disabled={id === "companion" && !hasCompanion && st.owner !== id} onclick={() => saveSettings({ owner: id as SyncSettings["owner"] })}>{name}{#if id === "companion" && !hasCompanion}<span class="k-tiny">Not installed</span>{/if}</button>
               {/each}
             </div>
-            <p class="k-hint">{st.platform === "android" ? "If you install the Selfkit companion, it can sync every app for you and this app steps back." : "On a PC the Selfkit agent syncs every app, even when they are closed."}</p>
+            <p class="k-hint">{st.platform === "android" ? hasCompanion ? "The Selfkit companion can sync every app for you; this app then steps back." : "The Selfkit companion isn't installed, so this app syncs itself." : "On a PC the Selfkit agent syncs every app, even when they are closed."}</p>
             {#if st.owner === "app"}
               <div class="k-row k-flat"><div class="k-grow"><div class="k-t">Automatic</div><div class="k-s">On open and every {st.settings.background_minutes} minutes</div></div>
                 {@render toggle(st.settings.auto_sync, "Automatic sync", () => saveSettings({ auto_sync: !st!.settings.auto_sync }))}</div>
@@ -405,6 +412,8 @@
   .k-seg { display: flex; background: var(--sunk); border-radius: 12px; padding: 3px; gap: 3px; }
   .k-seg button { flex: 1; min-height: 38px; border-radius: 9px; font: inherit; font-weight: 550; color: var(--mut); background: none; border: 0; cursor: pointer; font-size: 13.5px; }
   .k-seg button.k-on { background: var(--surf); color: var(--ink-c); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+  .k-seg button:disabled { cursor: default; opacity: 0.55; }
+  .k-seg .k-tiny { display: block; font-size: 11px; font-weight: 500; }
   .k-hint { color: var(--mut); font-size: 12.5px; margin: 10px 2px 0; }
   .k-tip { align-items: flex-start; background: var(--sunk); }
   .k-spin :global(svg) { animation: sks-spin 1s linear infinite; }

@@ -1,6 +1,7 @@
 <script lang="ts">
   // One Today tile: label + app marker, one big value, one plain line.
-  // A missing app shows a dashed card that says so.
+  // A missing app (or no data today) shows a dashed card that says which.
+  // On phones `installed` means Reflect has a mirror of that app (SelfkitMirror).
   import type { AppKey, Tile } from "../lib/api";
   import { APP_NAMES } from "../lib/fmt";
   import Src from "./Src.svelte";
@@ -22,7 +23,7 @@
 {:else}
   <div class="missing flex min-h-[120px] flex-col px-4 pt-3.5 pb-[15px]">
     <div class="text-[13px] font-semibold text-ink2">{label}</div>
-    <div class="mt-3 text-[15px] font-semibold text-ink2">{mobile ? `${APP_NAMES[app]} data isn't here yet` : installed ? `No ${APP_NAMES[app]} data yet` : `${APP_NAMES[app]} isn't installed`}</div>
-    <div class="mt-1.5 text-[13px] leading-[1.35] text-muted">{mobile ? "Phones can't share app data yet. Open Reflect on your PC." : why[app]}</div>
+    <div class="mt-3 text-[15px] font-semibold text-ink2">{installed ? `No ${APP_NAMES[app]} data yet` : `${APP_NAMES[app]} isn't installed`}</div>
+    <div class="mt-1.5 text-[13px] leading-[1.35] text-muted">{installed ? "Nothing for today so far." : why[app]}</div>
   </div>
 {/if}

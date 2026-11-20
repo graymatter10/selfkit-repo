@@ -75,7 +75,8 @@ fn boot(state: State<AppState>) -> R<Value> {
 }
 
 /// Everything the screens need except the transaction list.
-#[tauri::command]
+// async: runs off the main (UI) thread, so a busy database never freezes typing.
+#[tauri::command(async)]
 fn snapshot(state: State<AppState>, month: String) -> R<Value> {
     let main = main_currency(&state);
     let store = state.store.lock().unwrap();
@@ -120,7 +121,8 @@ fn all_tags(d: &stats::Data) -> Vec<String> {
     v.into_iter().map(|x| x.0).collect()
 }
 
-#[tauri::command]
+// async: runs off the main (UI) thread, so a busy database never freezes typing.
+#[tauri::command(async)]
 fn transactions(state: State<AppState>, filter: stats::Filter) -> R<Vec<Value>> {
     let main = main_currency(&state);
     let store = state.store.lock().unwrap();
@@ -128,7 +130,8 @@ fn transactions(state: State<AppState>, filter: stats::Filter) -> R<Vec<Value>> 
     Ok(stats::filter_tx(&d, &filter))
 }
 
-#[tauri::command]
+// async: runs off the main (UI) thread, so a busy database never freezes typing.
+#[tauri::command(async)]
 fn trends(state: State<AppState>, month: String) -> R<Value> {
     let main = main_currency(&state);
     let store = state.store.lock().unwrap();
@@ -137,7 +140,8 @@ fn trends(state: State<AppState>, month: String) -> R<Value> {
 }
 
 /// Create (id = None) or replace a record after validation.
-#[tauri::command]
+// async: runs off the main (UI) thread, so a busy database never freezes typing.
+#[tauri::command(async)]
 fn save(app: AppHandle, state: State<AppState>, collection: String, id: Option<String>, data: Value, draft: Option<Value>) -> R<Value> {
     let main = main_currency(&state);
     let rec = {
@@ -167,12 +171,14 @@ fn save(app: AppHandle, state: State<AppState>, collection: String, id: Option<S
     Ok(rec)
 }
 
-#[tauri::command]
+// async: runs off the main (UI) thread, so a busy database never freezes typing.
+#[tauri::command(async)]
 fn get(state: State<AppState>, id: String) -> R<Option<Value>> {
     model::get(&state.store.lock().unwrap(), &id)
 }
 
-#[tauri::command]
+// async: runs off the main (UI) thread, so a busy database never freezes typing.
+#[tauri::command(async)]
 fn remove(app: AppHandle, state: State<AppState>, id: String) -> R<()> {
     state.store.lock().unwrap().delete(&id).map_err(e)?;
     reminders::cancel(&app, &id);
@@ -180,7 +186,8 @@ fn remove(app: AppHandle, state: State<AppState>, id: String) -> R<()> {
     Ok(())
 }
 
-#[tauri::command]
+// async: runs off the main (UI) thread, so a busy database never freezes typing.
+#[tauri::command(async)]
 fn restore(app: AppHandle, state: State<AppState>, id: String) -> R<()> {
     let rec = {
         let store = state.store.lock().unwrap();
@@ -344,7 +351,8 @@ fn export_to_pictures(id: &str, ext: &str, bytes: &[u8]) -> Result<String, Strin
     Ok(path.display().to_string())
 }
 
-#[tauri::command]
+// async: runs off the main (UI) thread, so a busy database never freezes typing.
+#[tauri::command(async)]
 fn prefs_set(app: AppHandle, state: State<AppState>, prefs: Value) -> R<()> {
     state.store.lock().unwrap().kv_set("hisab.prefs", &prefs.to_string()).map_err(e)?;
     let _ = app.emit("prefs-changed", &prefs);
@@ -353,7 +361,8 @@ fn prefs_set(app: AppHandle, state: State<AppState>, prefs: Value) -> R<()> {
 
 /// The add-screen draft, kept in SQLite so Back, a kill or a restart never
 /// loses typed input (webview localStorage may not be flushed in time).
-#[tauri::command]
+// async: runs off the main (UI) thread, so a busy database never freezes typing.
+#[tauri::command(async)]
 fn draft_set(state: State<AppState>, draft: Value) -> R<()> {
     state.store.lock().unwrap().kv_set("hisab.draft", &draft.to_string()).map_err(e)
 }

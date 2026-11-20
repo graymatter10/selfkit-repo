@@ -687,7 +687,7 @@ impl AppSync {
             let (id, name) = (format!("dev-{}", self.device_id()?), self.device_name());
             let platform = if cfg!(target_os = "android") { "android" } else { std::env::consts::OS };
             if s.get(&id)?.map(|r| r.data["name"] != name.as_str() || r.deleted).unwrap_or(true) {
-                s.put("devices", Some(&id), &serde_json::json!({"name": name, "platform": platform}))?;
+                s.put(selfkit_core::store::DEVICES, Some(&id), &serde_json::json!({"name": name, "platform": platform}))?;
             }
         }
         let server_cfg = self.server_config()?;

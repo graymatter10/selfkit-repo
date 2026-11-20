@@ -354,10 +354,11 @@ mod tests {
         assert_eq!(ra.received, 1);
         assert_eq!(rb.received, 0);
 
-        // Concurrent edit -> conflict on both, nothing lost.
+        // Concurrent edit of long text -> conflict on both, nothing lost (short fields auto-merge).
         let id = t.id.clone();
-        a["hisab"].put("transactions", Some(&id), &json!({"amount": 4})).unwrap();
-        b["hisab"].put("transactions", Some(&id), &json!({"amount": 5})).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20)); // both edits newer than the shared version
+        a["hisab"].put("transactions", Some(&id), &json!({"note": "n\nfour"})).unwrap();
+        b["hisab"].put("transactions", Some(&id), &json!({"note": "n\nfive"})).unwrap();
         let (ra, rb, _) = sync_pair(&keys, &mut a, &mut b).await;
         assert_eq!((ra.conflicts, rb.conflicts), (1, 1));
     }

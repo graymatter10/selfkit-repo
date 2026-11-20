@@ -45,7 +45,7 @@ jobs:
           echo "agent=$agent" >> "$GITHUB_OUTPUT"; echo "suite=$suite" >> "$GITHUB_OUTPUT"
           echo "agent $agent, suite $suite"
       - name: Rust tests (agent + core)
-        run: cargo test -p selfkit-core -p selfkit-agent
+        run: cargo test --no-fail-fast -p selfkit-core -p selfkit-agent
       - name: Agent release build
         run: cargo build --release -p selfkit-agent
       - name: App installers (Tauri NSIS)

@@ -543,7 +543,7 @@ async fn server_ten_thousand_and_interrupted_push_resumes() {
     let watch = async {
         loop {
             tokio::time::sleep(Duration::from_millis(20)).await;
-            if let Ok(r) = c.query_one("SELECT count(*) FROM sk_records", &[]).await
+            if let Ok(r) = c.query_one("SELECT count(*) FROM sk_records WHERE collection <> 'devices'", &[]).await
                 && r.get::<_, i64>(0) >= 300
             {
                 return;
@@ -554,14 +554,14 @@ async fn server_ten_thousand_and_interrupted_push_resumes() {
         o = a.sync.sync_now(Trigger::Manual) => panic!("pass finished before it could be interrupted: {o:?}"),
         _ = watch => {}
     }
-    let n: i64 = c.query_one("SELECT count(*) FROM sk_records", &[]).await.unwrap().get(0);
+    let n: i64 = c.query_one("SELECT count(*) FROM sk_records WHERE collection <> 'devices'", &[]).await.unwrap().get(0);
     assert!(n > 0 && n < 10_000, "partial push expected, got {n}");
     assert!(a.pending() > 0);
     // Resume: everything arrives exactly once, no conflicts.
     let o = a.sync().await;
     assert_eq!(o.report.conflicts, 0);
     assert_eq!(a.pending(), 0);
-    let n: i64 = c.query_one("SELECT count(*) FROM sk_records", &[]).await.unwrap().get(0);
+    let n: i64 = c.query_one("SELECT count(*) FROM sk_records WHERE collection <> 'devices'", &[]).await.unwrap().get(0);
     assert_eq!(n, 10_000);
     let b = dev("hisab", "PC", &key, Some(&srv), TransportMode::ServerOnly, &[]);
     assert_eq!(b.sync().await.report.pulled, 10_000);
@@ -613,7 +613,7 @@ async fn server_wrong_key_rejected_before_any_push() {
     let o = intruder.sync.sync_now(Trigger::Manual).await;
     assert!(!o.ok);
     assert!(o.error.as_deref().unwrap().contains("encryption key"), "{o:?}");
-    let n: i64 = pg(&srv.pg_url).await.query_one("SELECT count(*) FROM sk_records", &[]).await.unwrap().get(0);
+    let n: i64 = pg(&srv.pg_url).await.query_one("SELECT count(*) FROM sk_records WHERE collection <> 'devices'", &[]).await.unwrap().get(0);
     assert_eq!(n, 1, "nothing pushed with the wrong key");
     assert!(intruder.sync.test_server(&srv).await.unwrap_err().contains("encryption key"));
     // Unlocking with the right key fixes it.
@@ -634,7 +634,7 @@ async fn server_schema_newer_is_refused() {
     let o = a.sync.sync_now(Trigger::Manual).await;
     assert!(!o.ok);
     assert!(o.error.as_deref().unwrap().contains("newer Selfkit version"), "{o:?}");
-    let n: i64 = c.query_one("SELECT count(*) FROM sk_records", &[]).await.unwrap().get(0);
+    let n: i64 = c.query_one("SELECT count(*) FROM sk_records WHERE collection <> 'devices'", &[]).await.unwrap().get(0);
     assert_eq!(n, 0);
     c.execute("DELETE FROM sk_schema WHERE version=99", &[]).await.unwrap();
     assert_eq!(a.sync().await.report.pushed, 1);
