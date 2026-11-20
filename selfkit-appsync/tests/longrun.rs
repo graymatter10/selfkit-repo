@@ -187,6 +187,7 @@ enum OF {
 
 #[derive(Clone, Debug)]
 struct ORec {
+    id: String,
     app: String,
     coll: String,
     del: (bool, i64),
@@ -203,14 +204,15 @@ struct Oracle {
 
 impl Oracle {
     fn rec(&mut self, app: &str, coll: &str, id: &str, legacy: bool, today: &str) -> &mut ORec {
-        if !self.recs.contains_key(id) {
+        let key = okey(app, id);
+        if !self.recs.contains_key(&key) {
             self.by_coll.entry((app.into(), coll.into())).or_default().push(id.into());
             self.recs.insert(
-                id.into(),
-                ORec { app: app.into(), coll: coll.into(), del: (false, 0), f: BTreeMap::new(), legacy, created: today.into() },
+                key.clone(),
+                ORec { id: id.into(), app: app.into(), coll: coll.into(), del: (false, 0), f: BTreeMap::new(), legacy, created: today.into() },
             );
         }
-        self.recs.get_mut(id).unwrap()
+        self.recs.get_mut(&key).unwrap()
     }
 
     fn set_scalar(r: &mut ORec, k: &str, v: Value, t: i64) {
@@ -301,8 +303,8 @@ impl Oracle {
         }
     }
 
-    fn set_deleted(&mut self, id: &str, del: bool, t: i64) {
-        if let Some(r) = self.recs.get_mut(id)
+    fn set_deleted(&mut self, app: &str, id: &str, del: bool, t: i64) {
+        if let Some(r) = self.recs.get_mut(&okey(app, id))
             && t >= r.del.1
         {
             r.del = (del, t);
@@ -311,8 +313,8 @@ impl Oracle {
 
     /// The user settled a conflict: what the device now holds is what they want, with
     /// the store's own field clocks (a newer edit elsewhere still wins).
-    fn adopt(&mut self, rec: &selfkit_core::Record) {
-        let Some(r) = self.recs.get_mut(&rec.id) else { return };
+    fn adopt(&mut self, app: &str, rec: &selfkit_core::Record) {
+        let Some(r) = self.recs.get_mut(&okey(app, &rec.id)) else { return };
         let exp = Self::expected(r);
         let empty = Map::new();
         let em = exp.as_object().unwrap_or(&empty);
@@ -333,9 +335,9 @@ impl Oracle {
 
     /// Replace the model of a record with what a device holds (after a finding, so one
     /// bug isn't reported again at every check).
-    fn reset_to(&mut self, id: &str, data: &Value, deleted: bool) {
+    fn reset_to(&mut self, app: &str, id: &str, data: &Value, deleted: bool) {
         let t = selfkit_core::time::now_ms();
-        if let Some(r) = self.recs.get_mut(id) {
+        if let Some(r) = self.recs.get_mut(&okey(app, id)) {
             r.f.clear();
             for (k, v) in data.as_object().cloned().unwrap_or_default() {
                 Self::field(r, &k, &Value::Null, &v, t, false);
@@ -368,6 +370,10 @@ impl Oracle {
         let i = if rng.chance(0.85) { rng.range((n - 300).max(0), n - 1) } else { rng.range(0, n - 1) };
         Some(v[i as usize].clone())
     }
+}
+
+fn okey(app: &str, id: &str) -> String {
+    format!("{app}/{id}")
 }
 
 fn same_field(f: Option<&OF>, actual: &Value) -> bool {
@@ -427,7 +433,7 @@ fn diff_record(r: &ORec, data: &Value, deleted: bool) -> Vec<(String, String, St
             Some(OF::S(..)) => "field has an older/other value",
             None => "unknown field",
         };
-        let ev = f.map(|f| Oracle::expected(&ORec { app: String::new(), coll: String::new(), del: (false, 0), f: BTreeMap::from([(k.to_string(), f.clone())]), legacy: false, created: String::new() })[k.as_str()].clone()).unwrap_or(Value::Null);
+        let ev = f.map(|f| Oracle::expected(&ORec { id: String::new(), app: String::new(), coll: String::new(), del: (false, 0), f: BTreeMap::from([(k.to_string(), f.clone())]), legacy: false, created: String::new() })[k.as_str()].clone()).unwrap_or(Value::Null);
         out.push((kind.to_string(), k.to_string(), short(&ev), short(&av)));
     }
     out
@@ -627,6 +633,7 @@ struct Sim {
     away: bool,
     seq: u64,
     checks: u64,
+    real_ids: bool,
 }
 
 fn names() -> (&'static [&'static str], &'static [&'static str]) {
@@ -639,6 +646,15 @@ fn names() -> (&'static [&'static str], &'static [&'static str]) {
 impl Sim {
     fn today(&self) -> String {
         date(self.day)
+    }
+    /// Real app ids clash across apps on the server (bugs-longrun.md R-1): `settings` in
+    /// Chrono/Dusk/Reflect, `n-<date>` in Dusk/Chrono. Until that is fixed the run uses
+    /// app-unique ids for Dusk and Reflect unless SELFKIT_LONGRUN_REAL_IDS=1.
+    fn night_id(&self, night: &str) -> String {
+        if self.real_ids { format!("n-{night}") } else { format!("dn-{night}") }
+    }
+    fn settings_id(&self, app: &str) -> String {
+        if self.real_ids { "settings".into() } else { format!("{app}-settings") }
     }
     fn year(&self) -> i64 {
         self.di / 365 + 1
@@ -696,7 +712,7 @@ impl Sim {
         let was_deleted = old.as_ref().map(|r| r.deleted).unwrap_or(false);
         self.o.edit(app, coll, &rec.id, old.as_ref().map(|r| &r.data), &rec.data, rec.updated_at, legacy, &today);
         if was_deleted {
-            self.o.set_deleted(&rec.id, false, rec.updated_at);
+            self.o.set_deleted(app, &rec.id, false, rec.updated_at);
         }
         self.seq += 1;
         rec.id
@@ -707,7 +723,7 @@ impl Sim {
         if deleted { st.delete(id).unwrap() } else { st.restore(id).unwrap() }
         after_op();
         let t = st.get(id).unwrap().unwrap().updated_at;
-        self.o.set_deleted(id, deleted, t);
+        self.o.set_deleted(app, id, deleted, t);
         self.seq += 1;
     }
     /// Live local copy (what the user sees on that device).
@@ -962,7 +978,7 @@ impl Sim {
             let jit = |x: f64, rng: &mut Rng| ((x * (1.0 + (rng.below(200) as f64 - 100.0) / 5000.0)) * 10000.0).round() / 10000.0;
             r["rates"] = json!({"BDT": jit(110.0, &mut self.rng), "EUR": jit(0.92, &mut self.rng), "INR": jit(83.0, &mut self.rng)});
             r["fetched_at"] = json!(sim_ms(self.day, SLOT_MIN[0], self.tz));
-            self.put(i, "hisab", "hisab-rates", Some("hisab-rates"), r);
+            self.put(i, "hisab", "rates", Some("hisab-rates"), r);
         }
         for rid in ["rec-rent", "rec-net", "rec-ins", "rec-gym"] {
             let Some(mut r) = self.local(i, "hisab", rid) else { continue };
@@ -1254,7 +1270,7 @@ impl Sim {
     // ---- dusk ----
 
     fn dusk_morning(&mut self, i: usize) {
-        let id = format!("n-{}", self.today());
+        let id = self.night_id(&self.today());
         let mut v = self.local(i, "dusk", &id).unwrap_or(json!({"night": self.today(), "kind": "main", "bed": null, "wake": null, "tz_offset": self.tz,
             "quality": null, "note_before": null, "note_after": null, "created_at": sim_ms(self.day, 7 * 60, self.tz)}));
         v["quality"] = json!(self.rng.range(1, 5));
@@ -1272,7 +1288,7 @@ impl Sim {
         // "Before bed" note is filed under tomorrow's night (same deterministic id the
         // phone uses in the morning).
         let night = date(self.day + 1);
-        let id = format!("n-{night}");
+        let id = self.night_id(&night);
         let mut v = self.local(i, "dusk", &id).unwrap_or(json!({"night": night, "kind": "main", "bed": null, "wake": null, "tz_offset": self.tz,
             "quality": null, "note_before": null, "note_after": null, "created_at": sim_ms(self.day, 22 * 60, self.tz)}));
         v["note_before"] = json!(self.rng.pick(&["tea late", "screen until 1", "workout", "calm evening"]));
@@ -1291,19 +1307,21 @@ impl Sim {
         }
     }
     fn dusk_settings(&mut self, i: usize) {
-        let mut s = self.local(i, "dusk", "settings").unwrap_or(json!({"goal_min": 480, "bedtime": "23:00", "winddown_min": 30}));
+        let sid = self.settings_id("dusk");
+        let mut s = self.local(i, "dusk", &sid).unwrap_or(json!({"goal_min": 480, "bedtime": "23:00", "winddown_min": 30}));
         match self.rng.below(3) {
             0 => s["goal_min"] = json!(self.rng.range(14, 18) * 30),
             1 => s["bedtime"] = json!(format!("{:02}:{:02}", self.rng.pick(&[22, 23, 0]), self.rng.pick(&[0, 30]))),
             _ => s["winddown_min"] = json!(self.rng.pick(&[15, 30, 45])),
         }
-        self.put(i, "dusk", "dusk_settings", Some("settings"), s);
+        self.put(i, "dusk", "dusk_settings", Some(&sid), s);
     }
 
     // ---- reflect + shared settings ----
 
     fn reflect_settings(&mut self, i: usize) {
-        let mut s = self.local(i, "reflect", "settings").unwrap_or(json!({"streaks": [
+        let sid = self.settings_id("reflect");
+        let mut s = self.local(i, "reflect", &sid).unwrap_or(json!({"streaks": [
             {"id": "phone", "kind": "phone_under", "value": 180, "on": true}, {"id": "budget", "kind": "budget", "value": 0, "on": true},
             {"id": "sleep", "kind": "asleep_by", "value": 0, "on": true}, {"id": "tasks", "kind": "tasks_min", "value": 3, "on": true}],
             "lookback_days": 30, "week_start": 0}));
@@ -1329,7 +1347,7 @@ impl Sim {
                 s["streaks"] = json!(v);
             }
         }
-        self.put(i, "reflect", "reflect_settings", Some("settings"), s);
+        self.put(i, "reflect", "reflect_settings", Some(&sid), s);
     }
 
     fn shared_settings(&mut self, i: usize, edit: impl FnOnce(&mut Value, &mut Rng)) {
@@ -1509,7 +1527,7 @@ impl Sim {
             self.devs[i].st(store).conn().execute("UPDATE records SET fclock='{}' WHERE id=?", [&rec.id]).unwrap();
         }
         *self.conflicts.entry("(resolved by the user)".into()).or_default() += 1;
-        self.o.adopt(&rec);
+        self.o.adopt(store, &rec);
     }
 
     async fn resolve_all(&mut self) {
@@ -1618,8 +1636,9 @@ impl Sim {
         }
         // Oracle: nothing lost or resurrected.
         let mut todo = vec![];
-        for (id, r) in &self.o.recs {
-            let store = if r.app == "settings" { "settings" } else { r.app.as_str() };
+        for r in self.o.recs.values() {
+            let id = &r.id;
+            let store = r.app.as_str();
             match pc_dumps[store].get(id) {
                 None => todo.push((id.clone(), r.app.clone(), r.coll.clone(), vec![("record missing".to_string(), "_".to_string(), "exists".to_string(), "missing".to_string())], None)),
                 Some((_, data, del)) => {
@@ -1637,12 +1656,12 @@ impl Sim {
                 self.finding(&kind, &app, &coll, &id, &field, exp, act, note);
             }
             if let Some((data, del, _, _)) = actual {
-                self.o.reset_to(&id, &data, del);
+                self.o.reset_to(&app, &id, &data, del);
             }
         }
         for s in STORES {
             for (id, (coll, _, _)) in &pc_dumps[s] {
-                if coll != selfkit_core::store::DEVICES && !self.o.recs.contains_key(id) {
+                if coll != selfkit_core::store::DEVICES && !self.o.recs.contains_key(&okey(s, id)) {
                     let (s, coll, id) = (s.to_string(), coll.clone(), id.clone());
                     self.finding("record nobody created", &s, &coll, &id, "", "absent".into(), "present".into(), format!("check {label}"));
                 }
@@ -1760,8 +1779,9 @@ impl Sim {
 
     fn write_report(&mut self) {
         let mut r = String::new();
-        r.push_str(&format!("# Long-run simulation report\n\nSeed {} · {} simulated days ({} → {}) · reached day {} ({}) · {} checks · {} user writes · {} records in the model\n\n",
-            std::env::var("SELFKIT_LONGRUN_SEED").unwrap_or("1".into()), self.n, date(self.start), date(self.start + self.n - 1), self.di, self.today(), self.checks, self.seq, self.o.recs.len()));
+        r.push_str(&format!("# Long-run simulation report\n\nSeed {} · {} simulated days ({} → {}) · reached day {} ({}) · {} checks · {} user writes · {} records in the model · {}\n\n",
+            std::env::var("SELFKIT_LONGRUN_SEED").unwrap_or("1".into()), self.n, date(self.start), date(self.start + self.n - 1), self.di, self.today(), self.checks, self.seq, self.o.recs.len(),
+            if self.real_ids { "real app ids" } else { "app-unique Dusk/Reflect ids (R-1 workaround)" }));
         r.push_str("## Findings (category | app/collection.field → count)\n\n");
         if self.finding_keys.is_empty() {
             r.push_str("None.\n");
@@ -2101,6 +2121,7 @@ async fn longrun_years_of_use() {
         away: false,
         seq: 0,
         checks: 0,
+        real_ids: std::env::var("SELFKIT_LONGRUN_REAL_IDS").as_deref() == Ok("1"),
     };
     sim.shared_settings(A, |s, _| s["main_currency"] = json!("USD"));
     sim.hisab_setup(A);
