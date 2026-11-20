@@ -71,14 +71,22 @@ pub async fn pass(key: &SecretKey, cfg: &LanPassConfig, stores: &mut HashMap<Str
         let shared = discovery::bind(dport).ok();
         if let Some(p) = &probe {
             let _ = p.set_broadcast(true);
-            let pkt = discovery::encode(
-                &keys,
-                &discovery::Beacon { device_id: cfg.device_id.clone(), name: cfg.device_name.clone(), port: my_port, ts: time::now_ms() },
-            );
-            if let Err(e) = p.send_to(&pkt, discovery::broadcast_addr(dport)).await {
-                tracing::debug!("lan beacon broadcast: {e}");
-            }
         }
+        // Beacon now and every 700 ms while we listen: a peer whose own short pass starts a
+        // moment later still hears us while our listener is open (S-6: two "Sync now" passes
+        // 1-2 s apart never met with a single beacon at the start).
+        let beacon = || async {
+            if let Some(p) = &probe {
+                let pkt = discovery::encode(
+                    &keys,
+                    &discovery::Beacon { device_id: cfg.device_id.clone(), name: cfg.device_name.clone(), port: my_port, ts: time::now_ms() },
+                );
+                if let Err(e) = p.send_to(&pkt, discovery::broadcast_addr(dport)).await {
+                    tracing::debug!("lan beacon broadcast: {e}");
+                }
+            }
+        };
+        let mut tick = tokio::time::interval(Duration::from_millis(700));
         let deadline = tokio::time::Instant::now() + cfg.discovery_wait;
         let (mut b1, mut b2) = ([0u8; 2048], [0u8; 2048]);
         loop {
@@ -102,6 +110,7 @@ pub async fn pass(key: &SecretKey, cfg: &LanPassConfig, stores: &mut HashMap<Str
             };
             let pkt = tokio::select! {
                 _ = tokio::time::sleep_until(deadline) => break,
+                _ = tick.tick() => { beacon().await; None }
                 r = recv_probe => r.ok(),
                 r = recv_shared => r.ok(),
                 r = accept => {
@@ -127,6 +136,17 @@ pub async fn pass(key: &SecretKey, cfg: &LanPassConfig, stores: &mut HashMap<Str
                 if !discovered.iter().any(|(id, _)| *id == b.device_id) {
                     discovered.push((b.device_id.clone(), addr));
                     res.seen.insert(b.device_id.clone(), (b.name.clone(), addr));
+                    // Its listener is open right now (its pass may end before ours): connect
+                    // at once instead of after our window (S-6).
+                    if !done_ids.contains(&b.device_id) {
+                        match connect_out(addr, &keys, cfg, stores).await {
+                            Ok(rep) => {
+                                done_ids.insert(rep.peer_id.clone());
+                                res.sessions.push((addr, rep));
+                            }
+                            Err(e) => res.errors.push((addr.to_string(), e)),
+                        }
+                    }
                 }
             }
         }

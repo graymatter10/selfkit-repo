@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The notification plugin finds the small icon by name at run time (getIdentifier), so
+     nothing references it from code; keep it if resource shrinking is ever turned on (P3). -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@drawable/ic_stat_dusk" />

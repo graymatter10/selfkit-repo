@@ -100,7 +100,10 @@ async fn serve_phase<S: AsyncRead + AsyncWrite + Unpin + Send>(
                 // Versions written by the asking peer came from it: don't echo them back.
                 // The phone's first push of 6458 Chrono records used to return all of them
                 // on the next pass (S-4). The cursor still moves past them (`upto`).
-                let records: Vec<Record> = changes.into_iter().map(|(r, _)| r).filter(|r| r.device_id != peer).collect();
+                // Only while the peer has synced with us before (since > 0): a device with
+                // a fresh database (reinstall, data cleared, same device id) pulls from 0 and
+                // must get its own records back (C85).
+                let records: Vec<Record> = changes.into_iter().map(|(r, _)| r).filter(|r| since == 0 || r.device_id != peer).collect();
                 rep.sent += records.iter().filter(|r| r.is_user_data()).count() as u64;
                 ch.send(&Msg::Batch { app, records, upto, more }).await?;
             }

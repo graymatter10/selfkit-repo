@@ -49,5 +49,5 @@
       {#each done as l (l.id)}<button type="button" class="hl flex h-12 w-full items-center justify-between border-b border-sep px-4 text-left text-[15px] last:border-0" onclick={() => openSheet({ kind: "loan", id: l.id })}><span class="truncate text-ink2">{l.person}{l.title ? ` · ${l.title}` : ""}</span><span class="num text-[13px] text-muted">{money(l.amount, l.currency)} · repaid</span></button>{/each}
     </div>
   {/if}
-  <button type="button" class="press flex h-[52px] items-center justify-center gap-1.5 rounded-[14px] bg-accent text-[17px] font-semibold text-on-accent {desktop ? 'w-60' : ''}" onclick={() => openSheet({ kind: "loan" })}><Ic name="plus" size={20} stroke={2.2} />New loan</button>
+  <button type="button" class="press flex h-[52px] items-center justify-center gap-1.5 rounded-[14px] bg-accent text-[17px] font-semibold text-on-accent {desktop ? 'w-60' : ''}" onclick={() => openSheet({ kind: "loan", direction: dir })}><Ic name="plus" size={20} stroke={2.2} />New loan</button>
 </div>

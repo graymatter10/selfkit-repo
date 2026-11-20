@@ -168,6 +168,10 @@
 
 <div class="sks" class:k-phone={phone}>
   {#if st}
+    {#if st.secrets_in_file}
+      <!-- C80: no system keyring on this desktop; secrets are in a 0600 file (docs/security.md). -->
+      <p class="k-s" style="margin:0 0 10px">No system keyring found — your sync keys are stored in a protected file in the Selfkit data folder. Install a keyring (e.g. GNOME Keyring/KWallet) for extra protection.</p>
+    {/if}
     {#if st.test_key}
       <!-- Security (docs/security.md): the built-in test key is public. Anyone with a test build,
            on the same Wi-Fi or with access to the server, can read and change data synced with it. -->
@@ -218,7 +222,7 @@
                 <div class="k-grow"><div class="k-t">{p.name}</div><div class="k-s">Seen {ago(now, p.last_seen)}{p.last_sync ? ` · synced ${ago(now, p.last_sync)}` : ""}</div></div>
                 {#if here(p.last_seen) && lanLive}<span class="k-pill"><span class="k-okdot"></span>Here</span>{/if}</div>
             {/each}
-            {#if !st.peers.length && st.settings.lan_enabled}<div class="k-row"><div class="k-s">No devices seen yet. Your PC needs the Selfkit agent running on the same network.</div></div>{/if}
+            {#if !st.peers.length && st.settings.lan_enabled}<div class="k-row"><div class="k-s">No devices seen yet. {st.platform === "android" ? "Your PC needs the Selfkit agent running on the same network." : "Your other devices need Selfkit open (or the agent running) on the same network."}</div></div>{/if}
           </div>
         </section>
       </div>

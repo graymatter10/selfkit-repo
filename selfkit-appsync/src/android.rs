@@ -158,8 +158,11 @@ fn run(app: &str, data_dir: &str, wrap: Option<Vec<u8>>, device_name: &str, meth
                 }
                 let stores = sync.open_stores()?;
                 let s = stores.get(app).ok_or_else(|| selfkit_core::Error::NotFound("store".into()))?;
-                let (sql, rows) = table_dump(s, name)?;
-                json!({"ok": true, "sql": sql, "rows": rows})
+                // Paged (offset/limit) so one cursor row stays under Android's ~2 MB
+                // CursorWindow; no limit = whole table (older mirrors).
+                let (offset, limit) = (args["offset"].as_i64().unwrap_or(0).max(0), args["limit"].as_i64().unwrap_or(-1));
+                let (sql, rows, count) = table_dump(s, name, offset, limit)?;
+                json!({"ok": true, "sql": sql, "rows": rows, "count": count})
             }
             "mirror_table" => {
                 let from = args["store"].as_str().unwrap_or("");
@@ -187,12 +190,17 @@ fn table_columns(s: &selfkit_core::Store, name: &str) -> selfkit_core::Result<Ve
     Ok(cols)
 }
 
-/// The table's CREATE statement and all rows as one JSON array of objects.
-fn table_dump(s: &selfkit_core::Store, name: &str) -> selfkit_core::Result<(String, String)> {
+/// The table's CREATE statement, one page of rows (rowid order; `limit` -1 = all) as a
+/// JSON array of objects, and how many rows that page holds.
+fn table_dump(s: &selfkit_core::Store, name: &str, offset: i64, limit: i64) -> selfkit_core::Result<(String, String, i64)> {
     let sql: String = s.conn().query_row("SELECT sql FROM sqlite_master WHERE type='table' AND name=?1", [name], |r| r.get(0))?;
     let obj = table_columns(s, name)?.iter().map(|c| format!("'{c}', \"{c}\"")).collect::<Vec<_>>().join(", ");
-    let rows: String = s.conn().query_row(&format!("SELECT COALESCE(json_group_array(json_object({obj})), '[]') FROM \"{name}\""), [], |r| r.get(0))?;
-    Ok((sql, rows))
+    let (rows, count): (String, i64) = s.conn().query_row(
+        &format!("SELECT COALESCE(json_group_array(json_object({obj})), '[]'), COUNT(*) FROM (SELECT * FROM \"{name}\" ORDER BY rowid LIMIT ?1 OFFSET ?2)"),
+        [limit, offset],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    Ok((sql, rows, count))
 }
 
 /// Replace the mirror's copy of a shared table (recreated from the source's schema).
@@ -207,7 +215,7 @@ fn table_replace(s: &selfkit_core::Store, name: &str, create: &str, rows: &str) 
     let cols = table_columns(s, name)?;
     let list = cols.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
     let vals = cols.iter().map(|c| format!("json_extract(value, '$.{c}')")).collect::<Vec<_>>().join(", ");
-    let n = s.conn().execute(&format!("INSERT INTO \"{name}\" ({list}) SELECT {vals} FROM json_each(?1)"), [rows])?;
+    let n = s.conn().execute(&format!("INSERT OR REPLACE INTO \"{name}\" ({list}) SELECT {vals} FROM json_each(?1)"), [rows])?;
     tx.commit()?;
     Ok(n)
 }

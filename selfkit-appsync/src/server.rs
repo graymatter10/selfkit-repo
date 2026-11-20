@@ -122,15 +122,26 @@ pub async fn sync_photos(blobs: &BlobStore, key: &SecretKey, store: &mut Store, 
     Ok(())
 }
 
-/// Publish this device's `keys.json` (wrapped keys only) when it differs from the server copy.
+/// Publish this device's `keys.json` (wrapped keys only) when the server has none or an
+/// older one (`changed_at`). Before, any difference uploaded, so a device that still had the
+/// pre-change file put the old passphrase back after a passphrase change (R-2).
 pub async fn upload_keyfile(remote: &PgRemote, s3: Option<&S3Config>, path: &Path) -> Result<()> {
     let Ok(local) = std::fs::read_to_string(path) else { return Ok(()) };
-    if remote.meta_get(KEYFILE).await?.as_deref() != Some(local.as_str()) {
+    let stamp = |t: &str| serde_json::from_str::<selfkit_core::keys::KeyFile>(t).map(|k| k.changed_at).unwrap_or(0);
+    let server = remote.meta_get(KEYFILE).await?;
+    if server.as_deref().is_none_or(|srv| srv != local && stamp(&local) > stamp(srv)) {
         remote.meta_set(KEYFILE, &local).await?;
         if let Some(s3) = s3 {
             // Same place the desktop agent uses (restore, `selfkit-agent unlock`).
             let _ = BlobStore::new(s3.clone())?.put_bundle("_keys", "keys.json", path).await;
         }
+    } else if let Some(srv) = server.as_deref()
+        && stamp(srv) > stamp(&local)
+        && serde_json::from_str::<selfkit_core::keys::KeyFile>(srv).is_ok()
+    {
+        // The passphrase was changed on another device: keep its newer file here too, so
+        // this device publishes nothing stale and unlocks with the new passphrase later.
+        std::fs::write(path, srv)?;
     }
     Ok(())
 }

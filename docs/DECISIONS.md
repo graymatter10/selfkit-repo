@@ -5,6 +5,18 @@
 - Time rules live in the synced `chrono_settings.category_rules` (list items with `id`, so the existing field merge combines both devices' lists). Resolution order: enabled matching rule > static `categories` > defaults > other, in one Rust function (`categories::category_at` / `category_pieces`). Reflect and Dusk don't use categories at all (only sessions and excludes), so they needed no change.
 - Rule days are calendar days in the session's own local clock (its `tz_offset`, so DST is handled per session) and not shifted by the day-start setting; an overnight window counts on the day it starts. Reason: "Friday 22:00–02:00" should mean what it says regardless of where the logical day ends.
 - The split is stored in the day cache per item (`Item.rc`) and enabled rules are part of the cache key, instead of resolving categories from raw sessions on every view. Reason: trends over years read cached days; a rule edit is rare and only rebuilds the cache once. Overlapping rules: the more specific domain wins, then list order.
+
+## 2026-11-21 — Server rows keyed by (app, id) (R-1); keys.json versioned by `changed_at` (R-2)
+Record ids are unique per app only, so the server key is `(app, id)` (migration 2, schema 2; older builds refuse that server instead of mixing apps). S3 photo blobs stay `blobs/<record id>`: photo records get UUIDv7 ids, never fixed names like `settings`, so they can't collide across apps. `keys.json` is replaced on the server only by a newer file (`changed_at`), and a device adopts a newer server copy, so a stale device can't bring an old passphrase back.
+
+## 2026-11-21 — Desktop without a keyring (C80/S-5)
+- A sync pass treats unreadable secure storage as "no server here", so LAN sync works (on the test key in test builds).
+- Saving the server and encryption key on such a desktop uses a 0600 file in the data folder (`sync/secrets.json`) instead of failing. Reason: the threat model already excludes same-user malware (which can read the plaintext DBs and the keychain); refusing left these users with no sync and no encryption at all. The keychain is always tried first; the agent is unchanged (keychain only).
+
+## 2026-11-21 — Late reminders on ColorOS (P2), Chrono background tip (P15)
+- Agenda reminders can be up to ~2 min late on ColorOS: the app has the exact-alarm permission and the plugin schedules exact alarms, but ColorOS aligns them. Documented (README, Settings hint on Android); `setAlarmClock` with our own scheduler is a post-release item (PLANNING → Agenda/Tickd → Next). Reason: half a day of new Android code in the last batch is too risky for ~1.5 min.
+- Chrono Settings → This phone shows the Sync page's battery tip ("Allow it to run in the background") on phones that stop background jobs, only while Chrono isn't exempt; no forced prompt. Reason: the night-time import gap behind P15; the daily-total reconcile stays post-release.
+
 ## 2026-11-21 — Browser extension: "is the browser in front" from the agent (L3-6)
 - Firefox on X11 never reports losing focus, so website time ran on while other apps were in front. Fix without new browser permissions (privacy first): the native host adds `browser_foreground` from the agent's own foreground tracker; the extension ends and pauses sessions when it is `false`. Without the agent (or on Wayland) Firefox falls back to a 60 s idle threshold. Not chosen: a content script on every site (needs "access all websites").
 

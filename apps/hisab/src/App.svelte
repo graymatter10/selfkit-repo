@@ -226,7 +226,7 @@
   {#if s.kind === "tx"}<TxSheet id={s.id} {desktop} />
   {:else if s.kind === "account"}<AccountSheet id={s.id} {desktop} />
   {:else if s.kind === "category"}<CategorySheet id={s.id} type={s.type} pick={s.pick} {desktop} />
-  {:else if s.kind === "loan"}<LoanSheet id={s.id} edit={s.edit} {desktop} />
+  {:else if s.kind === "loan"}<LoanSheet id={s.id} edit={s.edit} direction={s.direction} {desktop} />
   {:else if s.kind === "goal"}<GoalSheet id={s.id} {desktop} />
   {:else if s.kind === "recurring"}<RecurringSheet id={s.id} {desktop} />
   {:else if s.kind === "export"}<ExportSheet {desktop} />

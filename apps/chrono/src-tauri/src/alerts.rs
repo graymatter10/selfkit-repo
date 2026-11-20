@@ -71,7 +71,7 @@ pub fn due(e: &Engine, store: &Store, now: i64) -> Result<Vec<Alert>> {
         }
     }
     let a = e.days(today, today, now)?.remove(&today).unwrap_or_default();
-    for gs in e.goals(&a).into_iter().filter(|_| want_goals) {
+    for gs in e.goals(&a, today).into_iter().filter(|_| want_goals) {
         let g = &gs.goal;
         let (id, title, body) = match gs.state.as_str() {
             "over" => (
@@ -109,7 +109,7 @@ mod tests {
         let t0 = 20_000 * crate::stats::DAY;
         s.put("app_sessions", None, &json!({"app":"YouTube","platform":"android","start": t0 + 3_600_000, "end": t0 + 2 * 3_600_000, "tz_offset": 0})).unwrap();
         let mut set = ChronoSettings::default();
-        set.goals.push(Goal { id: "g1".into(), kind: "limit".into(), scope: "category".into(), target: "entertainment".into(), minutes: 30, enabled: true });
+        set.goals.push(Goal { id: "g1".into(), kind: "limit".into(), scope: "category".into(), target: "entertainment".into(), minutes: 30, enabled: true, created: None });
         let e = Engine::new(&s, set.clone(), 0, 0);
         let now = t0 + 3 * 3_600_000;
         let a = due(&e, &s, now).unwrap();

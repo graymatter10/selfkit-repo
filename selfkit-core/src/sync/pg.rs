@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS sk_records (
 CREATE INDEX IF NOT EXISTS sk_records_app_rev ON sk_records(app, rev);
 CREATE TABLE IF NOT EXISTS sk_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 "#,
+), (
+    2,
+    // R-1: ids are only unique per app ("settings" in Chrono, Dusk and Reflect; "n-<date>"
+    // in Dusk and Chrono), so rows are keyed by (app, id).
+    r#"
+ALTER TABLE sk_records DROP CONSTRAINT IF EXISTS sk_records_pkey;
+ALTER TABLE sk_records ADD PRIMARY KEY (app, id);
+"#,
 )];
 
 fn err(e: tokio_postgres::Error) -> Error {
@@ -196,16 +204,16 @@ impl Remote for PgRemote {
                 .query_opt(
                     "INSERT INTO sk_records (id, app, collection, updated_at, device_id, ciphertext, rev)
                      VALUES ($1, $2, $3, $4, $5, $6, nextval('sk_rev_seq'))
-                     ON CONFLICT (id) DO NOTHING RETURNING rev",
+                     ON CONFLICT (app, id) DO NOTHING RETURNING rev",
                     &[&rec.id, &rec.app, &rec.collection, &rec.updated_at, &rec.device_id, &rec.ciphertext],
                 )
                 .await
         } else {
             self.client
                 .query_opt(
-                    "UPDATE sk_records SET app=$2, collection=$3, updated_at=$4, device_id=$5, ciphertext=$6,
+                    "UPDATE sk_records SET collection=$3, updated_at=$4, device_id=$5, ciphertext=$6,
                        rev=nextval('sk_rev_seq')
-                     WHERE id=$1 AND rev=$7 RETURNING rev",
+                     WHERE app=$2 AND id=$1 AND rev=$7 RETURNING rev",
                     &[&rec.id, &rec.app, &rec.collection, &rec.updated_at, &rec.device_id, &rec.ciphertext, &base_rev],
                 )
                 .await
@@ -227,12 +235,12 @@ impl Remote for PgRemote {
         Ok(rows.iter().map(row).collect())
     }
 
-    async fn fetch(&self, id: &str) -> Result<Option<RemoteRecord>> {
+    async fn fetch(&self, app: &str, id: &str) -> Result<Option<RemoteRecord>> {
         let r = self
             .client
             .query_opt(
-                "SELECT id, app, collection, updated_at, device_id, ciphertext, rev FROM sk_records WHERE id=$1",
-                &[&id],
+                "SELECT id, app, collection, updated_at, device_id, ciphertext, rev FROM sk_records WHERE app=$1 AND id=$2",
+                &[&app, &id],
             )
             .await
             .map_err(err)?;
@@ -323,5 +331,32 @@ mod tests {
         remote.meta_set("k", "v2").await.unwrap();
         assert_eq!(remote.meta_get("k").await.unwrap().as_deref(), Some("v2"));
         assert!(remote.size_bytes().await.unwrap() > 0);
+    }
+
+    /// R-1 against real Postgres: migrating twice is harmless, and the same record id in
+    /// two apps stays two rows. Needs Postgres like `pg_two_devices`.
+    #[tokio::test]
+    #[ignore]
+    async fn pg_same_id_two_apps() {
+        let url = std::env::var("SELFKIT_TEST_PG").expect("SELFKIT_TEST_PG");
+        let remote = PgRemote::connect(&url).await.unwrap();
+        remote.migrate().await.unwrap();
+        remote.migrate().await.unwrap(); // idempotent
+        assert_eq!(remote.server_schema_version().await.unwrap(), PgRemote::known_schema_version());
+        let key = SecretKey::generate();
+        let tag = uuid::Uuid::now_v7();
+        let (a1, a2) = (format!("test-a-{tag}"), format!("test-b-{tag}"));
+        let mut s1 = Store::open_in_memory(&a1, "A", &[]).unwrap();
+        let mut s2 = Store::open_in_memory(&a2, "A", &[]).unwrap();
+        s1.put("one", Some("settings"), &json!({"v": 1})).unwrap();
+        s2.put("two", Some("settings"), &json!({"v": 2})).unwrap();
+        assert_eq!(sync_once(&mut s1, &remote, &key).await.unwrap().pushed, 1);
+        assert_eq!(sync_once(&mut s2, &remote, &key).await.unwrap().pushed, 1);
+        for (app, coll, v) in [(&a1, "one", 1), (&a2, "two", 2)] {
+            let mut fresh = Store::open_in_memory(app, "B", &[]).unwrap();
+            assert_eq!(sync_once(&mut fresh, &remote, &key).await.unwrap().pulled, 1);
+            let r = fresh.get("settings").unwrap().unwrap();
+            assert_eq!((r.collection.as_str(), r.data["v"].as_i64()), (coll, Some(v)));
+        }
     }
 }

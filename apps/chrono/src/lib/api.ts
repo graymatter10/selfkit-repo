@@ -4,7 +4,7 @@ import { call } from "@selfkit/ui";
 export type Kind = "a" | "w";
 export interface Total { kind: Kind; name: string; package?: string | null; ms: number; opens: number; cat: string; platforms: string[]; prev: number; uninstalled?: number | null; rules?: Record<string, number> }
 export interface DeviceTotal { id: string; name: string; platforms: string[]; ms: number; web: boolean }
-export interface Goal { id: string; kind: "limit" | "goal"; scope: "total" | "category" | "app" | "domain"; target: string; minutes: number; enabled: boolean }
+export interface Goal { id: string; kind: "limit" | "goal"; scope: "total" | "category" | "app" | "domain"; target: string; minutes: number; enabled: boolean; created?: string }
 /** Time-based category (chrono_settings.category_rules). days: 1 = Monday … 7 = Sunday; end ≤ start runs into the next day. */
 export interface CategoryRule { id: string; target: string; kind: "app" | "domain"; category: string; days: number[]; start_min: number; end_min: number; enabled: boolean }
 export interface SiteRow { name: string; ms: number; prev: number; cat: string; rules: Record<string, number>; browsers: string[]; devices: string[] }

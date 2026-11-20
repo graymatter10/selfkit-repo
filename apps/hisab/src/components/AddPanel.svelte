@@ -19,6 +19,20 @@
   // Phone-only note rules: Enter = keyboard "done" (blur), and the pad hides under the
   // on-screen keyboard. On a computer Enter saves (C31) and the pad stays (C32).
   const phone = /Android/i.test(navigator.userAgent);
+  // Android Back closes the keyboard but leaves the note focused, so neither keyboard
+  // nor pad showed (P35): when the viewport grows back while the note has focus, blur it.
+  let noteEl: HTMLInputElement | undefined = $state();
+  $effect(() => {
+    const vv = window.visualViewport;
+    if (!phone || !vv) return;
+    let last = vv.height;
+    const onResize = () => {
+      if (vv.height > last + 80 && noteFocus && document.activeElement === noteEl) noteEl?.blur();
+      last = vv.height;
+    };
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  });
   function noteKey(e: KeyboardEvent) {
     if (e.key !== "Enter") return;
     if (!phone && canSave) return void (e.preventDefault(), save());
@@ -36,9 +50,41 @@
   const splitIds = $derived(app.draft.splits.map((s) => s.category));
   const canSave = $derived(amountNum > 0 && !busy);
   // Long amounts shrink so "9,999,999,999.99" fits next to the chips on a 360 dp phone.
-  const amountPx = $derived.by(() => {
+  const basePx = $derived.by(() => {
     const n = display(app.draft.amount).length;
     return compact ? (n > 12 ? 22 : n > 9 ? 27 : 34) : (n > 12 ? 25 : n > 9 ? 31 : 40);
+  });
+  // ...and keep shrinking until it really fits the row: with 2 decimals after 10 digits
+  // (P12) and wide chips, "1,234,567.8…" was cut under the currency chip (P37).
+  let amountRow: HTMLDivElement | undefined = $state();
+  // WebKitGTK didn't report the overflow of the 13-digit maximum in scrollWidth, so the last
+  // digit was cut (L2-31): also measure where the text really ends, and refit on resize.
+  const overflows = (el: HTMLElement) => {
+    if (el.scrollWidth > el.clientWidth + 1) return true;
+    const box = el.getBoundingClientRect();
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    return r.getBoundingClientRect().right > box.right - 2;
+  };
+  const fit = () => {
+    const el = amountRow;
+    if (!el) return;
+    let px = basePx;
+    el.style.setProperty("--amt", `${px}px`);
+    // Measuring lays out with the new size at once.
+    while (overflows(el) && px > 14) el.style.setProperty("--amt", `${--px}px`);
+  };
+  $effect(() => {
+    void app.draft.amount, cur;
+    fit();
+  });
+  $effect(() => {
+    const el = amountRow;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let w = el.clientWidth;
+    const ro = new ResizeObserver(() => { if (el.clientWidth !== w) { w = el.clientWidth; fit(); } });
+    ro.observe(el);
+    return () => ro.disconnect();
   });
 
   $effect(() => {
@@ -133,8 +179,9 @@
       await draftWritten(); // a queued draft write must not land after this Save
       const t = await api.save<Tx>("transactions", data, undefined, { ...emptyDraft(), ...keep, _t: Date.now() });
       resetDraft(keep);
-      // The clicked category tile kept focus (and its ring) after Save (L2-7).
-      if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
+      // The clicked category tile kept focus (and its ring) after Save (L2-7); after Enter in
+      // the note, focus stayed there and the next digits went into the note (L2-30).
+      if (document.activeElement instanceof HTMLButtonElement || document.activeElement === noteEl) (document.activeElement as HTMLElement).blur();
       await refresh();
       const label = dr.kind === "transfer" ? "Moved" : dr.kind === "income" ? "Income saved" : "Saved";
       showToast(`${label} · ${money(t.amount, t.currency)}${dr.kind !== "transfer" ? " · " + catLabel(t) : ""}`, async () => {
@@ -167,9 +214,9 @@
   <!-- Amount, currency, account -->
   <div class="flex items-end gap-2 px-1">
     <div class="min-w-0 flex-1 {shake ? 'animate-[shake_.3s]' : ''} {phone ? '' : 'rounded-[14px] px-2 py-1.5 shadow-[inset_0_0_0_2px_var(--accent)]'}">
-      <div class="num flex items-baseline gap-1 truncate {app.draft.amount ? 'text-ink' : 'text-faint'} {app.draft.kind === 'income' && app.draft.amount ? 'text-accent-ink' : ''}" aria-live="polite" aria-label="Amount">
+      <div bind:this={amountRow} class="num flex items-baseline gap-1 overflow-hidden whitespace-nowrap {app.draft.amount ? 'text-ink' : 'text-faint'} {app.draft.kind === 'income' && app.draft.amount ? 'text-accent-ink' : ''}" aria-live="polite" aria-label="Amount">
         <span class="text-[22px] font-medium text-muted">{symbol(cur)}</span>
-        <span class="leading-none font-semibold tracking-[-1px]" style="font-size: {amountPx}px">{display(app.draft.amount)}</span>{#if !phone}<span class="amt-caret" aria-hidden="true"></span>{/if}
+        <span class="leading-none font-semibold tracking-[-1px]" style="font-size: var(--amt, {basePx}px)">{display(app.draft.amount)}</span>{#if !phone}<span class="amt-caret" aria-hidden="true"></span>{/if}
       </div>
       {#if !phone}<div class="mt-0.5 text-[12px] text-muted">{app.draft.amount ? "Enter saves · Backspace deletes · Delete clears" : "Type an amount · Enter saves"}</div>{/if}
     </div>
@@ -210,7 +257,7 @@
   <div class="flex items-center gap-1.5">
     <label class="flex h-10 min-w-0 flex-1 items-center rounded-[12px] bg-fill2 px-3">
       <span class="sr">Note</span>
-      <input bind:value={app.draft.note} placeholder={app.draft.kind === "transfer" ? "Note" : "Note, #tag"} enterkeyhint="done" class="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
+      <input bind:this={noteEl} bind:value={app.draft.note} placeholder={app.draft.kind === "transfer" ? "Note" : "Note, #tag"} enterkeyhint="done" class="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
         onfocus={() => (noteFocus = true)} onblur={() => setTimeout(() => (noteFocus = false), 120)} onkeydown={noteKey} />
     </label>
     <label class="press relative flex h-10 shrink-0 items-center gap-1 rounded-[12px] bg-fill2 px-2.5 text-[13px] font-medium {app.draft.date && app.draft.date !== todayIso() ? 'text-accent-ink' : 'text-ink2'}">

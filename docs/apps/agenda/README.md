@@ -18,7 +18,7 @@ Feature docs: [ics.md](ics.md) (export/import mapping) · [focus.md](focus.md) (
 - **Quick-capture popup** (desktop): global shortcut (default Super+Shift+T) or `agenda --capture`.
 
 Keyboard (desktop): N new · / search · 1–6 views (Tasks, Upcoming, Calendar, Board, History, Stats) · J/K or ↑/↓ move · X done · E edit · Del delete · Esc close (also the "…" menu, L9).
-Search: every word must start a word of the title, notes, a tag or a step title (the full-text index also holds JSON keys and ids, so "title" or "inbox" used to match every task — C26).
+Search: every word must start a word of the title, notes, a tag or a step title (the full-text index also holds JSON keys and ids, so "title" or "inbox" used to match every task — C26). Words are split at spaces and punctuation only, so Bangla words stay whole (C89).
 
 Android Back: closes the topmost layer (menu, photo, focus sheet, settings, picker, form after asking, details, search, History/Stats → Tasks); with nothing open the app goes to the background. It uses Tauri's `back-button` event (`onBackButtonPress`) instead of history entries: the WebView skips history entries re-added without a tap, so two quick Backs used to leave the app from the details screen (bug found in v0.4 testing). `AgendaBars.toBackground()` in MainActivity.kt leaves the app.
 
@@ -34,7 +34,7 @@ Android Back: closes the topmost layer (menu, photo, focus sheet, settings, pick
 - Undo = the frontend keeps the previous data and calls `replace_task`; delete undo = `restore_task`.
 
 ## Reminders and notifications
-- Android: `tauri-plugin-notification` schedules exact alarms (`Schedule::At`, allow-while-idle). A reminder time in the spring-forward DST gap fires an hour later (it was dropped — C24). Small icon: monochrome checkbox `res/drawable/ic_stat_agenda.xml` (the plugin's default was Android's generic "i" — P3). Every change reschedules or cancels; startup reschedules all. Permission is asked the first time a reminder or focus session is started; if Android refuses, saving a task with a reminder says reminders are blocked (C66). All-day tasks remind relative to 09:00. Focus sessions schedule one alarm at their end (fixed id).
+- Android: `tauri-plugin-notification` schedules exact alarms (`Schedule::At`, allow-while-idle). On some phones (ColorOS) exact alarms are lined up, so a reminder can be up to ~2 min late; Settings → Default reminder says so on Android (P2, `setAlarmClock` planned after release). A reminder time in the spring-forward DST gap fires an hour later (it was dropped — C24). Small icon: monochrome checkbox `res/drawable/ic_stat_agenda.xml` (the plugin's default was Android's generic "i" — P3). Every change reschedules or cancels; startup reschedules all. Permission is asked the first time a reminder or focus session is started; if Android refuses, saving a task with a reminder says reminders are blocked (C66). All-day tasks remind relative to 09:00. Focus sessions schedule one alarm at their end (fixed id).
 - Desktop: a timer thread checks every 5 s, shows due reminders and finishes focus sessions (log + notification).
 
 ## Build and run

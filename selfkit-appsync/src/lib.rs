@@ -346,7 +346,7 @@ impl AppSync {
     /// else S3 (`bundles/_keys/keys.json`, also written by the agent), else the local copy.
     async fn ensure_key_file(&self) -> Result<KeyFile> {
         let p = self.key_file_path();
-        if let Some(cfg) = self.server_config()? {
+        if let Some(cfg) = self.server_config_for_pass()? {
             let fetched = async {
                 let remote = server::connect(&cfg.pg_url).await?;
                 server::download_keyfile(&remote).await
@@ -413,6 +413,18 @@ impl AppSync {
                 Ok(Some(ServerConfig { pg_url: url, s3 }))
             }
             _ => Ok(if self.cfg.test_key && !release_build() { self.cfg.test_server.clone() } else { None }),
+        }
+    }
+
+    /// For a sync pass: unreadable secure storage (desktop without a Secret Service) means
+    /// "no server here", so LAN still runs; it used to abort the whole pass (S-5).
+    fn server_config_for_pass(&self) -> Result<Option<ServerConfig>> {
+        match self.server_config() {
+            Err(selfkit_core::Error::Keychain(e)) => {
+                tracing::warn!("secure storage unreadable, syncing without a server: {e}");
+                Ok(if self.cfg.test_key && !release_build() { self.cfg.test_server.clone() } else { None })
+            }
+            other => other,
         }
     }
 
@@ -533,6 +545,11 @@ impl AppSync {
             running,
             unlocked: key.is_some(),
             test_key: key.as_ref().is_some_and(|k| k.1),
+            secrets_in_file: !cfg!(target_os = "android")
+                && std::fs::read_to_string(self.cfg.data_dir.join("sync").join("secrets.json"))
+                    .ok()
+                    .and_then(|t| serde_json::from_str::<std::collections::BTreeMap<String, String>>(&t).ok())
+                    .is_some_and(|m| !m.is_empty()),
             encryption_set_up: self.encryption_set_up(),
             server_configured: server.is_some(),
             photos_configured: server.as_ref().is_some_and(|c| c.s3.is_some()),
@@ -690,7 +707,7 @@ impl AppSync {
                 s.put(selfkit_core::store::DEVICES, Some(&id), &serde_json::json!({"name": name, "platform": platform}))?;
             }
         }
-        let server_cfg = self.server_config()?;
+        let server_cfg = self.server_config_for_pass()?;
         let lan_allowed = settings.lan_enabled && settings.transport != TransportMode::ServerOnly;
         let server_allowed = settings.transport != TransportMode::LanOnly && server_cfg.is_some();
         let now = time::now_ms();

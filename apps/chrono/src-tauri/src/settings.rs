@@ -24,6 +24,17 @@ pub struct Goal {
     pub minutes: i64,
     #[serde(default = "yes")]
     pub enabled: bool,
+    /// Logical day the goal was added ("YYYY-MM-DD"); days before it aren't judged
+    /// (L3-12). Missing on older goals = always existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+}
+
+impl Goal {
+    /// First day (day index) the goal counts for.
+    pub fn first_day(&self) -> Option<i64> {
+        self.created.as_deref().and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()).map(crate::stats::day_of_date)
+    }
 }
 
 fn yes() -> bool {

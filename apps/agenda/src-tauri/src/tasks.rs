@@ -449,10 +449,12 @@ pub fn search(store: &Store, q: &str) -> Result<Vec<TaskView>> {
     }
     // The FTS index covers the whole JSON (keys, ids, "doing"…): keep only tasks whose
     // own text (title, notes, tags, step titles) has every word as a word prefix (C26).
-    let toks = |s: &str| s.split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty()).map(str::to_lowercase).collect::<Vec<_>>();
+    // Split on spaces and punctuation only: combining marks (Bangla vowel signs, virama)
+    // aren't alphanumeric and used to cut words into loose fragments (C89).
+    let toks = |s: &str| s.split(|c: char| c.is_whitespace() || (c.is_ascii_punctuation() && c != '-')).filter(|t| !t.is_empty()).map(str::to_lowercase).collect::<Vec<_>>();
     let words = toks(q);
     Ok(store
-        .search(Some(TASKS), &fts, 500)?
+        .search(Some(TASKS), &fts, 2000)?
         .iter()
         .map(view)
         .filter(|t| {
@@ -611,6 +613,10 @@ mod tests {
         assert_eq!(search(&s, "title").unwrap().len(), 0);
         assert_eq!(search(&s, "inbox").unwrap().len(), 0);
         assert_eq!(search(&s, "reminder").unwrap().len(), 0);
+        // C89: Bangla words stay whole (vowel signs/virama aren't separators).
+        create(&s, nt("বাজার করা")).unwrap();
+        create(&s, nt("বই পড়া")).unwrap();
+        assert_eq!(search(&s, "বাজার").unwrap().len(), 1);
         assert_eq!(search(&s, "\"(").unwrap().len(), 0);
         assert_ne!(notification_id("a"), notification_id("b"));
         assert!(notification_id("x") >= 0);

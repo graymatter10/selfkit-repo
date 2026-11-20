@@ -160,6 +160,10 @@ pub struct SyncStatus {
     pub unlocked: bool,
     /// True when the built-in test key is in use (test builds only).
     pub test_key: bool,
+    /// Desktop without a usable keychain: sync secrets live in `<data_dir>/sync/secrets.json`
+    /// (0600) instead (C80); the Sync page says so.
+    #[serde(default)]
+    pub secrets_in_file: bool,
     pub encryption_set_up: bool,
     pub server_configured: bool,
     pub photos_configured: bool,

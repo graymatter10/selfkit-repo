@@ -45,7 +45,7 @@
 </script>
 
 {#snippet stat(label: string, v: string, cls = "")}
-  <div class="min-w-0 flex-1 {desktop ? 'px-4' : 'px-3'} py-3.5"><div class="text-[12.5px] font-medium text-muted">{label}</div><div class="num mt-0.5 leading-tight whitespace-nowrap {desktop ? (v.length > 14 ? "text-[17px]" : "text-[21px]") : v.length > 15 ? "text-[10.5px]" : v.length > 13 ? "text-[11.5px]" : v.length > 10 ? "text-[13.5px]" : v.length > 7 ? "text-[15px]" : "text-[18px]"} font-semibold tracking-[-0.4px] {cls}">{v}</div></div>
+  <div class="min-w-0 flex-1 {desktop ? 'px-4' : 'px-3'} py-3.5"><div class="text-[12.5px] font-medium text-muted">{label}</div><div class="num mt-0.5 overflow-hidden leading-tight text-ellipsis whitespace-nowrap {desktop ? (v.length > 18 ? "text-[14px]" : v.length > 14 ? "text-[17px]" : "text-[21px]") : v.length > 17 ? "text-[9.5px]" : v.length > 15 ? "text-[10.5px]" : v.length > 13 ? "text-[11.5px]" : v.length > 10 ? "text-[13.5px]" : v.length > 7 ? "text-[15px]" : "text-[18px]"} font-semibold tracking-[-0.4px] {cls}">{v}</div></div>
 {/snippet}
 
 <div class="flex flex-col gap-3">

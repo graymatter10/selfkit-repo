@@ -53,9 +53,9 @@ fn main() -> selfkit_core::Result<()> {
 
     let mut set = ChronoSettings::load(&s)?;
     set.goals = vec![
-        Goal { id: "lim-ent".into(), kind: "limit".into(), scope: "category".into(), target: "entertainment".into(), minutes: 90, enabled: true },
-        Goal { id: "goal-study".into(), kind: "goal".into(), scope: "category".into(), target: "study".into(), minutes: 45, enabled: true },
-        Goal { id: "lim-total".into(), kind: "limit".into(), scope: "total".into(), target: String::new(), minutes: 8 * 60, enabled: true },
+        Goal { id: "lim-ent".into(), kind: "limit".into(), scope: "category".into(), target: "entertainment".into(), minutes: 90, enabled: true, created: None },
+        Goal { id: "goal-study".into(), kind: "goal".into(), scope: "category".into(), target: "study".into(), minutes: 45, enabled: true, created: None },
+        Goal { id: "lim-total".into(), kind: "limit".into(), scope: "total".into(), target: String::new(), minutes: 8 * 60, enabled: true, created: None },
     ];
     set.device_names.insert(pc.clone(), "Linux desktop".into());
     set.device_names.insert(win.clone(), "Gaming PC".into());

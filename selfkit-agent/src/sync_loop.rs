@@ -91,8 +91,14 @@ pub async fn run(shared: Arc<Shared>) {
 }
 
 fn device_name() -> String {
-    std::env::var("SELFKIT_DEVICE_NAME")
+    // The name set on this PC's Sync page (shared `sync/settings.json`) wins, so the agent
+    // and the apps announce the same device id under one name (S-6: it flipped between the
+    // agent's name and the hostname).
+    let set = std::fs::read_to_string(selfkit_core::paths::data_dir().join("sync").join("settings.json"))
         .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v.get("device_name").and_then(|n| n.as_str()).map(str::trim).filter(|n| !n.is_empty()).map(str::to_owned));
+    set.or_else(|| std::env::var("SELFKIT_DEVICE_NAME").ok())
         .or_else(|| std::fs::read_to_string("/etc/hostname").ok().map(|s| s.trim().to_string()))
         .or_else(|| std::env::var("COMPUTERNAME").ok())
         .filter(|s| !s.is_empty())

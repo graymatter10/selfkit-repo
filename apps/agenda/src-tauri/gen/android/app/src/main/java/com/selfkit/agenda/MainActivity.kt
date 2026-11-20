@@ -11,6 +11,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowCompat
 
 class MainActivity : TauriActivity() {
+  // Release builds shrink resources; the notification plugin finds the small icon only by
+  // name, so reference it here (P3; res/raw/selfkit_keep.xml keeps it too).
+  @Suppress("unused") private val notificationIcon = R.drawable.ic_stat_agenda
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     // ---- Selfkit sync (android-plugins/selfkit-sync): key for the secrets file before Rust starts.

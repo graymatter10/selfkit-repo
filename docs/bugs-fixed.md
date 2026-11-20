@@ -22,7 +22,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L11 / P7 | real version in the Settings footer; PRODID without version | `SettingsSheet.svelte`, `ics.rs` | both |
 | L2-1 / C31 | Enter in the note saves on desktop + capture popup | `apps/hisab/src/components/AddPanel.svelte` | Linux |
 | L2-2 / C32 | number pad stays on desktop while the note has focus | same | Linux |
-| P2 | not fixed: alarm was windowed, i.e. `canScheduleExactAlarms()` was false for the plugin despite `USE_EXACT_ALARM`. Needs a device check (`adb shell cmd appops get com.selfkit.agenda SCHEDULE_EXACT_ALARM`, `dumpsys alarm`); ColorOS may also batch alarms of background apps | — | OPPO |
+| P2 | ColorOS alarm alignment (permission fine, plugin schedules exact). Documented: Agenda README + Android Settings hint; setAlarmClock planned post-release (PLANNING, DECISIONS) | `SettingsSheet.svelte`, docs | — |
 | P3 | reminder notifications use monochrome app icons (Agenda new `ic_stat_agenda`, Hisab existing `ic_stat_hisab`, Dusk new `ic_stat_dusk`) | `apps/*/src-tauri/src/lib.rs`, `res/drawable/ic_stat_*.xml` | OPPO |
 | P4 | done tasks without a completion record are listed from the task (`task-<id>`) in History/Stats | `apps/agenda/src-tauri/src/tasks.rs` | OPPO |
 | P5 | unsaved New Task input kept in localStorage and reopened after a kill | `TaskForm.svelte`, `App.svelte`, `state.svelte.ts` | OPPO |
@@ -42,6 +42,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | C14 | agent init needs 12 characters | `selfkit-agent/src/main.rs` | — |
 | C15 | settings drop legacy `_clock`; conflict screen hides it | `selfkit-core/src/settings.rs`, `selfkit-appsync/src/conflicts.rs` | — |
 | C16 | marker file + watcher → `data-changed` after shared settings were adopted | `selfkit-appsync/src/{android,tauri_cmds,lib}.rs` | OPPO (two apps open) |
+| C91 | lock screen applies only the newest lock reply (sequence numbers), since commands are async (C13) | `ui/src/lock/LockGate.svelte` | Linux |
 | C17 | MutationObserver keeps new body children inert while locked | `ui/src/lock/LockGate.svelte` | — |
 | C18 | recurring entries id `rec-<item>-<date>` | `apps/hisab/src-tauri/src/recur.rs` | two devices |
 | C19 | seeded Cash/categories fixed ids | `apps/hisab/src-tauri/src/model.rs` | two fresh devices |
@@ -72,15 +73,50 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
-| P14 | not fixed: no cheap cause in code (no backdrop blur/filters, no busy timers; one hourly timer). A single ~5 s GPU frame at p99 looks like WebView start-up (shader compile) or a large photo decode; needs `dumpsys gfxinfo com.selfkit.hisab framestats` + a Perfetto trace around the stall to act on | — | OPPO |
+| C94 | at start, unused seeded defaults (acct-cash, cat-*) with a same-name twin from an older device are removed; test | `apps/hisab/src-tauri/src/{model,lib}.rs` | two devices |
+| C92 | Insights stat values: extra font steps + overflow hidden/ellipsis | `Insights.svelte` | OPPO |
+| C93 | notification-blocked hints re-checked when the app comes back (Hisab, Chrono, Dusk; Agenda shows a toast at the time) | Hisab/Chrono `Settings.svelte`, Dusk `state.svelte.ts` | OPPO |
+| P38 | streak names, notes and review rows wrap instead of truncating; today's square outlined on every streak | `StreakCard.svelte`, `ReviewPage.svelte` | OPPO |
+| P3 retest FAIL | root cause: release builds use `optimization { enable = true }` (R8 + resource shrinking), which drops drawables nothing references; the plugin looks the icon up by name at run time (getIdentifier), so ic_stat_agenda / ic_stat_dusk were stripped (the APK's .so does contain "ic_stat_agenda"). Fixed by `res/raw/selfkit_keep.xml` (`tools:keep`, b5f0443, in a9) | `apps/{agenda,hisab,dusk}/…/res/raw/selfkit_keep.xml` | OPPO (a9 APK) |
+| P37 | amount font shrinks until it fits the row (measured), not only by length — regression from P12 | `AddPanel.svelte` | OPPO |
+| L3-12 / C83 | goals get `created` (day); Today/report/alerts skip days before it; website targets normalised on save; excluded subdomains already dropped thanks to the L3-10 norm_domain fix | `apps/chrono/src-tauri/src/{settings,stats,alerts}.rs`, `Settings.svelte`, `api.ts` | Linux |
+| L3-11 / C84 | analysed on hunter 3's chrono.db (copy): device keys match (not the cause); 9.0 of 24.9 website minutes lie outside any browser-app interval = the L3-1/L3-6 over-count (extension kept the session while another app was in front). Categories swap browser-app time for website time per device, the screen total is a union, so that over-count makes them disagree. Fixed at the source by C52 + browser_foreground (66d9a8a); no change to the totals logic. Retest after a8 | — | Linux |
+| P35 / C81 | note blurs when the keyboard closes (visualViewport grows), pad comes back | `AddPanel.svelte` | OPPO |
+| P36 / C82 | per-row fallback to unambiguous date formats; row errors wrap; test | `csvimport.rs`, `ImportSheet.svelte` | OPPO |
+| OPPO pre-check: Dusk table mirror (medium) | `/table` is paged (`offset`/`limit`, 1000 rows, `count` column); the mirror joins the pages and replaces the copy once (INSERT OR REPLACE); failures logged and returned as `table_error`, provider errors no longer look like "older app"; older providers (no `count`) still work | `selfkit-appsync/src/android.rs`, `SelfkitDataProvider.kt`, `SelfkitMirror.kt` | OPPO: Reflect sleep tile after a Dusk pass |
+| OPPO pre-check: Chrono battery-tip listener leak (low) | Settings' visibilitychange listener lives in an `$effect` with cleanup (Chrono; same C93 leak in Hisab Settings) | `apps/chrono/src/screens/Settings.svelte`, `apps/hisab/src/components/Settings.svelte` | — |
+| OPPO pre-check: B5 fingerprint error text | a fingerprint error is shown until the next key press or the next fingerprint try; cancel leaves no text | `ui/src/lock/LockGate.svelte` | OPPO: cancel / fail fingerprint, then type |
+| L2-26 | "Use XYZ" only for real ISO 4217 codes (else "No currency “XYZ”"); search focused on desktop | `CurrencySheet.svelte` | Linux |
+| L2-27 (medium) | "Switch" sets `explicit_currency` like "Keep", so it is never offered again; test `switch_is_never_offered_again` | `currency.rs` | Linux: USD→BDT Switch, add BDT entries, back to USD → no offer |
+| L2-28 | New loan preselects the Loans tab it came from | `Loans.svelte`, `LoanSheet.svelte`, `state.svelte.ts`, `App.svelte` | Linux |
+| L2-29 | Hisab-format unknown `type` is an error row; test | `csvimport.rs` | Linux |
+| L2-30 (medium) | after Save, focus leaves the note too, so the next digits go to the amount | `AddPanel.svelte` | Linux |
+| L2-31 | amount fit also measures where the text really ends (WebKitGTK scrollWidth missed it) and refits on resize | `AddPanel.svelte` | Linux 1180×760, 9999999999.99 |
+| L2-4 (retest) | WebKitGTK datetime-edit box made full width so Date/Time sit right | `apps/hisab/src/app.css` | Linux |
+| L2-18 (retest) | "No devices seen" hint on a PC: "Your other devices need Selfkit open (or the agent running)…" | `ui/src/sync/SyncSettings.svelte` | Linux |
+| R-2 | keys.json `changed_at`; upload only when newer than the server copy, adopt a newer server copy; LAN-only limit documented | `selfkit-core/src/keys.rs`, `selfkit-appsync/src/server.rs` | longrun sim |
+| R-1 (critical) | server primary key (app, id) via migration 2; push/update/fetch filter by app; lost rows re-inserted; tests same_id_in_two_apps_stays_apart + ignored pg_same_id_two_apps (migrate twice); S3 `blobs/<uuid>` checked, no collision; DECISIONS entry | `selfkit-core/src/sync/{pg,mod,memory}.rs` | sync-e2e + longrun |
+| S-6 | one-shot LAN pass beacons every 700 ms and connects to a peer as soon as its beacon arrives; agent device name prefers the name set on the Sync page | `selfkit-appsync/src/lan.rs`, `selfkit-agent/src/sync_loop.rs` | OPPO ↔ Linux without agent |
+| S-5 / C80 / C86 | see S-5 above | — | — | Fallback only when the keychain service is absent (`keychain_absent`), never on a locked/dismissed keyring (C86, test). |
+| L2-17 | covered by the no-number-pad change (d827cf7): the narrow-window panel is ~190 px shorter, the summary above stays visible; retest | — | Linux 800×600 |
+| L2-19 | (a) doc corrected: WebKitGTK can't encode WebP, Linux photos are JPEG; (b) viewer padding symmetric so the photo is centred | `PhotoViewer.svelte`, README | Linux |
+| L4-20 | pending tab opened after Discard | `apps/dusk/src/App.svelte` | Linux |
+| L4-22 | RangeChart axis stretches to the data (ticks every 3 h, 12h labels) | `RangeChart.svelte` | Linux with phone data |
+| L2-16 | History search matches amounts typed with separators/currency sign; test | `stats.rs` | Linux |
+| L2-14 | export falls back to ~/Downloads when xdg-user-dirs is missing | `apps/hisab/src-tauri/src/lib.rs` | Linux i3 |
+| L2-15 | CSV import reads exported splits back ("Food 60.00 + Bills 40.00"); test | `csvimport.rs` | — |
+| S-6 | one-shot LAN pass beacons every 700 ms and connects to a peer as soon as its beacon arrives; agent device name prefers the name set on the Sync page | `selfkit-appsync/src/lan.rs`, `selfkit-agent/src/sync_loop.rs` | OPPO ↔ Linux without agent |
+| S-5 / C80 / C86 | sync pass: unreadable secure storage = no server (LAN still runs); desktop secrets fall back to a 0600 file in the data folder while no keychain works (`KeychainOrFile`, test), decision in DECISIONS + security.md | `selfkit-appsync/src/{lib,secrets,tauri_cmds}.rs` | Linux i3 without keyring | Fallback only when the keychain service is absent (`keychain_absent`), never on a locked/dismissed keyring (C86, test). |
+| P14 | Low (corrected by the OPPO session: no 5 s stall, that was Android's >25 ms overflow bucket). Heaviest frames (85–102 ms GPU) are full repaints of phone Home (Insights → Back, return from the CSV picker). No backdrop blur in Hisab; the candidate is the large soft shadow on the fixed input panel (`shadow-[0_-6px_24px_…]` in Home.svelte). Not changed: it alters the approved look — a smaller shadow or a 1 px top border needs the user's OK (screenshots) | — | OPPO |
+| C87 | extension: notInFront cleared by focus/tab events and by a null reply; test |  `extension/background.js` | Linux |
 | L3-7..L3-10 | extension: popup looks only, host pause expires locally, Today skips excluded/paused; Chrono norm_domain + addExclusion strip port/www. | `extension/background.js`, `apps/chrono/src-tauri/src/settings.rs`, `Settings.svelte` | Linux Chromium/Firefox |
 | L3-6 / C52 | sticky `blurred` from onFocusChanged(WINDOW_ID_NONE) + 30 s alarm; plus (lead decision) native host `browser_foreground` from the agent's tracker: false closes/holds sessions; null → Firefox idle 60 s. Tests: agent `browser_foreground_matches_the_calling_browser`, extension 3 new tests, extension tests added to ci.yml | `extension/background.js`, `extension/test`, `selfkit-agent/src/native_host.rs`, `.github/workflows/ci.yml` | Firefox + Chromium Linux |
 | C79 | extension `excluded()` normalises stored entries | `extension/background.js` | — |
 | P13 | loan pill text shared (`loanPill`), reminder time in the locale clock (`clockText`); the native date picker look is the system's (not changed) | `lib/fmt.ts`, `Loans.svelte`, `LoanSheet.svelte` | OPPO |
 | L15 | decision: PDF stays Latin-only (Bangla needs font + shaping); export sheet note, README, DECISIONS | `ExportSheet.svelte`, `export.rs`, docs | — |
 | S-3 | "Sync this app" subtitle says "only when you tap Sync now" when Automatic is off | `ui/src/sync/SyncSettings.svelte` | all apps |
-| S-4 | LAN serve skips versions written by the asking peer (no echo); test asserts sent counts | `selfkit-core/src/lan/{session,mod}.rs` | OPPO ↔ Linux (big Chrono) |
-| P15 / C67 | decision: documented limit now (README + App changes hint), reconcile from daily totals planned first after release (PLANNING.md, DECISIONS) | `docs`, `AppChanges.svelte` | — |
+| S-4 + C85 | LAN serve skips versions written by the asking peer only when its cursor > 0 (a fresh database with the same device id pulls from 0 and gets its own records back); tests for both | `selfkit-core/src/lan/{session,mod}.rs` | OPPO ↔ Linux |
+| P15 / C67 | documented limit (README + App changes hint) + Chrono Settings → This phone battery tip (reuses the Sync bridge, only when not exempt); daily-total reconcile planned post-release | `docs`, `AppChanges.svelte`, `apps/chrono/src/screens/Settings.svelte` | OPPO |
 | C66 (Agenda, Dusk) | Agenda toast when a reminder can't show; Dusk wind-down line says notifications are off | `apps/agenda/src/lib/state.svelte.ts`, `apps/dusk/src/lib/state.svelte.ts`, `SettingsPage.svelte` | OPPO |
 | S-1 / C72 | "Here" pill only while sync + LAN on and last pass OK | `ui/src/sync/SyncSettings.svelte` | OPPO ↔ Linux |
 | S-2 / C73 | partly: "no Selfkit PC found on this network" wording; pending for LAN-only not possible with the current dirty flag (documented) | `selfkit-appsync/src/lib.rs` | OPPO ↔ Linux |

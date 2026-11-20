@@ -725,11 +725,11 @@ impl Engine<'_> {
         v
     }
 
-    pub fn goals(&self, a: &DayAgg) -> Vec<GoalStatus> {
+    pub fn goals(&self, a: &DayAgg, day: i64) -> Vec<GoalStatus> {
         self.set
             .goals
             .iter()
-            .filter(|g| g.enabled)
+            .filter(|g| g.enabled && g.first_day().is_none_or(|f| day >= f))
             .map(|g| {
                 let used = self.goal_used(g, a);
                 let lim = g.minutes * 60_000;
@@ -822,7 +822,7 @@ pub fn day_view(e: &Engine, day: i64, now: i64) -> Result<DayView> {
         cats,
         top,
         devices,
-        goals: e.goals(&a),
+        goals: e.goals(&a, day),
         week_avg,
         week_so_far,
         last_week_same,
@@ -1226,7 +1226,7 @@ pub fn report(e: &Engine, anchor: i64, now: i64) -> Result<Report> {
             let mut kept = vec![None; 7];
             for i in 0..7 {
                 let d = ws + i as i64;
-                if d > today || d < first {
+                if d > today || d < first || g.first_day().is_some_and(|f| d < f) {
                     continue;
                 }
                 let a = get(d).cloned().unwrap_or_default();
@@ -1829,8 +1829,8 @@ mod tests {
             app(&s, "spotify", "linux", b + 20 * H, b + 20 * H + 30 * M, 0);
         }
         let mut set = ChronoSettings::default();
-        set.goals.push(crate::settings::Goal { id: "g".into(), kind: "limit".into(), scope: "category".into(), target: "entertainment".into(), minutes: 20, enabled: true });
-        set.goals.push(crate::settings::Goal { id: "h".into(), kind: "goal".into(), scope: "app".into(), target: "Code".into(), minutes: 60, enabled: true });
+        set.goals.push(crate::settings::Goal { id: "g".into(), kind: "limit".into(), scope: "category".into(), target: "entertainment".into(), minutes: 20, enabled: true, created: None });
+        set.goals.push(crate::settings::Goal { id: "h".into(), kind: "goal".into(), scope: "app".into(), target: "Code".into(), minutes: 60, enabled: true, created: None });
         let e = Engine::new(&s, set, 0, 0);
         let now = t0 + 23 * H;
         let v = day_view(&e, today, now).unwrap();
@@ -1888,8 +1888,8 @@ mod tests {
         web(&s, "github.com", "chrome", t0 + 10 * H, t0 + 11 * H, 0);
         let mut set = ChronoSettings::default();
         set.category_rules.push(yt_rule(vec![1, 2, 3, 4, 5], 9 * 60, 17 * 60));
-        set.goals.push(crate::settings::Goal { id: "g".into(), kind: "limit".into(), scope: "category".into(), target: "entertainment".into(), minutes: 20, enabled: true });
-        set.goals.push(crate::settings::Goal { id: "w".into(), kind: "goal".into(), scope: "category".into(), target: "work".into(), minutes: 90, enabled: true });
+        set.goals.push(crate::settings::Goal { id: "g".into(), kind: "limit".into(), scope: "category".into(), target: "entertainment".into(), minutes: 20, enabled: true, created: None });
+        set.goals.push(crate::settings::Goal { id: "w".into(), kind: "goal".into(), scope: "category".into(), target: "work".into(), minutes: 90, enabled: true, created: None });
         let now = t0 + 20 * H;
         let e = Engine::new(&s, set.clone(), 0, 0);
         let a = e.days(mon, mon, now).unwrap().remove(&mon).unwrap();
@@ -1899,7 +1899,7 @@ mod tests {
         assert_eq!(c["work"], H + 30 * M);
         assert_eq!(c["entertainment"], 30 * M);
         assert_eq!(focus_score(&c), Some(75));
-        let g = e.goals(&a);
+        let g = e.goals(&a, mon);
         assert_eq!((g[0].used, g[0].state.as_str()), (30 * M, "over"));
         assert_eq!((g[1].used, g[1].state.as_str()), (H + 30 * M, "met"));
         // Totals keep the static category and say how much a rule moved.
@@ -1964,7 +1964,7 @@ mod tests {
         app(&s, "code", "linux", t0 + 9 * H, t0 + 10 * H, 0);
         let mut set = ChronoSettings::default();
         set.category_rules.push(yt_rule(vec![1], 9 * 60, 17 * 60));
-        set.goals.push(crate::settings::Goal { id: "g".into(), kind: "limit".into(), scope: "domain".into(), target: "youtube.com".into(), minutes: 30, enabled: true });
+        set.goals.push(crate::settings::Goal { id: "g".into(), kind: "limit".into(), scope: "domain".into(), target: "youtube.com".into(), minutes: 30, enabled: true, created: None });
         let e = Engine::new(&s, set, 0, 0);
         let now = t0 + 2 * DAY + 12 * H; // Wednesday
         let v = websites(&e, "week", mon + 2, now).unwrap();

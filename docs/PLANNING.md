@@ -251,6 +251,8 @@ A focused task app that opens to Today.
 - **Calendar:** two-way CalDAV sync (Nextcloud, Fastmail, iCloud, Radicale; Google needs extra OAuth setup), plus `.ics` export, import and a subscribable feed.
 - Completed-task history, stats and a Pomodoro timer.
 
+Next (after release, decided 2026-11-21 — P2): Android reminders through `AlarmManager.setAlarmClock` (own Kotlin scheduler instead of `tauri-plugin-notification`'s `setExactAndAllowWhileIdle`), which phone makers don't shift; ColorOS currently lines exact alarms up by up to ~1.5 min.
+
 ### Reflect — stats
 
 For now, a read-only dashboard built from Chrono, Hisab and Dusk.

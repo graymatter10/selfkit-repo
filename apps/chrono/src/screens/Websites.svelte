@@ -6,7 +6,7 @@
   // desktop: right pane. Data: `websites` / `site` commands (stats.rs).
   import { api, type ChronoSettings, type SiteDetail, type SiteRow, type WebsitesView } from "../lib/api";
   import { CATS, browserName, catColor, catName, dur, ruleWhen } from "../lib/fmt";
-  import { app, guard, saveSettings } from "../lib/state.svelte";
+  import { app, guard, saveSettings, today } from "../lib/state.svelte";
   import Icon from "../components/Icon.svelte";
   import Seg from "../components/Seg.svelte";
   let { phone, onsources }: { phone: boolean; onsources: () => void } = $props();
@@ -100,7 +100,7 @@
       saveSettings(n, `Removed the limit for ${name}`, before);
     } else {
       if (i >= 0) n.goals[i] = { ...n.goals[i], minutes: m, enabled: true };
-      else n.goals.push({ id: `g-${Date.now().toString(36)}`, kind: "limit", scope: "domain", target: name, minutes: m, enabled: true });
+      else n.goals.push({ id: `g-${Date.now().toString(36)}`, kind: "limit", scope: "domain", target: name, minutes: m, enabled: true, created: today() });
       saveSettings(n);
     }
     limitOpen = false;

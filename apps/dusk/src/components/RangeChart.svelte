@@ -1,21 +1,30 @@
 <script lang="ts">
-  // Bed → wake per night on a clock axis (21:00 top → 11:00 bottom), with the
+  // Bed → wake per night on a clock axis (21:00 top → 11:00 bottom, wider when needed), with the
   // bedtime goal as a dashed line. Shows consistency at a glance.
   import type { Night } from "../lib/api";
   import { dayLong, hm, tdisp } from "../lib/fmt";
   let { nights, bedtimeMin, height = 180 }: { nights: Night[]; bedtimeMin: number; height?: number } = $props();
-  const top = -180, bot = 660;
   const rel = (ms: number, tz: number) => {
     const d = new Date(ms + tz * 60000);
     const m = d.getUTCHours() * 60 + d.getUTCMinutes();
     return m >= 18 * 60 ? m - 1440 : m;
   };
+  // The axis grows to fit late wakes / early bedtimes (21:00–11:00 by default, at most
+  // 18:00–18:00); they were clipped at the edge before (L4-22).
+  const rels = $derived(nights.flatMap((x) => [x.bed, x.wake].filter((v): v is number => v != null).map((v) => rel(v, x.tz_offset))));
+  const top = $derived(Math.max(-360, Math.min(-180, ...rels.map((r) => Math.floor(r / 180) * 180))));
+  const bot = $derived(Math.min(1080, Math.max(660, ...rels.map((r) => Math.ceil(r / 60) * 60))));
   const y = (m: number) => ((Math.min(Math.max(m, top), bot) - top) / (bot - top)) * height;
   const n = $derived(nights.length);
   const bw = $derived(100 / Math.max(1, n));
   const goal = $derived(bedtimeMin >= 18 * 60 ? bedtimeMin - 1440 : bedtimeMin);
   // Labels follow the 12h/24h rule ("9 pm" in 12h; L4-11).
-  const TICKS: [number, string][] = ([[-180, "21:00"], [0, "00:00"], [180, "03:00"], [360, "06:00"], [540, "09:00"]] as [number, string][]).map(([m, l]) => [m, tdisp(l).replace(":00 ", " ")]);
+  // Every 3 h inside the axis; labels follow the 12h/24h rule ("9 pm" in 12h; L4-11).
+  const TICKS = $derived.by(() => {
+    const out: [number, string][] = [];
+    for (let m = Math.ceil(top / 180) * 180; m < bot; m += 180) out.push([m, tdisp(`${String((m / 60 + 24) % 24).padStart(2, "0")}:00`).replace(":00 ", " ")]);
+    return out;
+  });
 </script>
 
 <div class="flex gap-2.5">

@@ -125,7 +125,8 @@
             <span class="num w-14 shrink-0 pt-px text-[12.5px] text-muted">{r.date ? shortDate(r.date) : `Line ${r.line}`}</span>
             <span class="min-w-0 flex-1">
               <span class="block truncate text-[14.5px]">{r.note || catById(r.category)?.name || "—"}</span>
-              <span class="block truncate text-[12.5px] {r.error ? 'text-danger' : 'text-muted'}">{r.error ? `Line ${r.line}: ${r.error}` : r.duplicate ? "Already in Hisab" : `${r.kind === "transfer" ? "Transfer" : catById(r.category)?.name ?? ""}${r.category_name && catById(r.category)?.name !== r.category_name ? ` (“${r.category_name}”)` : ""} · ${accountById(r.account)?.name ?? ""}`}</span>
+              <!-- Errors wrap so the whole reason can be read on a phone (P36). -->
+              <span class="block text-[12.5px] {r.error ? 'text-danger [overflow-wrap:anywhere]' : 'truncate text-muted'}">{r.error ? `Line ${r.line}: ${r.error}` : r.duplicate ? "Already in Hisab" : `${r.kind === "transfer" ? "Transfer" : catById(r.category)?.name ?? ""}${r.category_name && catById(r.category)?.name !== r.category_name ? ` (“${r.category_name}”)` : ""} · ${accountById(r.account)?.name ?? ""}`}</span>
             </span>
             {#if !r.error}<span class="num shrink-0 text-[14.5px] font-semibold {r.kind === 'income' ? 'text-accent-ink' : ''}">{r.kind === "income" ? "+" : r.kind === "expense" ? "−" : ""}{money(r.amount, r.currency)}</span>{/if}
           </div>
