@@ -72,6 +72,8 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| L4-20 | pending tab opened after Discard | `apps/dusk/src/App.svelte` | Linux |
+| L4-22 | RangeChart axis stretches to the data (ticks every 3 h, 12h labels) | `RangeChart.svelte` | Linux with phone data |
 | L2-16 | History search matches amounts typed with separators/currency sign; test | `stats.rs` | Linux |
 | L2-14 | export falls back to ~/Downloads when xdg-user-dirs is missing | `apps/hisab/src-tauri/src/lib.rs` | Linux i3 |
 | L2-15 | CSV import reads exported splits back ("Food 60.00 + Bills 40.00"); test | `csvimport.rs` | — |
