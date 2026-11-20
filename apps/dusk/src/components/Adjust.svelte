@@ -217,12 +217,12 @@
     <div class="mx-1 mt-[22px] mb-2 text-[13.5px] font-semibold text-ink2">Notes</div>
     <div class="card">
       <label class="block px-4 pt-2.5 pb-3">
-        <span class="flex items-center gap-2 text-[12.5px] font-[550] text-muted"><Icon name="moon" size={14} stroke={2} />Before bed</span>
+        <span class="flex items-center gap-2 text-[12.5px] font-[550] text-muted"><Icon name="moon" size={14} stroke={2} />Before bed{#if before.length > 400}<span class="num ml-auto {before.length >= 500 ? 'text-danger' : ''}">{before.length} / 500</span>{/if}</span>
         <textarea bind:this={elBefore} bind:value={before} rows="2" maxlength="500" placeholder="Caffeine, mood, what's on your mind…" class="mt-1.5 block w-full resize-none bg-transparent text-[15.5px] leading-snug outline-none"></textarea>
       </label>
       <div class="h-px bg-sep"></div>
       <label class="block px-4 pt-2.5 pb-3">
-        <span class="flex items-center gap-2 text-[12.5px] font-[550] text-muted"><Icon name="sun" size={14} stroke={2} />After waking</span>
+        <span class="flex items-center gap-2 text-[12.5px] font-[550] text-muted"><Icon name="sun" size={14} stroke={2} />After waking{#if after.length > 400}<span class="num ml-auto {after.length >= 500 ? 'text-danger' : ''}">{after.length} / 500</span>{/if}</span>
         <textarea bind:this={elAfter} bind:value={after} rows="2" maxlength="500" placeholder="Dreams, how you feel…" class="mt-1.5 block w-full resize-none bg-transparent text-[15.5px] leading-snug outline-none"></textarea>
       </label>
     </div>
