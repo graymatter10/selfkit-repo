@@ -183,8 +183,9 @@
   {@const bad = invalid(v)}
   <div class="flex items-center gap-2 py-3">
     <div class="flex min-w-0 flex-1 flex-col gap-1">
-      <label for="tf-{w}" class="text-[16px] font-[550]">{LABEL[w]}</label>
-      {#if est[w]}<span class="num text-[12.5px] whitespace-nowrap text-muted">Estimate {tdisp(est[w])}</span>{/if}
+      <!-- Wraps instead of running under the −15 button (12h, 1080 px — P31). -->
+      <label for="tf-{w}" class="text-[16px] leading-tight font-[550]">{LABEL[w]}</label>
+      {#if est[w]}<span class="num text-[12.5px] leading-tight text-muted">Estimate {tdisp(est[w])}</span>{/if}
     </div>
     <button type="button" tabindex="-1" class="press grid h-12 shrink-0 place-items-center rounded-[12px] bg-fill text-[14.5px] font-semibold text-ink2 {desktop ? 'w-11' : 'w-12'}" aria-label="{LABEL[w]} 15 minutes earlier" onmousedown={(e) => e.preventDefault()} onclick={() => nudge(w, -15)}>−15</button>
     {#if desktop}

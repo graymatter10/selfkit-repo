@@ -137,7 +137,7 @@
     <div class="flex min-h-[52px] items-center gap-3 px-4 py-1.5">
       <span class="flex w-5 shrink-0 text-ink2"><Icon name="nap" size={18} /></span>
       <span class="{desktop ? 'w-[92px]' : 'w-10'} shrink-0 text-[13.5px] font-[550] text-muted">Nap</span>
-      <span class="num min-w-0 flex-1 truncate text-[15px]">{hmd(nap.bed, nap.tz_offset)}–{hmd(nap.wake, nap.tz_offset)} <span class="text-muted">· {dur(((nap.wake ?? 0) - (nap.bed ?? 0)) / 60000)}</span></span>
+      <span class="num min-w-0 flex-1 text-[15px] [overflow-wrap:anywhere]">{hmd(nap.bed, nap.tz_offset)}–{hmd(nap.wake, nap.tz_offset)} <span class="whitespace-nowrap text-muted">· {dur(((nap.wake ?? 0) - (nap.bed ?? 0)) / 60000)}</span></span>
       <button type="button" class="press -mr-2 grid h-11 w-11 place-items-center rounded-[12px] text-muted" aria-label="Remove nap" onclick={() => deleteNap(nap.id, n.night)}><Icon name="trash" size={18} /></button>
     </div>
     <div class="ml-12 h-px bg-sep"></div>
