@@ -1,5 +1,9 @@
 # Decisions (newest first)
 
+## 2026-11-21 — Desktop without a keyring (C80/S-5)
+- A sync pass treats unreadable secure storage as "no server here", so LAN sync works (on the test key in test builds).
+- Saving the server and encryption key on such a desktop uses a 0600 file in the data folder (`sync/secrets.json`) instead of failing. Reason: the threat model already excludes same-user malware (which can read the plaintext DBs and the keychain); refusing left these users with no sync and no encryption at all. The keychain is always tried first; the agent is unchanged (keychain only).
+
 ## 2026-11-21 — Late reminders on ColorOS (P2), Chrono background tip (P15)
 - Agenda reminders can be up to ~2 min late on ColorOS: the app has the exact-alarm permission and the plugin schedules exact alarms, but ColorOS aligns them. Documented (README, Settings hint on Android); `setAlarmClock` with our own scheduler is a post-release item (PLANNING → Agenda/Tickd → Next). Reason: half a day of new Android code in the last batch is too risky for ~1.5 min.
 - Chrono Settings → This phone shows the Sync page's battery tip ("Allow it to run in the background") on phones that stop background jobs, only while Chrono isn't exempt; no forced prompt. Reason: the night-time import gap behind P15; the daily-total reconcile stays post-release.
