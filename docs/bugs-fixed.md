@@ -73,7 +73,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
 | L3-12 / C83 | goals get `created` (day); Today/report/alerts skip days before it; website targets normalised on save; excluded subdomains already dropped thanks to the L3-10 norm_domain fix | `apps/chrono/src-tauri/src/{settings,stats,alerts}.rs`, `Settings.svelte`, `api.ts` | Linux |
-| L3-11 / C84 | not fixed: can't tell from code which of three causes (device keys differ, website time outside browser-app time, overlaps) gives 38 vs 43; L3-6/C52 fixes remove the main over-count source. Needs the day's web_sessions/app_sessions rows to decide | — | Linux |
+| L3-11 / C84 | analysed on hunter 3's chrono.db (copy): device keys match (not the cause); 9.0 of 24.9 website minutes lie outside any browser-app interval = the L3-1/L3-6 over-count (extension kept the session while another app was in front). Categories swap browser-app time for website time per device, the screen total is a union, so that over-count makes them disagree. Fixed at the source by C52 + browser_foreground (66d9a8a); no change to the totals logic. Retest after a8 | — | Linux |
 | P35 / C81 | note blurs when the keyboard closes (visualViewport grows), pad comes back | `AddPanel.svelte` | OPPO |
 | P36 / C82 | per-row fallback to unambiguous date formats; row errors wrap; test | `csvimport.rs`, `ImportSheet.svelte` | OPPO |
 | S-5 / C80 | see S-5 above | — | — |
