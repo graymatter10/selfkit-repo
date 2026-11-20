@@ -14,7 +14,7 @@ Features: `remote` (Postgres + S3, tokio), `keychain` (OS keychain), `lan` (LAN 
 - `lan::serve(cfg, store_factory, state)`. One-shot passes for apps live in [selfkit-appsync](selfkit-appsync.md).
 - `settings::Settings::load / save / effective_theme / set_shortcut`.
 - `conflict::field_diffs / merge_fields / line_diff / apply_line_picks`.
-- `paths::data_dir / app_db / key_file / device_id`.
+- `paths::data_dir / app_db / key_file / device_id`. `device_id` is created with an exclusive create, so an agent and an app starting together on a fresh install share one id (C27).
 
 ## Code map
 - `src/lib.rs`: module list, re-exports.
