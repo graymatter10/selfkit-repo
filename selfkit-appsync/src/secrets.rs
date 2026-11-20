@@ -124,10 +124,15 @@ pub struct KeychainOrFile<K: SecretStore> {
 /// Temporary failures — keyring still locked, unlock prompt dismissed, a timeout — are
 /// not this: they stay errors and never move a secret into the file (C86).
 pub fn keychain_absent(msg: &str) -> bool {
+    // Tagged by selfkit-core from the error kind (C96); the D-Bus names below are stable
+    // identifiers (not prose) kept for messages that come without the tag.
+    if msg.starts_with(selfkit_core::error::KEYCHAIN_UNAVAILABLE) {
+        return true;
+    }
     let m = msg.to_ascii_lowercase();
-    ["serviceunknown", "org.freedesktop.secrets", "not provided by any", "no such name", "failed to connect", "no such file or directory", "connection refused"]
+    ["org.freedesktop.dbus.error.serviceunknown", "org.freedesktop.dbus.error.nameHasNoOwner", "org.freedesktop.secrets"]
         .iter()
-        .any(|k| m.contains(k))
+        .any(|k| m.contains(&k.to_ascii_lowercase()))
 }
 
 impl<K: SecretStore> SecretStore for KeychainOrFile<K> {
@@ -210,6 +215,15 @@ mod fallback_tests {
         fn delete(&self, _: &str) -> Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn absence_is_read_from_the_tag_not_the_wording() {
+        // C96: the tag set from keyring's PlatformFailure counts, whatever the text after it.
+        assert!(keychain_absent(&format!("{}some new backend wording", selfkit_core::error::KEYCHAIN_UNAVAILABLE)));
+        assert!(keychain_absent(ABSENT));
+        assert!(!keychain_absent("Couldn't access platform secure storage: the collection is locked"));
+        assert!(!keychain_absent("failed to connect: timed out"));
     }
 
     #[test]

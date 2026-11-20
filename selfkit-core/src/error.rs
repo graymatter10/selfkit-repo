@@ -23,3 +23,8 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Prefix of an `Error::Keychain` message when the OS keychain service itself isn't there
+/// (set by `keychain` from the keyring error kind, C96). Here so non-keychain builds
+/// (Android) can still test for it.
+pub const KEYCHAIN_UNAVAILABLE: &str = "keychain unavailable: ";

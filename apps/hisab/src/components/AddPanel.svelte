@@ -64,7 +64,7 @@
     const box = el.getBoundingClientRect();
     const r = document.createRange();
     r.selectNodeContents(el);
-    return r.getBoundingClientRect().right > box.right - 2;
+    return r.getBoundingClientRect().right > box.right - 4; // slack for the last glyph's overhang (tracking -1px, C104)
   };
   const fit = () => {
     const el = amountRow;

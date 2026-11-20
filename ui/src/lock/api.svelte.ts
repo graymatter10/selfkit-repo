@@ -10,6 +10,8 @@ export interface LockView {
   platform: "android" | "desktop"; can_reset: boolean; test_build: boolean;
   /** Full path of this app's lock file (desktop "Forgot PIN?" hint). */
   lock_file: string;
+  /** Taken under Rust's lock mutex: a higher seq is a later state (C97). */
+  seq: number;
 }
 export type Attempt =
   | { result: "ok" }

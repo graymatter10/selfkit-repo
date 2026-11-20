@@ -43,13 +43,13 @@
   }
   // Lock commands run in parallel (async, C13), so replies can come back out of order:
   // apply only replies at least as new as the last applied one (C91).
-  let reqSeq = 0, appliedSeq = 0;
-  async function latest<T>(p: Promise<T>, use: (v: T) => void) {
-    const n = ++reqSeq;
+  // Replies can arrive out of order, and commands run in Rust's mutex order, not in the
+  // order they were sent: keep the view with the highest Rust-side `seq` (C97).
+  let appliedSeq = 0;
+  const fresh = (v: LockView) => !(v.seq < appliedSeq) && ((appliedSeq = v.seq ?? appliedSeq), true);
+  async function latest(p: Promise<LockView>, use: (v: LockView) => void) {
     const v = await p;
-    if (n < appliedSeq) return;
-    appliedSeq = n;
-    use(v);
+    if (fresh(v)) use(v);
   }
   async function refresh() {
     try { await latest(lockApi.status(), set); } catch { /* commands not ready yet: ipc retries */ }
@@ -75,13 +75,11 @@
     busy = true;
     stopTest();
     try {
-      const n = ++reqSeq;
       const r = await lockApi.unlock(value);
-      const fresh = n >= appliedSeq;
-      if (fresh) appliedSeq = n;
+      const isFresh = fresh(r.lock);
       pin = "";
       if (r.result === "ok") {
-        if (fresh) set(r.lock);
+        if (isFresh) set(r.lock);
       } else {
         // A wait is shown by the live countdown line, then "Enter your PIN" again; a fixed
         // "Try again in 30 s." in msg stayed on screen after the wait ended (B5, L7).
@@ -89,7 +87,7 @@
         bioMsg = false;
         shake = true;
         setTimeout(() => (shake = false), 420);
-        if (fresh) set(r.lock);
+        if (isFresh) set(r.lock);
       }
     } catch (e) {
       msg = String(e);

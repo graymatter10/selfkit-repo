@@ -49,7 +49,13 @@ pub struct LockView {
     pub test_build: bool,
     /// Where the lock file is, for the desktop "Forgot PIN?" hint (L6).
     pub lock_file: String,
+    /// Increases with every view, taken under the lock mutex, so the UI can keep the reply
+    /// that describes the latest state even when commands finished in another order than
+    /// they were sent (C97).
+    pub seq: u64,
 }
+
+static VIEW_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 fn view(l: &AppLock, data_dir: &Path) -> LockView {
     LockView {
@@ -58,6 +64,7 @@ fn view(l: &AppLock, data_dir: &Path) -> LockView {
         can_reset: data_dir.join("keys.json").exists(),
         test_build: test_unlock_allowed(),
         lock_file: l.path().display().to_string(),
+        seq: VIEW_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
     }
 }
 
