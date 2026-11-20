@@ -159,10 +159,11 @@
             <div class="l-pad"><PinPad bind:value={entry} len={step === "current" ? v.pin_len : step === "confirm" ? first.length : 0} disabled={busy} {shake}
               onfull={(p) => next(p)} onkey={() => (err = "")} /></div>
           {/key}
-          {#if err}<p class="l-msg">{err}</p>{/if}
-          {#if step === "new" || (step === "current" && !v.pin_len)}
-            <div class="l-acts"><button type="button" class="l-btn l-pri" disabled={entry.length < 4 || busy} onclick={() => next()}>{step === "current" ? "Continue" : "Next"}</button></div>
-          {/if}
+          <!-- Message, button and switch rows keep their space on every step, so the keypad
+               doesn't jump between "Choose" and "Repeat" (phone bottom sheet). -->
+          <p class="l-msg l-msg-pad" aria-live="polite">{err}</p>
+          {@const act = step === "new" || (step === "current" && !v.pin_len)}
+          <div class="l-acts" style:visibility={act ? null : "hidden"}><button type="button" class="l-btn l-pri" disabled={!act || entry.length < 4 || busy} onclick={() => next()}>{step === "current" ? "Continue" : "Next"}</button></div>
         {:else}
           {#key step}
             <!-- svelte-ignore a11y_autofocus -->
@@ -174,6 +175,8 @@
         {/if}
         {#if step === "new"}
           <button type="button" class="l-sw" onclick={() => { kind = kind === "pin" ? "passphrase" : "pin"; entry = ""; err = ""; }}>{kind === "pin" ? "Use a passphrase instead" : "Use a PIN instead"}</button>
+        {:else if pad && flow !== "off"}
+          <span class="l-sw" style:visibility="hidden" aria-hidden="true">Use a passphrase instead</span>
         {/if}
       </div>
     </div>
@@ -230,6 +233,7 @@
   .l-in { display: block; width: 100%; box-sizing: border-box; height: 46px; border: 1px solid var(--lk-line); border-radius: 12px; background: var(--lk-surf); padding: 0 14px; color: var(--lk-ink); font: inherit; font-size: 16px; letter-spacing: 0.06em; }
   .l-in:focus { outline: 2px solid var(--lk-a); outline-offset: -1px; border-color: transparent; }
   .l-msg { margin: 12px 2px 0; font-size: 13px; color: var(--lk-bad); text-align: center; }
+  .l-msg-pad { min-height: 1.4em; }
   .l-acts { display: flex; justify-content: flex-end; margin-top: 18px; }
   .l-phone .l-acts .l-btn { flex: 1; }
   .l-btn { height: 44px; padding: 0 18px; border-radius: 12px; font: inherit; font-weight: 600; border: 1px solid var(--lk-line); background: var(--lk-surf); color: var(--lk-ink); cursor: pointer; }
