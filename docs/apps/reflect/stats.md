@@ -29,3 +29,4 @@ All numbers are computed in Rust; the UI only lays them out.
 - Week = 7 days from the chosen week start; month = calendar month. Default: the last full one. Comparisons use the previous period's **per-day** average, so a period in progress is fair; while it is in progress, today (just started) is left out of the averages (P34).
 - Screen and sleep: average a day/night; money and tasks: totals. Budget: under/over the period's summed daily budgets, plus days kept.
 - Worth knowing: heaviest screen day + its top app, biggest single spend (week) or top category share (month), nights with ≥ 15 min of late phone use, longest run of the first streak in the month (≥ 3 days).
+- Spent tile: only budgeted categories count against today's budget (C61). When some spending is outside budgets the line names what was compared: "$3 of today's $17 budget" / "$5 over today's budget (budgeted categories)" (L32).

@@ -287,13 +287,23 @@ pub fn today(cx: &Ctx, today_sessions: &[sources::Sess]) -> Today {
         let sub = match d.budget {
             Some(b) if bs <= b => {
                 clauses.push("spending within budget".into());
-                format!("Within today's budget of {}", money_round(&cx.sym, b))
+                // Only budgeted categories count (C61): when some spending is outside them,
+                // say what was compared, not "$123 · Within today's budget of $17" (L32).
+                if bs < s - 0.005 {
+                    format!("{} of today's {} budget", money(&cx.sym, bs), money_round(&cx.sym, b))
+                } else {
+                    format!("Within today's budget of {}", money_round(&cx.sym, b))
+                }
             }
             Some(b) => {
                 tone_calm = false;
                 title = title.or(Some("A spendier day than planned."));
                 clauses.push("spending over today's budget".into());
-                format!("{} over today's budget", money(&cx.sym, bs - b))
+                if bs < s - 0.005 {
+                    format!("{} over today's budget (budgeted categories)", money(&cx.sym, bs - b))
+                } else {
+                    format!("{} over today's budget", money(&cx.sym, bs - b))
+                }
             }
             None if s == 0.0 => "Nothing spent yet".into(),
             None => cx
@@ -1221,8 +1231,8 @@ pub fn review(cx: &Ctx, kind: &str, offset: i32, week_start: u8, defs: &[StreakD
                 && total > 0.0
             {
                 let share = v / total;
-                // 62 % isn't "almost half" (L29).
-                let part = if share > 0.75 { "most" } else if share > 0.55 { "more than half" } else if share > 0.45 { "almost half" } else if share > 0.3 { "about a third" } else if share > 0.2 { "about a quarter" } else { "the biggest share" };
+                // 62 % isn't "almost half", and 52 % isn't "almost" either (L29).
+                let part = if share > 0.75 { "most" } else if share > 0.55 { "more than half" } else if share > 0.45 { "about half" } else if share > 0.3 { "about a third" } else if share > 0.2 { "about a quarter" } else { "the biggest share" };
                 r.worth.push(Worth { icon: "coin".into(), text: format!("{c} took the most money: {}, {part} of the month.", money(&cx.sym, v)) });
             }
         }
