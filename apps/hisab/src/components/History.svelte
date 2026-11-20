@@ -1,6 +1,7 @@
 <script lang="ts">
   // All transactions: search + filters (period, type, category, account,
   // tag, amount), grouped by day with day totals.
+  import OptionalDate from "./OptionalDate.svelte";
   import { api, type Filter, type Tx } from "../lib/api";
   import { addDays, addMonths, dayLabel, money, monthIso, todayIso } from "../lib/fmt";
   import { app, main, openSheet } from "../lib/state.svelte";
@@ -103,8 +104,8 @@
   {#if period === "custom" || more}
     <div class="fade flex flex-wrap gap-2">
       {#if period === "custom"}
-        <label class="flex flex-1 items-center gap-2 text-[13px] text-muted">From<input type="date" bind:value={from} class="field h-9 flex-1 text-[14px] text-ink" /></label>
-        <label class="flex flex-1 items-center gap-2 text-[13px] text-muted">To<input type="date" bind:value={to} class="field h-9 flex-1 text-[14px] text-ink" /></label>
+        <label class="flex flex-1 items-center gap-2 text-[13px] text-muted">From<OptionalDate bind:value={from} label="From" empty="Any" right={false} cls="field h-9 w-full text-[14px] text-ink" /></label>
+        <label class="flex flex-1 items-center gap-2 text-[13px] text-muted">To<OptionalDate bind:value={to} label="To" empty="Any" right={false} cls="field h-9 w-full text-[14px] text-ink" /></label>
       {/if}
       {#if more}
         <label class="flex flex-1 items-center gap-2 text-[13px] text-muted">Min<input inputmode="decimal" bind:value={min} class="field h-9 flex-1 text-[14px] text-ink" /></label>

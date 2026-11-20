@@ -72,6 +72,7 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| L2-10 / C59 | `OptionalDate` component: empty date shows "None"/"Never"/"Any" (native text hidden) + clear button; loan due, goal deadline, recurring end, History range | `apps/hisab/src/components/OptionalDate.svelte` + 4 users | Linux + OPPO |
 | L2-9 / C58 | Save toast and rows use `catLabel` ("Food + Bills" for splits) | `apps/hisab/src/lib/state.svelte.ts`, `AddPanel.svelte`, `TxRow.svelte` | Linux |
 | L2-12 / C61 | Hisab and Reflect (Today tile, budget streak, reviews): budget remaining and the home budget bar count only spending in budgeted categories (`budget_spent`) | `apps/hisab/src-tauri/src/stats.rs`, `Summary.svelte`, `api.ts`, `apps/reflect/src-tauri/src/{sources,model}.rs` | Linux |
 | L2-11 / C60 | goal progress clamped to 0–100 %; goal "Take out" can't exceed what is saved (Rust normalize + sheet check) | `apps/hisab/src-tauri/src/model.rs`, `GoalSheet.svelte` | Linux |

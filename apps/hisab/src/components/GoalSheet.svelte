@@ -1,5 +1,6 @@
 <script lang="ts">
   // Savings goal: name, target, deadline; add or take out money.
+  import OptionalDate from "./OptionalDate.svelte";
   import { showToast } from "@selfkit/ui";
   import { api, type Goal } from "../lib/api";
   import { daysBetween, money, shortDate, todayIso } from "../lib/fmt";
@@ -67,7 +68,7 @@
       <label class={row}><span class="w-24 text-[15px] text-ink2">Name</span><input bind:value={f.name} placeholder="New phone, Emergency fund" class="min-w-0 flex-1 bg-transparent py-3 text-right text-[15px] outline-none" /></label>
       <label class={row}><span class="w-24 text-[15px] text-ink2">Target</span><input inputmode="decimal" bind:value={f.target} placeholder="0" class="num min-w-0 flex-1 bg-transparent py-3 text-right text-[15px] outline-none" /></label>
       <div class={row}><span class="w-24 text-[15px] text-ink2">Currency</span><button type="button" class="press ml-auto text-[15px] font-medium text-accent" onclick={() => openSheet({ kind: "currency", value: f.currency, onpick: (c) => (f.currency = c) })}>{f.currency}</button></div>
-      <label class={row}><span class="w-24 text-[15px] text-ink2">Deadline</span><input type="date" bind:value={f.deadline} class="min-w-0 flex-1 bg-transparent py-3 text-right text-[15px] outline-none" /></label>
+      <label class={row}><span class="w-24 text-[15px] text-ink2">Deadline</span><OptionalDate bind:value={f.deadline} label="Deadline" cls="min-w-0 flex-1 bg-transparent py-3 text-right text-[15px] outline-none" /></label>
     </div>
     {#if goal?.contributions.length}
       <div class="card overflow-hidden">
