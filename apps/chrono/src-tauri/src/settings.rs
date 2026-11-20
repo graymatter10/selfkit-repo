@@ -30,6 +30,28 @@ fn yes() -> bool {
     true
 }
 
+/// Time-based category: `target` counts as `category` on `days` (1 = Monday …
+/// 7 = Sunday) from `start_min` to `end_min` (minutes after local midnight).
+/// `end_min <= start_min` runs into the next day (22:00–02:00); equal = 24 h.
+/// Resolution: categories::category_at. Docs: docs/apps/chrono/README.md.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CategoryRule {
+    pub id: String,
+    /// App name / Android package, or a domain (also matches its subdomains).
+    pub target: String,
+    /// "app" | "domain"
+    pub kind: String,
+    pub category: String,
+    #[serde(default)]
+    pub days: Vec<u8>,
+    #[serde(default)]
+    pub start_min: i64,
+    #[serde(default)]
+    pub end_min: i64,
+    #[serde(default = "yes")]
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ChronoSettings {
@@ -49,6 +71,8 @@ pub struct ChronoSettings {
     /// Minutes without keyboard/mouse after which time is not counted
     /// (desktop agent / native host). None = writer default (2 min).
     pub idle_minutes: Option<i64>,
+    /// Chrono-only: time-based categories (merged by item id in sync).
+    pub category_rules: Vec<CategoryRule>,
 }
 
 impl Default for ChronoSettings {
@@ -64,6 +88,7 @@ impl Default for ChronoSettings {
             pause_log: vec![],
             weekly_report: true,
             idle_minutes: None,
+            category_rules: vec![],
         }
     }
 }
@@ -151,13 +176,38 @@ impl ChronoSettings {
         self.exclude_domains.iter().any(|p| domain_matches(domain, p))
     }
 
-    /// Stable fingerprint of what changes the per-day cache.
+    /// Stable fingerprint of what changes the per-day cache (excludes, day
+    /// start, and the enabled time rules, whose split is cached per item).
     pub fn cache_key(&self, day_start_min: u16) -> String {
         let mut a: Vec<String> = self.exclude_apps.iter().map(|s| s.to_lowercase()).collect();
         let mut d: Vec<String> = self.exclude_domains.iter().map(|s| norm_domain(s)).collect();
         a.sort();
         d.sort();
-        format!("v1|{day_start_min}|{}|{}", a.join(","), d.join(","))
+        let r: Vec<String> = self
+            .category_rules
+            .iter()
+            .filter(|r| r.enabled)
+            .map(|r| format!("{}:{}:{}:{:?}:{}-{}", r.kind, r.target.to_lowercase(), r.category, r.days, r.start_min, r.end_min))
+            .collect();
+        format!("v2|{day_start_min}|{}|{}|{}", a.join(","), d.join(","), r.join(";"))
+    }
+
+    /// Clean up what the UI (or an older/other device) sent: valid rule kinds,
+    /// days 1–7 sorted, minutes within a day, domains normalised.
+    pub fn sanitize(&mut self) {
+        self.category_rules.retain(|r| (r.kind == "app" || r.kind == "domain") && !r.target.trim().is_empty() && !r.id.is_empty());
+        for r in &mut self.category_rules {
+            r.target = if r.kind == "domain" { norm_domain(&r.target) } else { r.target.trim().to_string() };
+            r.category = r.category.trim().to_lowercase();
+            if r.category.is_empty() {
+                r.category = "other".into();
+            }
+            r.days.retain(|d| (1..=7).contains(d));
+            r.days.sort_unstable();
+            r.days.dedup();
+            r.start_min = r.start_min.clamp(0, 1439);
+            r.end_min = r.end_min.clamp(0, 1440) % 1440;
+        }
     }
 }
 
@@ -189,5 +239,40 @@ mod tests {
         st.put(COLLECTION, Some(ID), &serde_json::json!({"paused_until": null, "exclude_domains": ["x.com"]})).unwrap();
         let l = ChronoSettings::load(&st).unwrap();
         assert!(l.alerts && l.domain_excluded("www.x.com"));
+    }
+
+    #[test]
+    fn category_rules_sanitize_and_cache_key() {
+        let st = Store::open_in_memory("chrono", "d", &[]).unwrap();
+        // Records from builds without rules load with an empty list.
+        st.put(COLLECTION, Some(ID), &serde_json::json!({"categories": {"code": "work"}})).unwrap();
+        let mut s = ChronoSettings::load(&st).unwrap();
+        assert!(s.category_rules.is_empty());
+        let k0 = s.cache_key(0);
+        let r = |id: &str, kind: &str, target: &str| CategoryRule {
+            id: id.into(),
+            target: target.into(),
+            kind: kind.into(),
+            category: " Work ".into(),
+            days: vec![5, 1, 9, 1, 0],
+            start_min: -5,
+            end_min: 1440,
+            enabled: true,
+        };
+        s.category_rules = vec![r("a", "domain", "https://WWW.YouTube.com/watch"), r("b", "web", "x.com"), r("", "app", "code"), r("c", "app", "  Telegram ")];
+        s.sanitize();
+        assert_eq!(s.category_rules.len(), 2);
+        let y = &s.category_rules[0];
+        assert_eq!((y.target.as_str(), y.category.as_str(), y.days.clone(), y.start_min, y.end_min), ("youtube.com", "work", vec![1, 5], 0, 0));
+        assert_eq!(s.category_rules[1].target, "Telegram");
+        // enabled rules change the cache key, disabled ones don't
+        let k1 = s.cache_key(0);
+        assert_ne!(k0, k1);
+        s.category_rules[1].enabled = false;
+        assert_ne!(s.cache_key(0), k1);
+        s.category_rules.iter_mut().for_each(|r| r.enabled = false);
+        assert_eq!(s.cache_key(0), k0);
+        s.save(&st).unwrap();
+        assert_eq!(ChronoSettings::load(&st).unwrap().category_rules.len(), 2);
     }
 }

@@ -16,7 +16,7 @@ use selfkit_core::store::Migration;
 use selfkit_core::{Result, Store};
 use serde::{Deserialize, Serialize};
 
-use crate::categories::{app_category, domain_category, focus_score, is_browser};
+use crate::categories::{category_pieces, focus_score, is_browser, rule_pieces, rules_for, static_category};
 use crate::settings::ChronoSettings;
 
 pub const MIGRATIONS: &[Migration] = &[Migration {
@@ -33,7 +33,7 @@ const HOUR: i64 = 3_600_000;
 /// Longest session we look back for when loading a window.
 const MAX_SESSION: i64 = DAY;
 /// Bump when DayAgg's shape or rules change (invalidates every cache).
-const CACHE_VERSION: &str = "c3";
+const CACHE_VERSION: &str = "c4";
 
 // ---- days ---------------------------------------------------------------
 
@@ -211,6 +211,10 @@ pub struct Item {
     pub p: String,
     pub ms: i64,
     pub opens: i64,
+    /// Part of `ms` inside time-rule windows: rule category → ms (the rest
+    /// has the item's static category). Depends on the rules → cache key.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub rc: BTreeMap<String, i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -234,8 +238,10 @@ pub struct DayAgg {
 }
 
 /// Build one day's aggregate from its pieces (already clipped to the day).
-pub fn build_day(pieces: &[(&Seg, i64, i64)], hours: &[&HourRec]) -> DayAgg {
+/// `set` supplies the time rules whose share is kept per item (`Item::rc`).
+pub fn build_day(pieces: &[(&Seg, i64, i64)], hours: &[&HourRec], set: &ChronoSettings) -> DayAgg {
     let mut a = DayAgg { hours: vec![0; 24], ..Default::default() };
+    let mut rules: HashMap<(char, &str, Option<&str>), Vec<&crate::settings::CategoryRule>> = HashMap::new();
     let mut all: Vec<(i64, i64, i32)> = Vec::new();
     let mut per_dev: HashMap<&str, Vec<(i64, i64)>> = HashMap::new();
     let mut items: HashMap<(char, &str, &str, &str), Item> = HashMap::new();
@@ -254,8 +260,13 @@ pub fn build_day(pieces: &[(&Seg, i64, i64)], hours: &[&HourRec]) -> DayAgg {
             p: s.platform.clone(),
             ms: 0,
             opens: 0,
+            rc: BTreeMap::new(),
         });
         it.ms += en - st;
+        let rs = rules.entry((s.kind, &s.name, s.package.as_deref())).or_insert_with(|| rules_for(set, s.kind, &s.name, s.package.as_deref()));
+        for (x, y, c) in rule_pieces(rs, st, en, s.tz) {
+            *it.rc.entry(c).or_default() += y - x;
+        }
         if st == s.start {
             it.opens += 1;
             a.sessions += 1;
@@ -330,7 +341,7 @@ pub fn compute_days(store: &Store, set: &ChronoSettings, ds: i64, d0: i64, d1: i
     for d in d0..=d1 {
         let p = by_day.get(&d).map(Vec::as_slice).unwrap_or(&[]);
         let h = hby.get(&d).map(Vec::as_slice).unwrap_or(&[]);
-        out.insert(d, build_day(p, h));
+        out.insert(d, build_day(p, h, set));
     }
     Ok(out)
 }
@@ -490,8 +501,20 @@ impl<'a> Engine<'a> {
 
     // ---- derived values -------------------------------------------------
 
+    /// Static category of an item (without time rules).
     pub fn item_cat(&self, it: &Item) -> String {
-        if it.k == 'w' { domain_category(&self.set, &it.n) } else { app_category(&self.set, &it.n, it.pk.as_deref()) }
+        static_category(&self.set, it.k, &it.n, it.pk.as_deref())
+    }
+
+    /// An item's time per category: rule shares, the rest in its static category.
+    pub fn item_cats(&self, it: &Item, out: &mut BTreeMap<String, i64>) {
+        let ruled: i64 = it.rc.values().sum();
+        if it.ms > ruled {
+            *out.entry(self.item_cat(it)).or_default() += it.ms - ruled;
+        }
+        for (c, v) in &it.rc {
+            *out.entry(c.clone()).or_default() += v;
+        }
     }
 
     /// Category totals. Browser app time is replaced by the website time
@@ -508,7 +531,7 @@ impl<'a> Engine<'a> {
             if it.k == 'w' {
                 *web.entry(&it.d).or_default() += it.ms;
             }
-            *c.entry(self.item_cat(it)).or_default() += it.ms;
+            self.item_cats(it, &mut c);
         }
         for (d, b) in browser {
             let rest = b - web.get(d).copied().unwrap_or(0);
@@ -571,6 +594,8 @@ pub struct Total {
     pub prev: i64,
     /// Android app uninstalled (everywhere) at this time
     pub uninstalled: Option<i64>,
+    /// Part of `ms` that time rules put in another category: category → ms.
+    pub rules: BTreeMap<String, i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -649,8 +674,12 @@ impl Engine<'_> {
                     platforms: vec![],
                     prev: 0,
                     uninstalled: self.gone_at(it.pk.as_deref()),
+                    rules: BTreeMap::new(),
                 });
                 t.ms += it.ms;
+                for (c, v) in &it.rc {
+                    *t.rules.entry(c.clone()).or_default() += v;
+                }
                 t.opens += it.opens;
                 if !t.platforms.contains(&it.p) {
                     t.platforms.push(it.p.clone());
@@ -859,7 +888,10 @@ pub fn timeline(e: &Engine, day: i64) -> Result<TimelineView> {
         if b <= a {
             continue;
         }
-        let cat = if s.kind == 'w' { domain_category(&e.set, &s.name) } else { app_category(&e.set, &s.name, s.package.as_deref()) };
+        // Blocks change colour where a time rule starts or ends; the session
+        // row takes the category of its longest part.
+        let parts = category_pieces(&e.set, s.kind, &s.name, s.package.as_deref(), a, b, s.tz);
+        let cat = parts.iter().max_by_key(|p| p.1 - p.0).map(|p| p.2.clone()).unwrap_or_default();
         let kind = if s.kind == 'w' { "browser" } else if s.platform == "android" { "phone" } else { "pc" };
         let lane = lanes.entry((s.device.clone(), kind.to_string())).or_insert_with(|| Lane {
             device: s.device.clone(),
@@ -871,7 +903,9 @@ pub fn timeline(e: &Engine, day: i64) -> Result<TimelineView> {
             segs: vec![],
             ms: 0,
         });
-        lane.segs.push((a, b, s.name.clone(), cat.clone()));
+        for (x, y, c) in parts {
+            lane.segs.push((x, y, s.name.clone(), c));
+        }
         lane.ms += b - a;
         let dev_name = e.device_name(&s.device, &plats[&s.device]);
         sessions.push(SessionRow {
@@ -1399,6 +1433,253 @@ pub fn package_label(store: &Store, pkg: &str) -> String {
         .unwrap_or_else(|| pkg.to_string())
 }
 
+// ---- websites ---------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct SiteRow {
+    pub name: String,
+    pub ms: i64,
+    /// previous period of the same length
+    pub prev: i64,
+    /// static category (settings, defaults)
+    pub cat: String,
+    /// time that time rules put in another category: category → ms
+    pub rules: BTreeMap<String, i64>,
+    /// "chrome" | "firefox"
+    pub browsers: Vec<String>,
+    /// device display names
+    pub devices: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WebsitesView {
+    pub period: String,
+    pub from: String,
+    pub to: String,
+    pub title: String,
+    pub total: i64,
+    pub prev_total: i64,
+    /// days counted (up to today) for "a day" averages
+    pub days: i64,
+    /// website time per category, time rules applied
+    pub cats: BTreeMap<String, i64>,
+    pub sites: Vec<SiteRow>,
+    /// any website session ever (false = show how to add the extension)
+    pub has_any: bool,
+    pub prev_anchor: Option<String>,
+    pub next_anchor: Option<String>,
+}
+
+fn has_web(store: &Store) -> Result<bool> {
+    Ok(store
+        .conn()
+        .query_row("SELECT EXISTS(SELECT 1 FROM records WHERE collection = 'web_sessions' AND deleted = 0)", [], |r| r.get::<_, i64>(0))?
+        == 1)
+}
+
+fn period_title(period: &str, d0: i64, d1: i64) -> String {
+    match period {
+        "day" => date_of(d0).format("%A, %-d %B").to_string(),
+        "week" => format!("{} – {}", date_of(d0).format("%-d %b"), date_of(d1).format("%-d %b %Y")),
+        _ => date_of(d0).format("%B %Y").to_string(),
+    }
+}
+
+/// Websites with time in a day / week / month (`period`) containing `anchor`.
+pub fn websites(e: &Engine, period: &str, anchor: i64, now: i64) -> Result<WebsitesView> {
+    let period = if matches!(period, "day" | "week" | "month") { period } else { "week" };
+    let today = e.today(now);
+    let first = e.first_day()?.unwrap_or(today);
+    let ((d0, d1), (p0, p1)) = period_range(period, anchor.min(today), first);
+    let lo = p0.max(first.min(d0));
+    let days = e.days(lo, d1.min(today).max(lo), now)?;
+    let cur: Vec<&DayAgg> = (d0..=d1.min(today)).filter_map(|d| days.get(&d)).collect();
+    let prev: Vec<&DayAgg> = (p0..=p1).filter_map(|d| days.get(&d)).collect();
+    let mut devp: HashMap<String, Vec<String>> = HashMap::new();
+    for a in &cur {
+        for (d, ps) in &a.devp {
+            let v = devp.entry(d.clone()).or_default();
+            for p in ps {
+                if !v.contains(p) {
+                    v.push(p.clone());
+                }
+            }
+        }
+    }
+    let mut m: HashMap<String, SiteRow> = HashMap::new();
+    let mut cats: BTreeMap<String, i64> = BTreeMap::new();
+    for a in &cur {
+        for it in a.items.iter().filter(|i| i.k == 'w') {
+            e.item_cats(it, &mut cats);
+            let r = m.entry(it.n.clone()).or_insert_with(|| SiteRow {
+                name: it.n.clone(),
+                ms: 0,
+                prev: 0,
+                cat: e.item_cat(it),
+                rules: BTreeMap::new(),
+                browsers: vec![],
+                devices: vec![],
+            });
+            r.ms += it.ms;
+            for (c, v) in &it.rc {
+                *r.rules.entry(c.clone()).or_default() += v;
+            }
+            if !r.browsers.contains(&it.p) {
+                r.browsers.push(it.p.clone());
+            }
+            let dn = e.device_name(&it.d, devp.get(&it.d).map(Vec::as_slice).unwrap_or(&[]));
+            if !r.devices.contains(&dn) {
+                r.devices.push(dn);
+            }
+        }
+    }
+    let mut prev_total = 0;
+    for a in &prev {
+        for it in a.items.iter().filter(|i| i.k == 'w') {
+            prev_total += it.ms;
+            if let Some(r) = m.get_mut(&it.n) {
+                r.prev += it.ms;
+            }
+        }
+    }
+    let mut sites: Vec<SiteRow> = m.into_values().collect();
+    sites.sort_by(|a, b| b.ms.cmp(&a.ms).then_with(|| a.name.cmp(&b.name)));
+    Ok(WebsitesView {
+        period: period.into(),
+        from: day_to_str(d0),
+        to: day_to_str(d1),
+        title: period_title(period, d0, d1),
+        total: sites.iter().map(|s| s.ms).sum(),
+        prev_total,
+        days: (d1.min(today) - d0.max(first) + 1).max(1),
+        cats,
+        sites,
+        has_any: has_web(e.store)?,
+        prev_anchor: (p1 >= first).then(|| day_to_str(p1)),
+        next_anchor: (d1 < today).then(|| day_to_str(d1 + 1)),
+    })
+}
+
+#[derive(Debug, Serialize)]
+pub struct SiteDay {
+    pub day: String,
+    pub label: String,
+    /// category → ms (time rules applied)
+    pub cats: BTreeMap<String, i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SiteDetail {
+    pub name: String,
+    pub period: String,
+    pub title: String,
+    pub ms: i64,
+    pub prev: i64,
+    pub days_counted: i64,
+    /// per day of the period (week/month; one entry for a day)
+    pub days: Vec<SiteDay>,
+    /// local clock hour → ms
+    pub hours: Vec<i64>,
+    /// category → ms over the period (time rules applied)
+    pub cats: BTreeMap<String, i64>,
+    /// static category, and whether the user chose it (else a default)
+    pub cat: String,
+    pub cat_set: bool,
+    /// (browser, ms), (device name, ms), longest first
+    pub browsers: Vec<(String, i64)>,
+    pub devices: Vec<(String, i64)>,
+    /// time rules that apply to this site (also disabled ones), in list order
+    pub rules: Vec<crate::settings::CategoryRule>,
+    pub goals: Vec<crate::settings::Goal>,
+    pub excluded: bool,
+}
+
+/// One website (exact domain as recorded) over a day / week / month.
+pub fn site_detail(e: &Engine, name: &str, period: &str, anchor: i64, now: i64) -> Result<SiteDetail> {
+    let period = if matches!(period, "day" | "week" | "month") { period } else { "week" };
+    let today = e.today(now);
+    let first = e.first_day()?.unwrap_or(today);
+    let ((d0, d1), (p0, p1)) = period_range(period, anchor.min(today), first);
+    let lo = p0.max(first.min(d0));
+    let days = e.days(lo, d1.min(today).max(lo), now)?;
+    let mut devp: HashMap<String, Vec<String>> = HashMap::new();
+    for a in days.values() {
+        for (d, ps) in &a.devp {
+            devp.entry(d.clone()).or_insert_with(|| ps.clone());
+        }
+    }
+    let (mut ms, mut prev) = (0, 0);
+    let mut cats = BTreeMap::new();
+    let mut br: BTreeMap<String, i64> = BTreeMap::new();
+    let mut dv: BTreeMap<String, i64> = BTreeMap::new();
+    let mut out_days = Vec::new();
+    for d in d0..=d1 {
+        let mut dc = BTreeMap::new();
+        if d <= today
+            && let Some(a) = days.get(&d)
+        {
+            for it in a.items.iter().filter(|i| i.k == 'w' && i.n == name) {
+                ms += it.ms;
+                e.item_cats(it, &mut dc);
+                *br.entry(it.p.clone()).or_default() += it.ms;
+                *dv.entry(e.device_name(&it.d, devp.get(&it.d).map(Vec::as_slice).unwrap_or(&[]))).or_default() += it.ms;
+            }
+        }
+        for (c, v) in &dc {
+            *cats.entry(c.clone()).or_default() += v;
+        }
+        let label = if period == "month" { date_of(d).day().to_string() } else { WD[weekday(d)].to_string() };
+        out_days.push(SiteDay { day: day_to_str(d), label, cats: dc });
+    }
+    for d in p0..=p1 {
+        if let Some(a) = days.get(&d) {
+            prev += a.items.iter().filter(|i| i.k == 'w' && i.n == name).map(|i| i.ms).sum::<i64>();
+        }
+    }
+    // Clock hours from the sessions themselves (the cache keeps no per-site hours).
+    let mut hours = vec![0i64; 24];
+    let (f, t) = (day_start_utc(d0, e.tz_now, e.ds), day_start_utc(d1.min(today) + 1, e.tz_now, e.ds));
+    for sg in load_segs(e.store, &e.set, f, t)?.iter().filter(|s| s.kind == 'w' && s.name == name) {
+        for (dd, a, b) in split_days(sg, e.ds) {
+            if dd < d0 || dd > d1 {
+                continue;
+            }
+            let off = sg.tz as i64 * 60_000;
+            let mut x = a;
+            while x < b {
+                let local = x + off;
+                let next = ((local.div_euclid(HOUR) + 1) * HOUR - off).min(b);
+                hours[(local.rem_euclid(DAY) / HOUR) as usize] += next - x;
+                x = next;
+            }
+        }
+    }
+    let sort = |m: BTreeMap<String, i64>| {
+        let mut v: Vec<(String, i64)> = m.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v
+    };
+    let n = crate::settings::norm_domain(name);
+    Ok(SiteDetail {
+        name: name.into(),
+        period: period.into(),
+        title: period_title(period, d0, d1),
+        ms,
+        prev,
+        days_counted: (d1.min(today) - d0.max(first) + 1).max(1),
+        days: out_days,
+        hours,
+        cats,
+        cat: static_category(&e.set, 'w', name, None),
+        cat_set: e.set.categories.keys().any(|k| k.contains('.') && crate::settings::domain_matches(&n, k)),
+        browsers: sort(br),
+        devices: sort(dv),
+        rules: e.set.category_rules.iter().filter(|r| r.kind == "domain" && crate::settings::domain_matches(name, &r.target)).cloned().collect(),
+        goals: e.set.goals.iter().filter(|g| g.scope == "domain" && crate::settings::domain_matches(name, &g.target)).cloned().collect(),
+        excluded: e.set.domain_excluded(name),
+    })
+}
+
 /// Every app/site seen in the last `days` days with its time, for the
 /// category editor and exclusion picker.
 pub fn names(e: &Engine, days: i64, now: i64) -> Result<Vec<Total>> {
@@ -1578,5 +1859,139 @@ mod tests {
         assert_eq!(tl.lanes.len(), 1);
         assert_eq!(tl.sessions.len(), 2);
         assert_eq!(names(&e, 90, now).unwrap().len(), 2);
+    }
+
+    fn web(s: &Store, domain: &str, browser: &str, start: i64, end: i64, tz: i64) {
+        s.put("web_sessions", None, &json!({"domain": domain, "browser": browser, "device": "dev-pc", "start": start, "end": end, "tz_offset": tz})).unwrap();
+    }
+
+    fn yt_rule(days: Vec<u8>, from: i64, to: i64) -> crate::settings::CategoryRule {
+        crate::settings::CategoryRule {
+            id: "r1".into(),
+            target: "youtube.com".into(),
+            kind: "domain".into(),
+            category: "work".into(),
+            days,
+            start_min: from,
+            end_min: to,
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn time_rules_split_totals_focus_goals_and_timeline() {
+        let s = st();
+        let mon = 20773; // 2026-11-16, a Monday
+        let t0 = mon * DAY;
+        // youtube 16:30–17:30 on Monday; rule Mon–Fri 09:00–17:00 → 30 min work, 30 min entertainment
+        web(&s, "m.youtube.com", "firefox", t0 + 16 * H + 30 * M, t0 + 17 * H + 30 * M, 0);
+        web(&s, "github.com", "chrome", t0 + 10 * H, t0 + 11 * H, 0);
+        let mut set = ChronoSettings::default();
+        set.category_rules.push(yt_rule(vec![1, 2, 3, 4, 5], 9 * 60, 17 * 60));
+        set.goals.push(crate::settings::Goal { id: "g".into(), kind: "limit".into(), scope: "category".into(), target: "entertainment".into(), minutes: 20, enabled: true });
+        set.goals.push(crate::settings::Goal { id: "w".into(), kind: "goal".into(), scope: "category".into(), target: "work".into(), minutes: 90, enabled: true });
+        let now = t0 + 20 * H;
+        let e = Engine::new(&s, set.clone(), 0, 0);
+        let a = e.days(mon, mon, now).unwrap().remove(&mon).unwrap();
+        let yt = a.items.iter().find(|i| i.n == "m.youtube.com").unwrap();
+        assert_eq!(yt.rc["work"], 30 * M);
+        let c = e.cats(&a);
+        assert_eq!(c["work"], H + 30 * M);
+        assert_eq!(c["entertainment"], 30 * M);
+        assert_eq!(focus_score(&c), Some(75));
+        let g = e.goals(&a);
+        assert_eq!((g[0].used, g[0].state.as_str()), (30 * M, "over"));
+        assert_eq!((g[1].used, g[1].state.as_str()), (H + 30 * M, "met"));
+        // Totals keep the static category and say how much a rule moved.
+        let tot = e.totals(std::iter::once(&a), std::iter::empty());
+        let t = tot.iter().find(|t| t.name == "m.youtube.com").unwrap();
+        assert_eq!((t.cat.as_str(), t.rules["work"]), ("entertainment", 30 * M));
+        // Timeline blocks change colour at 17:00.
+        let tl = timeline(&e, mon).unwrap();
+        let lane = tl.lanes.iter().find(|l| l.kind == "browser").unwrap();
+        let yt: Vec<_> = lane.segs.iter().filter(|x| x.2 == "m.youtube.com").map(|x| (x.0, x.1, x.3.as_str())).collect();
+        assert_eq!(yt, vec![(t0 + 16 * H + 30 * M, t0 + 17 * H, "work"), (t0 + 17 * H, t0 + 17 * H + 30 * M, "entertainment")]);
+        // Alerts: the entertainment limit fires on the split time.
+        let al = crate::alerts::due(&e, &s, now).unwrap();
+        assert!(al.iter().any(|x| x.title == "Limit reached · Entertainment"));
+        // Changing the rule invalidates the cache: Tuesday-only → nothing moved.
+        set.category_rules[0].days = vec![2];
+        let e2 = Engine::new(&s, set.clone(), 0, 0);
+        let a2 = e2.days(mon, mon, now).unwrap().remove(&mon).unwrap();
+        assert_eq!(e2.cats(&a2)["entertainment"], H);
+        assert!(a2.items.iter().all(|i| i.rc.is_empty()));
+        // A disabled rule is ignored too.
+        set.category_rules[0].days = vec![1];
+        set.category_rules[0].enabled = false;
+        let e3 = Engine::new(&s, set, 0, 0);
+        assert_eq!(e3.cats(&e3.days(mon, mon, now).unwrap()[&mon])["entertainment"], H);
+    }
+
+    #[test]
+    fn time_rules_with_day_start_and_overnight() {
+        // Day starts at 04:00. Friday-night rule 22:00–02:00. A session Sat 00:30–01:30
+        // belongs to logical Friday and is inside the rule (it started Friday).
+        let s = st();
+        let fri = 20777;
+        let t0 = fri * DAY;
+        web(&s, "youtube.com", "firefox", t0 + DAY + 30 * M, t0 + DAY + 90 * M, 0);
+        // Sat 03:00–05:00: outside the rule; 03–04 is logical Friday, 04–05 Saturday
+        web(&s, "youtube.com", "firefox", t0 + DAY + 3 * H, t0 + DAY + 5 * H, 0);
+        let mut set = ChronoSettings::default();
+        set.category_rules.push(yt_rule(vec![5], 22 * 60, 2 * 60));
+        let e = Engine::new(&s, set, 240, 0);
+        let now = t0 + 3 * DAY;
+        let days = e.days(fri, fri + 1, now).unwrap();
+        let c = e.cats(&days[&fri]);
+        assert_eq!((c["work"], c["entertainment"]), (H, H));
+        assert_eq!(e.cats(&days[&(fri + 1)])["entertainment"], H);
+        assert!(!e.cats(&days[&(fri + 1)]).contains_key("work"));
+    }
+
+    #[test]
+    fn websites_view_and_site_detail() {
+        let s = st();
+        let mon = 20773;
+        let t0 = mon * DAY;
+        let e0 = Engine::new(&s, ChronoSettings::default(), 0, 0);
+        let empty = websites(&e0, "week", mon, t0 + 12 * H).unwrap();
+        assert!(!empty.has_any && empty.sites.is_empty());
+        web(&s, "youtube.com", "firefox", t0 + 16 * H, t0 + 18 * H, 0);
+        web(&s, "youtube.com", "chrome", t0 + DAY + 20 * H, t0 + DAY + 21 * H, 0);
+        web(&s, "en.wikipedia.org", "firefox", t0 + 9 * H, t0 + 9 * H + 30 * M, 0);
+        web(&s, "github.com", "firefox", t0 - 7 * DAY + 9 * H, t0 - 7 * DAY + 10 * H, 0); // last week
+        web(&s, "youtube.com", "firefox", t0 - 6 * DAY + 9 * H, t0 - 6 * DAY + 9 * H + 30 * M, 0); // last week
+        app(&s, "code", "linux", t0 + 9 * H, t0 + 10 * H, 0);
+        let mut set = ChronoSettings::default();
+        set.category_rules.push(yt_rule(vec![1], 9 * 60, 17 * 60));
+        set.goals.push(crate::settings::Goal { id: "g".into(), kind: "limit".into(), scope: "domain".into(), target: "youtube.com".into(), minutes: 30, enabled: true });
+        let e = Engine::new(&s, set, 0, 0);
+        let now = t0 + 2 * DAY + 12 * H; // Wednesday
+        let v = websites(&e, "week", mon + 2, now).unwrap();
+        assert!(v.has_any);
+        assert_eq!(v.sites.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), vec!["youtube.com", "en.wikipedia.org"]);
+        let yt = &v.sites[0];
+        assert_eq!((yt.ms, yt.prev, yt.cat.as_str(), yt.rules["work"]), (3 * H, 30 * M, "entertainment", H));
+        assert_eq!(yt.browsers.len(), 2);
+        assert_eq!(v.total, 3 * H + 30 * M);
+        assert_eq!(v.prev_total, H + 30 * M);
+        assert_eq!(v.days, 3);
+        assert_eq!((v.cats["work"], v.cats["entertainment"], v.cats["study"]), (H, 2 * H, 30 * M));
+        assert_eq!(v.next_anchor, None);
+        let d = websites(&e, "day", mon, now).unwrap();
+        assert_eq!(d.total, 2 * H + 30 * M);
+        assert!(d.next_anchor.is_some());
+        let m = websites(&e, "month", mon, now).unwrap();
+        assert_eq!(m.total, 5 * H); // the month also has last week (9th, 10th)
+        let sd = site_detail(&e, "youtube.com", "week", mon, now).unwrap();
+        assert_eq!((sd.ms, sd.prev, sd.days.len()), (3 * H, 30 * M, 7));
+        assert_eq!(sd.days[0].cats["work"], H);
+        assert_eq!(sd.days[0].cats["entertainment"], H);
+        assert_eq!(sd.days[1].cats["entertainment"], H);
+        assert_eq!((sd.hours[16], sd.hours[17], sd.hours[20]), (H, H, H));
+        assert_eq!(sd.browsers[0], ("firefox".to_string(), 2 * H));
+        assert_eq!((sd.rules.len(), sd.goals.len(), sd.cat.as_str(), sd.cat_set, sd.excluded), (1, 1, "entertainment", false, false));
+        let wk = site_detail(&e, "en.wikipedia.org", "day", mon, now).unwrap();
+        assert_eq!((wk.ms, wk.cat.as_str(), wk.days.len()), (30 * M, "study", 1));
     }
 }

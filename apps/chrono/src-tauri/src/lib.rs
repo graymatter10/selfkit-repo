@@ -93,6 +93,16 @@ fn report(state: State<AppState>, anchor: Option<String>) -> Res<stats::Report> 
 }
 
 #[tauri::command]
+fn websites(state: State<AppState>, period: String, anchor: Option<String>) -> Res<stats::WebsitesView> {
+    with_engine!(state, |eng, now| stats::websites(&eng, &period, day_arg(&eng, anchor, now), now))
+}
+
+#[tauri::command]
+fn site(state: State<AppState>, name: String, period: String, anchor: Option<String>) -> Res<stats::SiteDetail> {
+    with_engine!(state, |eng, now| stats::site_detail(&eng, &name, &period, day_arg(&eng, anchor, now), now))
+}
+
+#[tauri::command]
 fn names(state: State<AppState>) -> Res<Vec<stats::Total>> {
     with_engine!(state, |eng, now| stats::names(&eng, 90, now))
 }
@@ -189,7 +199,8 @@ fn settings_get(state: State<AppState>) -> Res<ChronoSettings> {
 }
 
 #[tauri::command]
-fn settings_save(app: AppHandle, state: State<AppState>, settings: ChronoSettings) -> Res<ChronoSettings> {
+fn settings_save(app: AppHandle, state: State<AppState>, mut settings: ChronoSettings) -> Res<ChronoSettings> {
+    settings.sanitize();
     settings.save(&state.store.lock().unwrap()).map_err(e)?;
     let _ = app.emit("data-changed", ());
     Ok(settings)
@@ -507,7 +518,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            day_view, timeline, trends, report, names, info, settings_get, settings_save, pause, resume, prefs_get, prefs_set,
+            day_view, timeline, trends, report, websites, site, names, info, settings_get, settings_save, pause, resume, prefs_get, prefs_set,
             android_status, android_open, android_import, dev_hooks, startup_notice, sources, note_get, note_save, photo_save,
             photo_get, photo_export, theme_get, theme_set, app_changes,
             selfkit_appsync::tauri_cmds::sync_status, selfkit_appsync::tauri_cmds::sync_now,
