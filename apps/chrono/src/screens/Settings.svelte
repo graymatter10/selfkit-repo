@@ -42,7 +42,9 @@
     }
   }
   // Alerts / Weekly report are on by default: say when Android blocks them (P23).
-  if (/Android/i.test(navigator.userAgent)) isPermissionGranted().then((g) => (notifyBlocked = !g)).catch(() => {});
+  const checkNotify = () => { if (/Android/i.test(navigator.userAgent)) isPermissionGranted().then((g) => (notifyBlocked = !g)).catch(() => {}); };
+  checkNotify();
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && checkNotify()); // back from Android settings (C93)
   function toggle(field: "alerts" | "weekly_report") {
     const n = clone();
     n[field] = !n[field];

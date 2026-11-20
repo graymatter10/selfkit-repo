@@ -164,7 +164,9 @@ darkQuery.addEventListener("change", () => applyTheme());
 
 /** Android refused notifications: the wind-down line says so (C66). */
 export const notifyBlocked = $state({ v: false });
-if (/Android/i.test(navigator.userAgent)) isPermissionGranted().then((g) => (notifyBlocked.v = !g)).catch(() => {});
+const checkNotify = () => { if (/Android/i.test(navigator.userAgent)) isPermissionGranted().then((g) => (notifyBlocked.v = !g)).catch(() => {}); };
+checkNotify();
+document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && checkNotify()); // back from Android settings (C93)
 
 export async function savePrefs(p: DevicePrefs) {
   if (p.winddown_on && !app.prefs.winddown_on) {

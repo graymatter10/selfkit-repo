@@ -73,6 +73,8 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| C92 | Insights stat values: extra font steps + overflow hidden/ellipsis | `Insights.svelte` | OPPO |
+| C93 | notification-blocked hints re-checked when the app comes back (Hisab, Chrono, Dusk; Agenda shows a toast at the time) | Hisab/Chrono `Settings.svelte`, Dusk `state.svelte.ts` | OPPO |
 | P38 | streak names, notes and review rows wrap instead of truncating; today's square outlined on every streak | `StreakCard.svelte`, `ReviewPage.svelte` | OPPO |
 | P3 retest FAIL | root cause: release builds use `optimization { enable = true }` (R8 + resource shrinking), which drops drawables nothing references; the plugin looks the icon up by name at run time (getIdentifier), so ic_stat_agenda / ic_stat_dusk were stripped (the APK's .so does contain "ic_stat_agenda"). Fixed by `res/raw/selfkit_keep.xml` (`tools:keep`, b5f0443, in a9) | `apps/{agenda,hisab,dusk}/…/res/raw/selfkit_keep.xml` | OPPO (a9 APK) |
 | P37 | amount font shrinks until it fits the row (measured), not only by length — regression from P12 | `AddPanel.svelte` | OPPO |
