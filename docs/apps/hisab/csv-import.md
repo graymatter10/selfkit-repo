@@ -10,6 +10,7 @@ Next to CSV export: **More → Import CSV** or **Settings → Data → Import CS
    - Delimiter `, ; TAB |` detected; quoted fields, `""`, line breaks in quotes, BOM; amounts like `1,234.50`, `1.234,50`, `12,5`, `(12.00)`, `12.00 DR` (DR/CR only as their own word, so `150000 IDR` stays positive — C25), `৳ -850`; dates like `2026-11-15`, `15/11/2026` (day-first unless a value proves month-first), `15 Nov 2026`, with an optional time after it.
 3. **Into account**: rows without an account column (or naming an unknown account) go to the chosen account (default: the add screen's default account).
 4. **Preview**: counts "N to import · N already in Hisab (skipped) · N with problems (skipped)" and the first 60 rows (date, description, category · account, amount), errors with their line number ("Line 5: Date “31/02/2026” not understood").
+   - **Splits**: a Hisab export writes a split as `Food 60.00 + Bills 40.00` in the category column; import reads the parts back into `splits` when every name is a category and the parts add up to the amount (L2-15).
    - **Duplicates**: same date + amount (cents) + note (trimmed, case-insensitive) + kind + account as an entry already in Hisab, each existing entry matching one row. Equal rows inside one file (two ATM withdrawals of 1,000 on one day) are all imported (C22); importing the file again marks them all as duplicates.
    - Every row is checked with the same `model::normalize` as a hand-made entry.
    - Unknown categories go to your "Other" category of that kind (the file's name is shown in quotes).

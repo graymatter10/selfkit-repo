@@ -72,6 +72,8 @@ Fixes for bugs logged in `docs/bugs-linux.md` (L*), `docs/bugs-phone.md` (P*, le
 | L16 | CSV export UTF-8 BOM; export sheet wording | `export.rs`, `ExportSheet.svelte` | Windows Excel |
 | P9 | Insights amounts nowrap + smaller | `Insights.svelte` | OPPO |
 | P12 | 2 decimals after 10 whole digits | `AddPanel.svelte` | OPPO |
+| L2-14 | export falls back to ~/Downloads when xdg-user-dirs is missing | `apps/hisab/src-tauri/src/lib.rs` | Linux i3 |
+| L2-15 | CSV import reads exported splits back ("Food 60.00 + Bills 40.00"); test | `csvimport.rs` | — |
 | S-5 | sync pass: unreadable secure storage = no server (`server_config_for_pass`), LAN still runs | `selfkit-appsync/src/lib.rs` | Linux i3 without keyring ↔ phone |
 | P14 | Low (corrected by the OPPO session: no 5 s stall, that was Android's >25 ms overflow bucket). Heaviest frames (85–102 ms GPU) are full repaints of phone Home (Insights → Back, return from the CSV picker). No backdrop blur in Hisab; the candidate is the large soft shadow on the fixed input panel (`shadow-[0_-6px_24px_…]` in Home.svelte). Not changed: it alters the approved look — a smaller shadow or a 1 px top border needs the user's OK (screenshots) | — | OPPO |
 | L3-7..L3-10 | extension: popup looks only, host pause expires locally, Today skips excluded/paused; Chrono norm_domain + addExclusion strip port/www. | `extension/background.js`, `apps/chrono/src-tauri/src/settings.rs`, `Settings.svelte` | Linux Chromium/Firefox |

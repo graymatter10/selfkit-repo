@@ -270,6 +270,11 @@ fn export_dir() -> std::path::PathBuf {
     if let Some(d) = dirs::download_dir().filter(|d| d.is_dir()) {
         return d;
     }
+    // Without xdg-user-dirs (bare i3) download_dir() is None, but ~/Downloads exists (L2-14).
+    #[cfg(not(target_os = "android"))]
+    if let Some(d) = dirs::home_dir().map(|h| h.join("Downloads")).filter(|d| d.is_dir()) {
+        return d;
+    }
     paths::data_dir().join("exports")
 }
 
