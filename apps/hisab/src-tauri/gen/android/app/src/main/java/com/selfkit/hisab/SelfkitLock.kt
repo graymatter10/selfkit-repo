@@ -21,8 +21,6 @@ import org.json.JSONObject
 
 class SelfkitLock(private val act: AppCompatActivity) {
   private var webView: WebView? = null
-  // elapsedRealtime counts deep sleep too, and can't be moved by changing the clock.
-  @Volatile private var stoppedAt = 0L
   @Volatile private var away = -1L
   @Volatile private var authBusy = false
   private val prefs by lazy { act.getSharedPreferences("selfkit_lock", 0) }
@@ -105,6 +103,13 @@ class SelfkitLock(private val act: AppCompatActivity) {
         done("error:${t.message ?: "biometric prompt failed"}")
       }
     }
+  }
+
+  private companion object {
+    // elapsedRealtime counts deep sleep too, and can't be moved by changing the clock.
+    // Process-level, so an Activity recreated while in the background still knows when
+    // the app was stopped and locks on return (C5).
+    @Volatile var stoppedAt = 0L
   }
 
   private fun done(result: String) {
