@@ -86,12 +86,17 @@
     formMsg = null;
     sheet = "server";
   }
+  /** Postgres is required; checked before anything reaches secure storage (L4). */
+  const formError = () => (!form.pg_url.trim() ? "Enter the Postgres connection (postgres://…)." : "");
   async function testServer() {
+    if (formError()) return void (formMsg = { ok: false, text: formError() });
+    // (Save with an empty form still removes a saved server, as before.)
     formMsg = { ok: true, text: "Testing…" };
     try { await syncApi.testServer($state.snapshot(form)); formMsg = { ok: true, text: "Connected. Database ready, storage writable." }; }
     catch (e) { formMsg = { ok: false, text: String(e) }; }
   }
   async function saveServer() {
+    if (formError() && !srv?.pg_url) return void (formMsg = { ok: false, text: formError() });
     try { srv = await syncApi.saveServer($state.snapshot(form)); sheet = ""; await load(); }
     catch (e) { formMsg = { ok: false, text: String(e) }; }
   }

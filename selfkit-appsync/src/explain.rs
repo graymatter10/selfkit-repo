@@ -69,7 +69,13 @@ pub fn explain(e: &Error) -> String {
         return "Another sync is using the data right now. Try again in a moment.".into();
     }
     if has("keychain") {
-        return "Couldn't read this device's secure storage.".into();
+        // Linux desktops without a Secret Service (common on i3) can't store passwords (L4).
+        return if cfg!(all(target_os = "linux", not(target_os = "android"))) {
+            "Couldn't use this device's secure storage. Start a keyring (GNOME Keyring, or KeePassXC with Secret Service on) and try again."
+        } else {
+            "Couldn't read this device's secure storage."
+        }
+        .into();
     }
     if matches!(e, Error::Io(_)) {
         return "Couldn't read or write files on this device.".into();

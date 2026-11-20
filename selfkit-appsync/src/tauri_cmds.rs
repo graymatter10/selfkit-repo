@@ -181,7 +181,19 @@ fn build_config(sync: &AppSync, f: &ServerForm) -> Res<Option<ServerConfig>> {
     if url.is_empty() {
         return Ok(None);
     }
-    let old = sync.server_config().map_err(e)?;
+    // Check the form before touching secure storage, so typos get a real answer (L4).
+    if !(url.starts_with("postgres://") || url.starts_with("postgresql://")) {
+        return Err("The Postgres connection must start with postgres://".into());
+    }
+    if !f.s3_endpoint.trim().is_empty() && !(f.s3_endpoint.trim().starts_with("https://") || f.s3_endpoint.trim().starts_with("http://")) {
+        return Err("The S3 endpoint must start with https://".into());
+    }
+    if !f.s3_endpoint.trim().is_empty() && f.s3_bucket.trim().is_empty() {
+        return Err("Enter the S3 bucket.".into());
+    }
+    // Unreadable secure storage only means "no saved password to keep" here; saving
+    // reports the storage problem itself.
+    let old = sync.server_config().unwrap_or(None);
     let old_pw = old.as_ref().and_then(|c| {
         let rest = c.pg_url.split_once("://")?.1;
         let auth = rest.split_once('@')?.0;
