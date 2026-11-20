@@ -140,6 +140,11 @@ function Test-Agent {
   try {
     $psi = New-Object System.Diagnostics.ProcessStartInfo $exe, 'native-host chrome-extension://ijiimbgfojojhjlchgbkkhhodifbnami/'
     $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.CreateNoWindow = $true
+    # The redirected stdin writer puts the encoding's preamble (a UTF-8 BOM) in front of
+    # the first bytes, which the host reads as a huge length. Use an encoding without one:
+    # StandardInputEncoding on .NET Core, the console input encoding on .NET Framework.
+    $noBom = New-Object System.Text.UTF8Encoding $false
+    if ($psi | Get-Member -Name StandardInputEncoding) { $psi.StandardInputEncoding = $noBom } else { [Console]::InputEncoding = $noBom }
     $hp = [System.Diagnostics.Process]::Start($psi)
     $msg = [System.Text.Encoding]::UTF8.GetBytes('{"type":"status"}')
     $hp.StandardInput.BaseStream.Write([BitConverter]::GetBytes([int]$msg.Length), 0, 4)
