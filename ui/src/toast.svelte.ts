@@ -13,5 +13,11 @@ export function showToast(text: string, undo?: T["undo"], ms = 5000) {
 export async function runUndo() {
   const u = toast.current?.undo;
   toast.current = null;
-  await u?.();
+  // A failed undo used to vanish as an unhandled rejection: the toast closed and
+  // nothing changed, with no message (C40).
+  try {
+    await u?.();
+  } catch (e) {
+    showToast(`Couldn't undo: ${String(e).replace(/^Error:\s*/, "")}`);
+  }
 }

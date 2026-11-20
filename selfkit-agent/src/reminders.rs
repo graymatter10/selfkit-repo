@@ -41,7 +41,12 @@ pub fn fire_at(data: &Value) -> Option<i64> {
         NaiveDate::parse_from_str(start, "%Y-%m-%d").ok()?.and_time(NaiveTime::from_hms_opt(9, 0, 0)?)
     };
     let local = base - Duration::minutes(mins);
-    Local.from_local_datetime(&local).earliest().map(|d| d.timestamp_millis())
+    // A time in the spring-forward gap doesn't exist: fire an hour later instead of never (C24).
+    Local
+        .from_local_datetime(&local)
+        .earliest()
+        .or_else(|| Local.from_local_datetime(&(local + Duration::hours(1))).earliest())
+        .map(|d| d.timestamp_millis())
 }
 
 fn body(data: &Value) -> String {
@@ -104,7 +109,13 @@ pub fn agenda_running() -> bool {
         let Ok(rd) = std::fs::read_dir("/proc") else { return false };
         return rd.flatten().any(|e| {
             e.file_name().to_str().is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
-                && std::fs::read_to_string(e.path().join("comm")).is_ok_and(|c| c.trim() == "agenda")
+                // comm ignoring case ("Agenda" from a productName-named binary), or the
+                // executable's file name (AppImage, renamed installs) — C29.
+                && (std::fs::read_to_string(e.path().join("comm")).is_ok_and(|c| c.trim().eq_ignore_ascii_case("agenda"))
+                    || std::fs::read_link(e.path().join("exe"))
+                        .ok()
+                        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()))
+                        .is_some_and(|n| n == "agenda" || n == "agenda.appimage" || n.starts_with("agenda_")))
         });
     }
     #[cfg(windows)]

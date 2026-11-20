@@ -387,6 +387,9 @@ pub struct HisabData {
     pub first: Option<i32>,
     /// Sum of monthly category budgets (main currency); 0 = none set.
     pub monthly_budget: f64,
+    /// Logical day → spent in categories that have a budget (split parts per category):
+    /// what the budget is compared with, like Hisab's `budget_spent` (C61).
+    pub budgeted_per_day: BTreeMap<i32, f64>,
 }
 
 /// Units of `c` per 1 base currency (Hisab's `hisab-rates` record).
@@ -425,13 +428,18 @@ pub fn read_hisab(store: &Store, main: &str, day_start: u16) -> HisabData {
         }
     };
     let mut cats: HashMap<String, String> = HashMap::new();
+    let mut budgeted: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut budget = 0.0;
     if let Ok(mut q) = store.conn().prepare("SELECT id, data FROM records WHERE collection='categories' AND deleted=0") {
         for (id, data) in q.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))).into_iter().flatten().flatten() {
             let Ok(v) = serde_json::from_str::<Value>(&data) else { continue };
-            cats.insert(id, st(&v, "name").to_string());
+            cats.insert(id.clone(), st(&v, "name").to_string());
             if st(&v, "kind") != "income" && !v.get("archived").and_then(Value::as_bool).unwrap_or(false) {
-                budget += fnum(&v, "budget").unwrap_or(0.0).max(0.0);
+                let b = fnum(&v, "budget").unwrap_or(0.0).max(0.0);
+                budget += b;
+                if b > 0.0 {
+                    budgeted.insert(id.clone());
+                }
             }
         }
     }
@@ -464,6 +472,12 @@ pub fn read_hisab(store: &Store, main: &str, day_start: u16) -> HisabData {
         let cat_id = cat_id.unwrap_or_else(|| st(&v, "category").to_string());
         let category = cats.get(&cat_id).cloned().unwrap_or_else(|| if cat_id.is_empty() { "Other".into() } else { cat_id.clone() });
         *out.per_day.entry(d).or_insert(0.0) += amount;
+        let parts: Vec<(String, f64)> = match v.get("splits").and_then(Value::as_array).filter(|a| a.len() > 1) {
+            Some(a) => a.iter().map(|x| (st(x, "category").to_string(), conv(fnum(x, "amount").unwrap_or(0.0).abs(), st(&v, "currency")))).collect(),
+            None => vec![(st(&v, "category").to_string(), amount)],
+        };
+        let b: f64 = parts.iter().filter(|(c, _)| budgeted.contains(c)).map(|(_, a)| a).sum();
+        *out.budgeted_per_day.entry(d).or_insert(0.0) += b;
         out.spends.push(Spend { day: d, minute, amount, category, note: st(&v, "note").to_string() });
     }
     out
@@ -632,6 +646,7 @@ mod tests {
         assert_eq!(h.per_day[&d("2026-01-04")], 10.0, "02:00 counts for the day before; BDT converted");
         assert_eq!(h.per_day[&d("2026-01-06")], 0.0);
         assert_eq!(h.monthly_budget, 300.0);
+        assert_eq!(h.budgeted_per_day[&d("2026-01-05")], 12.5);
         assert_eq!(h.spends[0].category, "Food");
     }
 

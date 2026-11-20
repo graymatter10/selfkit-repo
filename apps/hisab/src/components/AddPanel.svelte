@@ -5,9 +5,9 @@
   // change, so Back, a crash or a restart never loses what was typed.
   import { showToast } from "@selfkit/ui";
   import { api, type Tx } from "../lib/api";
-  import { LOCALE, money, nowHm, shortDate, symbol, todayIso, dayLabel } from "../lib/fmt";
+  import { LOCALE, money, nowHm, shortDate, splitNoteTags, symbol, todayIso, dayLabel } from "../lib/fmt";
   import { addPhoto } from "../lib/photo";
-  import { accountById, accounts, app, catById, defaultAccount, draftWritten, emptyDraft, openSheet, persistDraft, rankedCats, refresh, resetDraft, main } from "../lib/state.svelte";
+  import { accountById, accounts, app, catById, catLabel, defaultAccount, draftWritten, emptyDraft, openSheet, persistDraft, rankedCats, refresh, resetDraft, main } from "../lib/state.svelte";
   import CategoryRow from "./CategoryRow.svelte";
   import Ic from "./Ic.svelte";
   import NumPad from "./NumPad.svelte";
@@ -16,6 +16,14 @@
   let { compact = false, onsaved }: { compact?: boolean; onsaved?: (t: Tx) => void } = $props();
   let menu = $state<"" | "account" | "to">("");
   let noteFocus = $state(false);
+  // Phone-only note rules: Enter = keyboard "done" (blur), and the pad hides under the
+  // on-screen keyboard. On a computer Enter saves (C31) and the pad stays (C32).
+  const phone = /Android/i.test(navigator.userAgent);
+  function noteKey(e: KeyboardEvent) {
+    if (e.key !== "Enter") return;
+    if (!phone && canSave) return void (e.preventDefault(), save());
+    (e.currentTarget as HTMLInputElement).blur();
+  }
   let busy = $state(false);
   let shake = $state(false);
 
@@ -48,7 +56,8 @@
     else if (/^\d$/.test(k)) {
       const [, frac] = a.split(".");
       if (frac !== undefined && frac.length >= 2) return;
-      if (a.replace(".", "").length >= 10) return;
+      // Up to 10 whole digits plus 2 decimals (decimals after 10 digits were dropped, P12).
+      if (frac === undefined && a.length >= 10) return;
       a = a === "0" ? k : a + k;
     }
     app.draft.amount = a;
@@ -104,11 +113,7 @@
       return;
     }
     // "#tags" in the note become tags.
-    const tags = [...dr.tags];
-    const note = dr.note.replace(/(^|\s)#([\p{L}\p{N}_-]+)/gu, (_, sp, t) => {
-      tags.push(t.toLowerCase());
-      return sp;
-    }).replace(/\s+/g, " ").trim();
+    const { note, tags } = splitNoteTags(dr.note, dr.tags);
     const data: Partial<Tx> = {
       kind: dr.kind, amount: amountNum, currency: cur, date: dr.date || todayIso(), time: dr.time || (dr.date === todayIso() || !dr.date ? nowHm() : ""),
       account: acct?.id ?? "", note, tags, photos: dr.photos, source: "manual",
@@ -128,9 +133,11 @@
       await draftWritten(); // a queued draft write must not land after this Save
       const t = await api.save<Tx>("transactions", data, undefined, { ...emptyDraft(), ...keep, _t: Date.now() });
       resetDraft(keep);
+      // The clicked category tile kept focus (and its ring) after Save (L2-7).
+      if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
       await refresh();
       const label = dr.kind === "transfer" ? "Moved" : dr.kind === "income" ? "Income saved" : "Saved";
-      showToast(`${label} · ${money(t.amount, t.currency)}${dr.kind !== "transfer" ? " · " + (catById(t.category)?.name ?? "") : ""}`, async () => {
+      showToast(`${label} · ${money(t.amount, t.currency)}${dr.kind !== "transfer" ? " · " + catLabel(t) : ""}`, async () => {
         await api.remove(t.id);
         await refresh();
         app.draft = { ...app.draft, ...{ amount: String(t.amount), category: dr.category, splits: dr.splits, note: dr.note, photos: dr.photos, date: dr.date, kind: dr.kind, to_account: dr.to_account, currency: dr.currency } };
@@ -203,7 +210,7 @@
     <label class="flex h-10 min-w-0 flex-1 items-center rounded-[12px] bg-fill2 px-3">
       <span class="sr">Note</span>
       <input bind:value={app.draft.note} placeholder={app.draft.kind === "transfer" ? "Note" : "Note, #tag"} enterkeyhint="done" class="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
-        onfocus={() => (noteFocus = true)} onblur={() => setTimeout(() => (noteFocus = false), 120)} onkeydown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()} />
+        onfocus={() => (noteFocus = true)} onblur={() => setTimeout(() => (noteFocus = false), 120)} onkeydown={noteKey} />
     </label>
     <label class="press relative flex h-10 shrink-0 items-center gap-1 rounded-[12px] bg-fill2 px-2.5 text-[13px] font-medium {app.draft.date && app.draft.date !== todayIso() ? 'text-accent-ink' : 'text-ink2'}">
       <Ic name="calendar" size={16} />{!app.draft.date || app.draft.date === todayIso() ? "Today" : dayLabel(app.draft.date).replace(/^\w+, /, "") || shortDate(app.draft.date)}
@@ -223,7 +230,7 @@
     </p>
   {/if}
 
-  {#if !noteFocus || compact}
+  {#if !noteFocus || compact || !phone}
     <NumPad onkey={key} {compact} />
   {/if}
   <button type="button" disabled={!canSave} onclick={save}

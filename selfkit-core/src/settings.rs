@@ -72,6 +72,10 @@ impl Default for Settings {
     }
 }
 
+/// Per-field clock object stored inside the settings data by the 151f5e9 builds; field
+/// clocks now live in `records.fclock`, so the next save drops it (C15).
+pub const LEGACY_CLOCK: &str = "_clock";
+
 impl Settings {
     pub fn load(store: &Store) -> Result<Self> {
         Ok(match store.get(SETTINGS_ID)? {
@@ -85,7 +89,7 @@ impl Settings {
         let mut data = serde_json::to_value(self)?;
         if let (Some(o), Some(old)) = (data.as_object_mut(), old.as_ref().and_then(|v| v.as_object())) {
             // Keep fields this version doesn't know.
-            for (k, v) in old {
+            for (k, v) in old.iter().filter(|(k, _)| k.as_str() != LEGACY_CLOCK) {
                 o.entry(k.clone()).or_insert_with(|| v.clone());
             }
         }
@@ -106,6 +110,9 @@ impl Settings {
         f(&mut after);
         let (b, a) = (serde_json::to_value(&before)?, serde_json::to_value(&after)?);
         let mut data = raw.unwrap_or_else(|| b.clone());
+        if let Some(out) = data.as_object_mut() {
+            out.remove(LEGACY_CLOCK);
+        }
         if let (Some(out), Some(a), Some(b)) = (data.as_object_mut(), a.as_object(), b.as_object()) {
             for (k, v) in a {
                 if b.get(k) == Some(v) {
@@ -203,5 +210,12 @@ mod tests {
         Settings::update(&s, |x| x.day_start_min = 60).unwrap();
         let d = s.get(SETTINGS_ID).unwrap().unwrap().data;
         assert_eq!((d["main_currency"].as_str(), d["future"].as_i64(), d["day_start_min"].as_i64()), (Some("BDT"), Some(7), Some(60)));
+        // The old in-data `_clock` object (151f5e9 builds) is dropped by the next write (C15).
+        s.put(COLLECTION, Some(SETTINGS_ID), &serde_json::json!({"main_currency":"BDT","_clock":{"main_currency":1}})).unwrap();
+        Settings::update(&s, |x| x.day_start_min = 30).unwrap();
+        assert!(s.get(SETTINGS_ID).unwrap().unwrap().data.get(LEGACY_CLOCK).is_none());
+        s.put(COLLECTION, Some(SETTINGS_ID), &serde_json::json!({"main_currency":"BDT","_clock":{"main_currency":1}})).unwrap();
+        Settings::load(&s).unwrap().save(&s).unwrap();
+        assert!(s.get(SETTINGS_ID).unwrap().unwrap().data.get(LEGACY_CLOCK).is_none());
     }
 }

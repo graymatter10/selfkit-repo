@@ -4,8 +4,10 @@
   import { app, go, main } from "../lib/state.svelte";
   let { big = false, compact = false }: { big?: boolean; compact?: boolean } = $props();
   const o = $derived(app.snap?.overview);
-  const pct = $derived(o && o.budget > 0 ? Math.min(1, o.spent / o.budget) : 0);
-  const over = $derived(!!o && o.budget > 0 && o.spent > o.budget);
+  // Against the budget only spending in budgeted categories counts (L2-12).
+  const bspent = $derived(o ? (o.budget_spent ?? o.spent) : 0);
+  const pct = $derived(o && o.budget > 0 ? Math.min(1, bspent / o.budget) : 0);
+  const over = $derived(!!o && o.budget > 0 && bspent > o.budget);
   // Where spending "should" be today if the budget were spread evenly.
   const pace = $derived(o && o.days_in_month ? o.days_elapsed / o.days_in_month : 0);
 </script>

@@ -74,7 +74,7 @@ Every 20 s the agent reads `agenda.db` (read-only) for `tasks` that have `remind
 All times are UTC ms. `cpu_percent` is the share of one core since the previous snapshot (null on the first one). **Error log:** every WARN/ERROR from every agent mode, the native host included, is appended to `<data_dir>/logs/agent-errors.log` as JSON lines `{at, level, source, message, pid}`. It rotates to `.log.1` at 512 KiB.
 
 ## Not yet
-Tray icon. Windows activity tracking checked by hand on a real PC (CI only checks that the agent starts). On Windows the installer uses an HKCU Run key + hidden launcher instead of `install-service`'s logon task (that needs admin); `install-service` could switch to the Run key too. A settings UI for agent.json (Reflect/Settings). Hisab/Dusk reminders.
+Tray icon. Windows activity tracking checked by hand on a real PC (CI only checks that the agent starts). On Windows the installer uses an HKCU Run key + hidden launcher instead of `install-service`'s logon task (that needs admin); `install-service` writes the same Run key value (C28). A settings UI for agent.json (Reflect/Settings). Hisab/Dusk reminders.
 
 ## Code map
 - `src/main.rs`: CLI, run loop, tracker thread (Chrono settings every 10 s, probe retry), backup loop, key init/unlock.
@@ -82,7 +82,7 @@ Tray icon. Windows activity tracking checked by hand on a real PC (CI only check
 - `src/native_host.rs`: native-messaging framing, `web_sessions` validation/upsert, browser-launch detection.
 - `src/install.rs`: host manifests (Linux files / Windows registry), systemd unit / Windows logon task, i3 snippet.
 - `src/backup.rs`: S3 config, monthly/weekly bundles, retention, state, restore.
-- `src/reminders.rs`: Agenda reminder scan, dedupe, notifications.
+- `src/reminders.rs`: Agenda reminder scan, dedupe, notifications. A reminder in the spring-forward DST gap fires an hour later (C24).
 - `src/health.rs`: error-log tracing layer, CPU/RSS, storage, health document + writer.
 - `src/config.rs`: `agent.json` + env overrides.
 - `src/tracker/mod.rs`, `x11.rs`, `win.rs`: activity probes.

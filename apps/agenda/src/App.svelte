@@ -24,7 +24,7 @@
   import PhotoViewer from "./components/PhotoViewer.svelte";
   import { PhotoSourceSheet, closePhotoSource } from "./lib/photo-source";
   import { api, type Task } from "./lib/api";
-  import { allTags, app, groups, init, refresh, remove, startFocus, taskById, toggle, counts, type View } from "./lib/state.svelte";
+  import { NEW_TASK_DRAFT, allTags, app, groups, init, refresh, remove, startFocus, taskById, toggle, counts, type View } from "./lib/state.svelte";
   import type { Sort } from "./lib/time";
 
   init();
@@ -44,6 +44,8 @@
   const open = (t: Task) => (app.panel = { kind: "detail", id: t.id });
   const close = () => (app.panel = { kind: "none" });
   const newTask = () => (app.panel = { kind: "new" });
+  // An unsaved New Task from before the app was killed comes back (P5).
+  try { if (localStorage.getItem(NEW_TASK_DRAFT) && !app.demo.title) newTask(); } catch { /* storage unavailable */ }
   const TITLES = { active: "Tasks", all: "All Tasks", done: "Completed", overdue: "Overdue" } as const;
   const VIEW_TITLES: Record<View, string> = { list: "", upcoming: "Upcoming", calendar: "Calendar", board: "Board", history: "History", stats: "Stats" };
   const title = $derived(app.view === "list" ? TITLES[app.filter] : VIEW_TITLES[app.view]);
@@ -159,6 +161,13 @@
     const tag = (e.target as HTMLElement)?.tagName;
     if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) {
       if (e.key === "Escape" && app.searching) stopSearch();
+      // Esc in a task form field (New Task focuses Title) closes / asks "Discard…?" too (L3).
+      else if (e.key === "Escape" && (app.panel.kind === "new" || app.panel.kind === "edit") && !app.settingsOpen && !app.focusOpen && !app.photo && !app.closeGuard?.()) close();
+      return;
+    }
+    // The "…" menu is on top: Esc closes it, other keys wait until it is closed (L9).
+    if (menu) {
+      if (e.key === "Escape") menu = false;
       return;
     }
     if (app.settingsOpen || app.focusOpen || app.photo || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -188,13 +197,14 @@
 
 {#snippet search()}
   <div class="flex items-center gap-2">
-    <label class="flex h-9 flex-1 items-center gap-1.5 rounded-[10px] bg-fill px-2 text-muted">
+    <!-- min-w-0 + shrink-0: Cancel stays inside the desktop header's 16rem box instead of running under "+" (L8). -->
+    <label class="flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-[10px] bg-fill px-2 text-muted">
       <Icon name="search" size={16} stroke={2.2} /><span class="sr">Search tasks</span>
       <input bind:this={searchEl} bind:value={app.query} oninput={onSearch} placeholder="Search" enterkeyhint="search"
         onfocus={() => ((searchFocus = true), (app.searching = true))} onblur={() => ((searchFocus = false), !app.query.trim() && (app.searching = false))}
         class="min-w-0 flex-1 bg-transparent text-[17px] text-ink outline-none" />
     </label>
-    {#if app.searching}<button type="button" class="press fade text-[17px] text-accent" onmousedown={(e) => e.preventDefault()} onclick={stopSearch}>Cancel</button>{/if}
+    {#if app.searching}<button type="button" class="press fade shrink-0 text-[17px] text-accent" onmousedown={(e) => e.preventDefault()} onclick={stopSearch}>Cancel</button>{/if}
   </div>
 {/snippet}
 

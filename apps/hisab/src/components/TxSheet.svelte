@@ -3,7 +3,7 @@
   // or split, tags, note, photos). Delete is undoable.
   import { showToast } from "@selfkit/ui";
   import type { Tx } from "../lib/api";
-  import { money } from "../lib/fmt";
+  import { money, splitNoteTags } from "../lib/fmt";
   import { addPhoto } from "../lib/photo";
   import { accountById, app, catById, closeSheet, editRec, main, openSheet, removeRec } from "../lib/state.svelte";
   import Confirm from "./Confirm.svelte";
@@ -51,7 +51,9 @@
 
   async function save() {
     if (!t) return;
-    const data: Partial<Tx> = { ...t, amount: Number(t.amount), tags: tagText.split(/[\s,]+/).map((x) => x.replace(/^#/, "")).filter(Boolean) };
+    // "#tags" typed in the note become tags, like on the add screen (C33/L2-3).
+    const nt = splitNoteTags(t.note ?? "", tagText.split(/[\s,]+/).map((x) => x.replace(/^#/, "")).filter(Boolean));
+    const data: Partial<Tx> = { ...t, amount: Number(t.amount), note: nt.note, tags: nt.tags };
     if (t.kind === "expense" && splits.length > 1) {
       data.splits = splits.map((s) => ({ category: s.category, amount: Number(s.amount) || 0 }));
       data.category = splits[0].category;
@@ -84,6 +86,7 @@
   const splitSum = $derived(splits.reduce((a, s) => a + (Number(s.amount) || 0), 0));
   const row = "flex min-h-12 items-center gap-3 border-b border-sep px-4 last:border-0";
   const lbl = "w-24 shrink-0 text-[15px] text-ink2";
+  // Values right-aligned (selects and date/time too, see app.css); free text (Note, Tags) left (C34/L2-4).
   const inp = "min-w-0 flex-1 bg-transparent py-3 text-right text-[15px] outline-none";
 </script>
 
@@ -134,7 +137,7 @@
 
       <div class="card overflow-hidden">
         <label class="flex items-start gap-3 border-b border-sep px-4"><span class="{lbl} pt-3">Note</span><textarea bind:value={t.note} rows="2" class="min-w-0 flex-1 resize-none bg-transparent py-3 text-[15px] outline-none"></textarea></label>
-        <label class={row}><span class={lbl}>Tags</span><input bind:value={tagText} placeholder="#trip #work" class="{inp} text-left" /></label>
+        <label class={row}><span class={lbl}>Tags</span><input bind:value={tagText} placeholder="#trip #work" class="min-w-0 flex-1 bg-transparent py-3 text-left text-[15px] outline-none" /></label>
       </div>
 
       <div>

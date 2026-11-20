@@ -180,6 +180,20 @@ export async function saveSettings(s: Settings) {
   await guard(api.settingsSet(s));
   refresh();
 }
+/** Save the rate-sleep shortcut; "" or the error to show under the field (L4-19). */
+export async function saveShortcut(s: Settings): Promise<string> {
+  try {
+    await api.settingsSet(s);
+    app.settings = s;
+    return "";
+  } catch (e) {
+    const msg = String(e).replace(/^Error:\s*/, "");
+    if (msg.startsWith("Saved")) app.settings = s; // stored, but the system refused it
+    return msg;
+  } finally {
+    refresh();
+  }
+}
 
 // ---- Android usage import ------------------------------------------------
 
@@ -226,4 +240,19 @@ export async function init() {
     }
   });
   setInterval(refresh, 5 * 60_000);
+  mirror();
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && mirror());
+}
+
+// Android: refresh read-only copies of Agenda and Hisab from their providers
+// (android-plugins/selfkit-sync SelfkitMirror) for Connections, then re-read sources (B4).
+function mirror() {
+  const b = (window as unknown as { SelfkitSync?: { mirror(apps: string): string } }).SelfkitSync;
+  if (!b) return;
+  setTimeout(async () => {
+    try { b.mirror("agenda,hisab"); } catch { /* not available */ }
+    app.sources = (await guard(api.sources())) ?? app.sources;
+    if (app.tab === "connections") loadConnections();
+    else app.connections = null; // reloaded when the tab opens
+  }, 50);
 }

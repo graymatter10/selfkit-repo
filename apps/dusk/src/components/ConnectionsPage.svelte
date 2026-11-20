@@ -65,7 +65,7 @@
       {#if c.enough}{@render bars(c)}{/if}
     {/if}
     <div class="mt-2.5 flex min-h-11 items-center border-t border-sep text-[12.5px] text-muted {desktop ? 'mt-3.5' : ''}">
-      <span class="num">{c.available ? `${basis(c)} · from ${c.src}` : c.src === "Hisab" || c.src === "Agenda" ? `${c.src} isn't on this device` : ""}</span>
+      <span class="num">{c.available ? `${basis(c)} · from ${c.src}` : `${c.src} isn't on this device`}</span>
       {#if c.enough}
         <button type="button" class="press ml-auto inline-flex h-11 items-center gap-0.5 pl-3 text-[13px] font-semibold text-accent" aria-expanded={!!open[c.id]} onclick={() => (open[c.id] = !open[c.id])}>{open[c.id] ? "Hide details" : "Details"}<Icon name={open[c.id] ? "up" : "down"} size={16} stroke={2.2} /></button>
       {/if}

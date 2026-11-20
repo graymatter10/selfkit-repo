@@ -48,7 +48,7 @@
     </div>
     <div class="flex gap-3 rounded-[14px] bg-danger-soft px-4 py-3 text-[14px] leading-snug text-ink2">
       <Ic name="bell" size={18} class="mt-0.5 shrink-0 text-danger" />
-      <span><b class="text-ink">Not encrypted.</b> This file holds your transactions in plain text. Anyone who gets it can read it. Encrypted backups are made automatically by sync.</span>
+      <span><b class="text-ink">Not encrypted.</b> This file holds your transactions in plain text. Anyone who gets it can read it. When sync is on, it also makes encrypted backups automatically.</span>
     </div>
     <button type="button" disabled={busy} class="press h-[52px] w-full rounded-[14px] bg-accent text-[17px] font-semibold text-on-accent disabled:opacity-40" onclick={run}>{busy ? "Exporting…" : `Export ${fmt.toUpperCase()}`}</button>
     {#if done}<p class="fade m-0 rounded-[14px] bg-accent-soft px-4 py-3 text-[14px] break-all text-accent-ink">Saved to {done}</p>{/if}

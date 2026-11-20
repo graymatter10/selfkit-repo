@@ -2,6 +2,8 @@
 
 Status: **v0.1, usable on Linux and Android** (on a phone Reflect reads read-only mirrors of the other apps through their providers, `SelfkitMirror`). Read-only stats across Chrono, Hisab, Agenda and Dusk: Today, streaks with your own thresholds, connections, weekly and monthly reviews, and the health screen for the agent and sync. Scope: [PLANNING.md](../../PLANNING.md) § Apps → Reflect. Stats rules: [stats.md](stats.md).
 
+Desktop: one instance (`tauri-plugin-single-instance`; a second launch focuses the first window, skipped when `SELFKIT_DATA_DIR` is set), like Agenda/Hisab/Dusk (C23).
+
 Design (2026-11-15, self-reviewed; the user was asleep and asked not to wait for approval): mockup `scratchpad/reflect/reflect-mockup.html` (contact sheets `contact-phone.png`, `contact-desktop.png`, `contact-dark.png`). Warm neutral greys, one amber accent (#a35d10 light / #e7aa5e dark) that matches the icon. App colours only as tiny "● Chrono" markers that say where a number came from. Red only for errors. Inter (bundled), plain sentences, one big number per card, details behind a tap. Targets ≥ 44 px, text ≥ 12 px. Light/dark follow the system unless set (per device).
 
 ## Screens
@@ -24,7 +26,7 @@ Reads (read-only, each optional; a missing file = that app isn't installed):
 - `chrono.db`: `app_sessions`, `web_sessions`, `chrono_settings` (exclude lists, device names). Kept in memory per day and updated from records whose `updated_at` changed (a year of sessions is read once).
 - `hisab.db`: `transactions` (expenses, converted to the main currency with `hisab-rates`), `categories` (names, monthly budgets).
 - `agenda.db`: `completions` (falls back to `tasks.done_at`), open `tasks` with a start date (left for today).
-- `dusk.db`: table `dusk_nights` (Dusk's per-night result cache).
+- `dusk.db`: table `dusk_nights` (Dusk's per-night result cache). On a phone it is a copy Dusk's provider hands to the mirror (`/table?name=dusk_nights`, B2), as fresh as Dusk's last estimate.
 - `settings.db` (shared): `day_start_min`, `main_currency`.
 - `<data_dir>/health.json` (agent, schema 1) and the agent IPC socket (`sync_now`, `backup_now`).
 

@@ -47,6 +47,8 @@ pub struct LockView {
     pub can_reset: bool,
     /// Test build: the lock screen auto-opens (see `test_unlock_allowed`).
     pub test_build: bool,
+    /// Where the lock file is, for the desktop "Forgot PIN?" hint (L6).
+    pub lock_file: String,
 }
 
 fn view(l: &AppLock, data_dir: &Path) -> LockView {
@@ -55,7 +57,13 @@ fn view(l: &AppLock, data_dir: &Path) -> LockView {
         platform: if cfg!(target_os = "android") { "android" } else { "desktop" },
         can_reset: data_dir.join("keys.json").exists(),
         test_build: test_unlock_allowed(),
+        lock_file: l.path().display().to_string(),
     }
+}
+
+fn wait_text(ms: u64) -> String {
+    let s = ms.div_ceil(1000);
+    if s < 60 { format!("{s} s") } else { format!("{} min", s.div_ceil(60)) }
 }
 
 /// Answer to a secret check, ready for the screen.
@@ -86,9 +94,12 @@ fn with<T>(h: &LockHandle, f: impl FnOnce(&mut AppLock, &Path) -> T) -> T {
     f(&mut *l, h.1.as_path())
 }
 
-#[tauri::command]
-pub fn lock_status(h: State<'_, LockHandle>) -> LockView {
-    with(&h, |l, d| view(l, d))
+// Every command runs off the UI thread (`async`): they share the mutex that
+// `lock_unlock`/`change`/`disable`/`reset` hold during Argon2id, which froze the window
+// on a blur/focus during a hash (C13).
+#[tauri::command(async)]
+pub fn lock_status(h: State<'_, LockHandle>) -> Res<LockView> {
+    Ok(with(&h, |l, d| view(l, d)))
 }
 
 #[tauri::command]
@@ -100,9 +111,13 @@ pub async fn lock_unlock(h: State<'_, LockHandle>, secret: String) -> Res<Attemp
     .await
 }
 
-/// Called after Android's BiometricPrompt succeeded (Kotlin → page → here).
-#[tauri::command]
+/// Called after Android's BiometricPrompt succeeded (Kotlin → page → here). Refused on
+/// desktop, where there is no prompt and it would skip the PIN (C12).
+#[tauri::command(async)]
 pub fn lock_unlock_biometric(h: State<'_, LockHandle>) -> Res<LockView> {
+    if !cfg!(target_os = "android") {
+        return Err("Fingerprint unlock is only on Android.".into());
+    }
     with(&h, |l, d| {
         l.unlock_biometric().map_err(|e| e.to_string())?;
         Ok(view(l, d))
@@ -110,7 +125,7 @@ pub fn lock_unlock_biometric(h: State<'_, LockHandle>) -> Res<LockView> {
 }
 
 /// Test builds only: open without a secret. Refused in other builds.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lock_test_unlock(h: State<'_, LockHandle>) -> Res<LockView> {
     if !test_unlock_allowed() {
         return Err("Not a test build.".into());
@@ -148,7 +163,7 @@ pub async fn lock_disable(h: State<'_, LockHandle>, current: String) -> Res<Atte
     .await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lock_set_options(h: State<'_, LockHandle>, timeout_secs: u32, biometric: bool, hide_in_switcher: bool) -> Res<LockView> {
     with(&h, |l, d| {
         l.set_options(timeout_secs, biometric, hide_in_switcher).map_err(|e| match e {
@@ -161,20 +176,20 @@ pub fn lock_set_options(h: State<'_, LockHandle>, timeout_secs: u32, biometric: 
 
 /// The app is back after `ms` away (Android: stopped → started, measured in Kotlin;
 /// desktop: unfocused or idle, measured in the page).
-#[tauri::command]
-pub fn lock_away(h: State<'_, LockHandle>, ms: i64) -> LockView {
-    with(&h, |l, d| {
+#[tauri::command(async)]
+pub fn lock_away(h: State<'_, LockHandle>, ms: i64) -> Res<LockView> {
+    Ok(with(&h, |l, d| {
         l.away(ms);
         view(l, d)
-    })
+    }))
 }
 
-#[tauri::command]
-pub fn lock_now(h: State<'_, LockHandle>) -> LockView {
-    with(&h, |l, d| {
+#[tauri::command(async)]
+pub fn lock_now(h: State<'_, LockHandle>) -> Res<LockView> {
+    Ok(with(&h, |l, d| {
         l.lock_now();
         view(l, d)
-    })
+    }))
 }
 
 /// "Forgot PIN?": turn the lock off with the Selfkit encryption passphrase or recovery
@@ -184,9 +199,19 @@ pub fn lock_now(h: State<'_, LockHandle>) -> LockView {
 pub async fn lock_reset(h: State<'_, LockHandle>, secret: String, recovery: bool) -> Res<LockView> {
     run(&h, move |l, d| {
         let kf = KeyFile::load(&d.join("keys.json")).map_err(|_| selfkit_core::Error::Format("Encryption isn't set up on this device.".into()))?;
+        // Same counter and waits as the PIN, so this isn't an unlimited guessing oracle
+        // for the encryption passphrase (C6).
+        let wait = l.retry_in_ms(now_ms());
+        if wait > 0 {
+            return Err(selfkit_core::Error::Format(format!("Too many tries. Try again in {}.", wait_text(wait))));
+        }
         let ok = if recovery { kf.unlock_recovery(secret.trim()) } else { kf.unlock_passphrase(&secret) };
         if ok.is_err() {
-            return Err(selfkit_core::Error::Format(if recovery { "That recovery key doesn't match." } else { "Wrong passphrase." }.into()));
+            let wrong = if recovery { "That recovery key doesn't match." } else { "Wrong passphrase." };
+            return Err(selfkit_core::Error::Format(match l.record_failure(now_ms())? {
+                Attempt::Wrong { retry_in_ms, .. } if retry_in_ms > 0 => format!("{wrong} Try again in {}.", wait_text(retry_in_ms)),
+                _ => wrong.to_string(),
+            }));
         }
         l.reset()?;
         Ok(view(l, d))

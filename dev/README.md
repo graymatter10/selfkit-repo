@@ -17,3 +17,7 @@ Run in the background while agents work (logs and the notify queue in `/shared/s
 - Every guard event is written to `locks/notify/` so the lead reports it in the main chat.
 
 Start: `for s in thermal-guard power-guard disk-guard temp-log; do setsid nohup dev/$s.sh >/dev/null 2>&1 </dev/null & done`
+
+# Idle watcher
+
+`dev/idle-watch.sh` reports unused resources and bottlenecks every 2 min (run it under the lead's Monitor so lines reach the chat): GitHub with no workflow running for 10 min, a connected phone with no test activity for 5 min (test helpers touch `locks/phone-<serial>.last`), the laptop idle (load < 1, no build, < 65 °C) for 10 min, another session's branch (`claude/*`, `ci/installers/*`) with nothing running and no push for 20 min, runs stuck in the queue, RAM < 1.5 GB, disk < 5 GB, no phone connected. The lead answers each IDLE line by giving that resource work (tests on installed builds, cloud builds, bug hunting).

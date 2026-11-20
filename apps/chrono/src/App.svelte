@@ -61,7 +61,9 @@
       app.day = d >= today() ? null : d;
     }
   }
+  let trendsDay = $state<string | undefined>(undefined);
   function go(v: View) {
+    trendsDay = undefined; // only "See all" opens Trends on a day
     app.view = v;
     app.settingsOpen = false;
     app.sourcesOpen = false;
@@ -78,7 +80,7 @@
     else if (app.sourcesOpen) app.sourcesOpen = false;
     else app.settingsOpen = false;
   }
-  function seeAll() { trendsTab = "apps"; go("trends"); }
+  function seeAll() { trendsTab = "apps"; go("trends"); trendsDay = app.day ?? today(); }
 
   // Android Back: one history entry while any layer is open; Back closes the topmost.
   const layered = $derived(phone && (!!app.photo || !!app.noteDay || app.setup > 0 || app.settingsOpen || app.changesOpen || app.pauseMenu || !!app.day || app.view !== "today"));
@@ -180,9 +182,9 @@
   {#if app.changesOpen && !phone}<AppChanges {phone} />
   {:else if app.settingsOpen && !phone}
     {@render settingsBody()}
-  {:else if app.view === "today"}<Today {phone} onseeall={seeAll} onsettings={openSettings} />
+  {:else if app.view === "today"}<Today {phone} onseeall={seeAll} onsettings={() => ((app.goalsFocus = true), openSettings())} />
   {:else if app.view === "timeline"}<Timeline {phone} {scroller} />
-  {:else if app.view === "trends"}<Trends {phone} {scroller} initialTab={trendsTab} onchanges={() => (app.changesOpen = true)} />
+  {:else if app.view === "trends"}<Trends {phone} {scroller} initialTab={trendsTab} initialDay={trendsDay} onchanges={() => (app.changesOpen = true)} />
   {:else}<Report {phone} />{/if}
 {/snippet}
 
@@ -210,7 +212,7 @@
     {#if app.view === "today"}
       <div class="statusline" style="position:relative">
         <span class="live" class:off={isPaused() || (app.android.supported && !app.android.usage)}></span>
-        <span>{isPaused() ? pauseLabel() : app.android.supported && !app.android.usage ? "Phone time is off" : recent.length > 1 ? `Recording on ${recent.length} devices` : "Recording"}</span>
+        <span>{isPaused() ? pauseLabel() : app.android.supported && !app.android.usage ? "Phone time is off" : recent.length > 1 ? `Recording · ${recent.length} sources this week` : "Recording"}</span>
         {#if app.android.supported && !app.android.usage && !isPaused()}<button type="button" class="pill pz" style="color:var(--accent-ink)" onclick={() => (app.setup = 1)}>Allow</button>
         {:else if isPaused()}<button type="button" class="pill pz" onclick={resume}><Icon name="play" size={15} /> Resume</button>
         {:else}<button type="button" class="pill pz" aria-haspopup="menu" aria-expanded={app.pauseMenu} onclick={() => (app.pauseMenu = !app.pauseMenu)}><Icon name="pause" size={15} /> Pause</button>{/if}
@@ -220,7 +222,7 @@
     <div class="content" style="flex:1;overflow-y:auto" bind:this={scroller}>{@render screen()}</div>
     <nav class="tabbar">
       {#each NAVS as n}
-        <button type="button" class="tab" class:on={app.view === n.id} aria-current={app.view === n.id ? "page" : undefined} onclick={() => (app.view === n.id && n.id === "today" ? (app.day = null) : go(n.id))}>
+        <button type="button" class="tab" class:on={app.view === n.id} aria-current={app.view === n.id ? "page" : undefined} onclick={() => (n.id === "today" ? (go("today"), (app.day = null)) : go(n.id))}>
           <span class="ico"><Icon name={n.id} size={22} stroke={1.7} /></span>{n.short}
         </button>
       {/each}
@@ -257,8 +259,9 @@
       {/each}
       <div class="spacer"></div>
       <div class="status" style="position:relative">
-        <div class="t"><span class="live" class:off={isPaused()}></span>{isPaused() ? "Paused" : "Recording"}</div>
-        <div class="s">{#if isPaused()}{pauseLabel().replace("Paused ", "")}{:else}{recent.length} {recent.length === 1 ? "device" : "devices"}<br />Latest data {ago(latest, app.now)}{/if}</div>
+        <!-- Nothing recorded recently: don't claim "Recording" (L3-5/C56). -->
+        <div class="t"><span class="live" class:off={isPaused() || !recent.length}></span>{isPaused() ? "Paused" : recent.length ? "Recording" : "Not recording"}</div>
+        <div class="s">{#if isPaused()}{pauseLabel().replace("Paused ", "")}{:else if !recent.length}Start the Selfkit agent, or see Devices and sources{:else}{recent.length} {recent.length === 1 ? "device" : "devices"}<br />Latest data {ago(latest, app.now)}{/if}</div>
         {#if isPaused()}<button type="button" class="p" style="color:var(--accent-ink)" onclick={resume}><Icon name="play" size={15} /> Resume</button>
         {:else}<button type="button" class="p" aria-haspopup="menu" aria-expanded={app.pauseMenu} onclick={() => (app.pauseMenu = !app.pauseMenu)}><Icon name="pause" size={15} /> Pause</button>{/if}
         {@render pauseMenu("bottom:52px;left:0")}

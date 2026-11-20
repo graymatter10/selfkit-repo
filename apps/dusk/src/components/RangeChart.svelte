@@ -2,7 +2,7 @@
   // Bed → wake per night on a clock axis (21:00 top → 11:00 bottom), with the
   // bedtime goal as a dashed line. Shows consistency at a glance.
   import type { Night } from "../lib/api";
-  import { dayLong, hm } from "../lib/fmt";
+  import { dayLong, hm, tdisp } from "../lib/fmt";
   let { nights, bedtimeMin, height = 180 }: { nights: Night[]; bedtimeMin: number; height?: number } = $props();
   const top = -180, bot = 660;
   const rel = (ms: number, tz: number) => {
@@ -14,7 +14,8 @@
   const n = $derived(nights.length);
   const bw = $derived(100 / Math.max(1, n));
   const goal = $derived(bedtimeMin >= 18 * 60 ? bedtimeMin - 1440 : bedtimeMin);
-  const TICKS: [number, string][] = [[-180, "21:00"], [0, "00:00"], [180, "03:00"], [360, "06:00"], [540, "09:00"]];
+  // Labels follow the 12h/24h rule ("9 pm" in 12h; L4-11).
+  const TICKS: [number, string][] = ([[-180, "21:00"], [0, "00:00"], [180, "03:00"], [360, "06:00"], [540, "09:00"]] as [number, string][]).map(([m, l]) => [m, tdisp(l).replace(":00 ", " ")]);
 </script>
 
 <div class="flex gap-2.5">

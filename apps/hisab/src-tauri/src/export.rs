@@ -46,7 +46,9 @@ fn csv_field(x: &str) -> String {
 pub fn csv(d: &Data, from: &str, to: &str) -> Vec<u8> {
     let cats = names(&d.categories);
     let accts = names(&d.accounts);
-    let mut out = String::from("date,time,type,amount,currency,amount_main,main_currency,account,to_account,to_amount,category,tags,note,source\n");
+    // UTF-8 BOM: Excel on Windows reads Bangla notes as mojibake without it (L16); the
+    // importer skips it.
+    let mut out = String::from("\u{feff}date,time,type,amount,currency,amount_main,main_currency,account,to_account,to_amount,category,tags,note,source\n");
     for t in rows(d, from, to) {
         let tags: Vec<&str> = arr(&t, "tags").iter().filter_map(Value::as_str).collect();
         let to_acct = accts.get(s(&t, "to_account")).cloned().unwrap_or_default();
@@ -287,6 +289,7 @@ mod tests {
         assert_eq!(lines.len(), 1 + 4);
         assert!(lines[1].contains("\"Lunch, with \"\"Sam\"\"\""));
         assert!(lines[1].starts_with("2026-10-01,,expense,"));
+        assert!(lines[0].starts_with("\u{feff}date,"), "BOM for Excel (L16)");
     }
 
     #[test]

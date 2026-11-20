@@ -212,11 +212,11 @@ fn ext_for(mime: &str) -> &'static str {
 // ---- .ics ----
 
 #[tauri::command]
-fn ics_export(state: State<AppState>, include_done: bool) -> Res<String> {
+fn ics_export(app: AppHandle, state: State<AppState>, include_done: bool) -> Res<String> {
     let store = state.store.lock().unwrap();
     let filter = if include_done { tasks::Filter::All } else { tasks::Filter::Active };
     let list = tasks::list(&store, filter).map_err(e)?;
-    Ok(ics::export(&list, &tasks::lists(&store).map_err(e)?))
+    Ok(ics::export(&list, &tasks::lists(&store).map_err(e)?, &app.package_info().version.to_string()))
 }
 
 #[tauri::command]
@@ -310,7 +310,12 @@ mod reminders {
 
     fn fire_at_utc(t: &tasks::TaskView) -> Option<chrono::DateTime<chrono::Utc>> {
         let local = tasks::reminder_at(t)?;
-        Local.from_local_datetime(&local).earliest().map(|d| d.with_timezone(&chrono::Utc))
+        // A time in the spring-forward gap doesn't exist: fire an hour later instead of never (C24).
+        Local
+            .from_local_datetime(&local)
+            .earliest()
+            .or_else(|| Local.from_local_datetime(&(local + chrono::Duration::hours(1))).earliest())
+            .map(|d| d.with_timezone(&chrono::Utc))
     }
 
     pub fn body(t: &tasks::TaskView) -> String {
@@ -341,6 +346,7 @@ mod reminders {
             .id(id)
             .title(title(t))
             .body(body(t))
+            .icon("ic_stat_agenda") // monochrome checkbox, res/drawable/ic_stat_agenda.xml (P3)
             .schedule(Schedule::At { date, repeating: false, allow_while_idle: true })
             .show();
         if let Err(err) = r {
@@ -400,6 +406,7 @@ mod reminders {
             .id(FOCUS_NOTIFICATION)
             .title(title)
             .body(body)
+            .icon("ic_stat_agenda") // monochrome checkbox, res/drawable/ic_stat_agenda.xml (P3)
             .schedule(Schedule::At { date, repeating: false, allow_while_idle: true })
             .show();
         if let Err(err) = r {

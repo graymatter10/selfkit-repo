@@ -86,12 +86,17 @@
     formMsg = null;
     sheet = "server";
   }
+  /** Postgres is required; checked before anything reaches secure storage (L4). */
+  const formError = () => (!form.pg_url.trim() ? "Enter the Postgres connection (postgres://…)." : "");
   async function testServer() {
+    if (formError()) return void (formMsg = { ok: false, text: formError() });
+    // (Save with an empty form still removes a saved server, as before.)
     formMsg = { ok: true, text: "Testing…" };
     try { await syncApi.testServer($state.snapshot(form)); formMsg = { ok: true, text: "Connected. Database ready, storage writable." }; }
     catch (e) { formMsg = { ok: false, text: String(e) }; }
   }
   async function saveServer() {
+    if (formError() && !srv?.pg_url) return void (formMsg = { ok: false, text: formError() });
     try { srv = await syncApi.saveServer($state.snapshot(form)); sheet = ""; await load(); }
     catch (e) { formMsg = { ok: false, text: String(e) }; }
   }
@@ -153,8 +158,9 @@
   </svg>
 {/snippet}
 
-{#snippet toggle(on: boolean, lab: string, fn: () => void)}
-  <button type="button" class="k-tg" class:k-on={on} role="switch" aria-checked={on} aria-label={lab} onclick={fn}><span></span></button>
+{#snippet toggle(on: boolean, lab: string, fn: () => void, off = false)}
+  <!-- off: sync itself is off, so this option does nothing yet; shown off and disabled (L4-13). -->
+  <button type="button" class="k-tg" class:k-on={on && !off} role="switch" aria-checked={on && !off} aria-label={lab} disabled={off} onclick={fn}><span></span></button>
 {/snippet}
 
 <div class="sks" class:k-phone={phone}>
@@ -202,8 +208,8 @@
         <section>
           <h3>Local sync</h3>
           <div class="k-card k-list">
-            <div class="k-row"><div class="k-grow"><div class="k-t">Sync on the same {phone ? "Wi-Fi" : "network"}</div><div class="k-s">Finds your Selfkit devices on this network</div></div>
-              {@render toggle(st.settings.lan_enabled, "Local sync", () => saveSettings({ lan_enabled: !st!.settings.lan_enabled }))}</div>
+            <div class="k-row"><div class="k-grow"><div class="k-t">Sync on the same {phone ? "Wi-Fi" : "network"}</div><div class="k-s">{st.settings.enabled ? "Finds your Selfkit devices on this network" : "Used when sync is on"}</div></div>
+              {@render toggle(st.settings.lan_enabled, "Local sync", () => saveSettings({ lan_enabled: !st!.settings.lan_enabled }), !st.settings.enabled)}</div>
             {#each st.peers as p (p.device_id)}
               <div class="k-row"><span class="k-mut">{@render icon(/phone|android|oppo|vivo|pixel|samsung/i.test(p.name) ? "phone" : "pc")}</span>
                 <div class="k-grow"><div class="k-t">{p.name}</div><div class="k-s">Seen {ago(now, p.last_seen)}{p.last_sync ? ` · synced ${ago(now, p.last_sync)}` : ""}</div></div>
@@ -257,7 +263,7 @@
             <p class="k-hint">{st.platform === "android" ? hasCompanion ? "The Selfkit companion can sync every app for you; this app then steps back." : "The Selfkit companion isn't installed, so this app syncs itself." : "On a PC the Selfkit agent syncs every app, even when they are closed."}</p>
             {#if st.owner === "app"}
               <div class="k-row k-flat"><div class="k-grow"><div class="k-t">Automatic</div><div class="k-s">On open and every {st.settings.background_minutes} minutes</div></div>
-                {@render toggle(st.settings.auto_sync, "Automatic sync", () => saveSettings({ auto_sync: !st!.settings.auto_sync }))}</div>
+                {@render toggle(st.settings.auto_sync, "Automatic sync", () => saveSettings({ auto_sync: !st!.settings.auto_sync }), !st.settings.enabled)}</div>
             {/if}
           </div>
         </section>
@@ -408,6 +414,7 @@
   .k-tg span { width: 42px; height: 26px; border-radius: 13px; background: var(--line-c); position: relative; transition: background 0.15s; }
   .k-tg span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 10px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: transform 0.15s; }
   .k-tg.k-on span { background: var(--a); }
+  .k-tg:disabled { opacity: 0.4; cursor: default; }
   .k-tg.k-on span::after { transform: translateX(16px); }
   .k-seg { display: flex; background: var(--sunk); border-radius: 12px; padding: 3px; gap: 3px; }
   .k-seg button { flex: 1; min-height: 38px; border-radius: 9px; font: inherit; font-weight: 550; color: var(--mut); background: none; border: 0; cursor: pointer; font-size: 13.5px; }

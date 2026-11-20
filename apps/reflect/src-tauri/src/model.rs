@@ -89,6 +89,8 @@ pub struct Day {
     /// Phone minutes between 00:00 and 05:00 that morning.
     pub late: Option<f64>,
     pub spent: Option<f64>,
+    /// Spent in categories that have a budget: what `budget` is compared with (C61).
+    pub budget_spent: Option<f64>,
     pub budget: Option<f64>,
     pub tasks: Option<f64>,
     /// Last night's sleep (the night that ended this morning), minutes.
@@ -153,6 +155,7 @@ pub fn build_days(today: i32, max_back: i32, c: Option<&ChronoCache>, h: Option<
                 && h.first.is_some_and(|f| i >= f)
             {
                 d.spent = Some(h.per_day.get(&i).copied().unwrap_or(0.0));
+                d.budget_spent = Some(h.budgeted_per_day.get(&i).copied().unwrap_or(0.0));
                 if h.monthly_budget > 0.0 {
                     d.budget = Some(h.monthly_budget / days_in_month(idx_date(i)) as f64);
                 }
@@ -280,8 +283,9 @@ pub fn today(cx: &Ctx, today_sessions: &[sources::Sess]) -> Today {
     }
     // Money
     if let Some(s) = d.spent.filter(|_| cx.has.hisab) {
+        let bs = d.budget_spent.unwrap_or(s);
         let sub = match d.budget {
-            Some(b) if s <= b => {
+            Some(b) if bs <= b => {
                 clauses.push("spending within budget".into());
                 format!("Within today's budget of {}", money_round(&cx.sym, b))
             }
@@ -289,7 +293,7 @@ pub fn today(cx: &Ctx, today_sessions: &[sources::Sess]) -> Today {
                 tone_calm = false;
                 title = title.or(Some("A spendier day than planned."));
                 clauses.push("spending over today's budget".into());
-                format!("{} over today's budget", money(&cx.sym, s - b))
+                format!("{} over today's budget", money(&cx.sym, bs - b))
             }
             None if s == 0.0 => "Nothing spent yet".into(),
             None => cx
@@ -302,12 +306,19 @@ pub fn today(cx: &Ctx, today_sessions: &[sources::Sess]) -> Today {
     }
     // Tasks
     if let Some(n) = d.tasks.filter(|_| cx.has.agenda) {
-        let left = cx.agenda.and_then(|a| a.open_by_date.get(&date_str(i)).copied()).unwrap_or(0);
-        let sub = match left {
-            0 => "Nothing else due today".to_string(),
-            1 => "1 left for today".into(),
-            k => format!("{k} left for today"),
+        let day = date_str(i);
+        let left = cx.agenda.and_then(|a| a.open_by_date.get(&day).copied()).unwrap_or(0);
+        // Open tasks from earlier days were ignored ("Nothing else due today" with 3 overdue — P33).
+        let overdue: u32 = cx.agenda.map(|a| a.open_by_date.iter().filter(|(k, _)| k.as_str() < day.as_str()).map(|(_, n)| *n).sum()).unwrap_or(0);
+        let mut sub = match (left, overdue) {
+            (0, 0) => "Nothing else due today".to_string(),
+            (0, _) => String::new(),
+            (1, _) => "1 left for today".into(),
+            (k, _) => format!("{k} left for today"),
         };
+        if overdue > 0 {
+            sub = if sub.is_empty() { format!("{overdue} overdue") } else { format!("{sub} · {overdue} overdue") };
+        }
         if n >= 1.0 {
             clauses.push(format!("{} {} done", n as i64, if n == 1.0 { "task" } else { "tasks" }));
         }
@@ -485,7 +496,7 @@ fn kept(def: &StreakDef, d: &Day, is_today: bool) -> Kept {
     let r = match def.kind.as_str() {
         "phone_under" => d.phone.map(|m| m < def.value),
         "screen_under" => d.screen.map(|m| m < def.value),
-        "budget" => match (d.spent, d.budget) {
+        "budget" => match (d.budget_spent.or(d.spent), d.budget) {
             (Some(s), Some(b)) => Some(s <= b),
             _ => None,
         },
@@ -1039,7 +1050,12 @@ pub fn review(cx: &Ctx, kind: &str, offset: i32, week_start: u8, defs: &[StreakD
     let end = b.min(cx.today);
     let get = |i: i32, f: &dyn Fn(&Day) -> Option<f64>| if i > cx.today { None } else { cx.day(i).and_then(f) };
     let series = |f: &dyn Fn(&Day) -> Option<f64>| (a..=b).map(|i| get(i, f)).collect::<Vec<_>>();
-    let avg_of = |x: i32, y: i32, f: &dyn Fn(&Day) -> Option<f64>| mean(&(x..=y.min(cx.today)).filter_map(|i| get(i, f)).collect::<Vec<_>>());
+    // A period still in progress leaves today (just started) out of its averages, so a
+    // week "so far" isn't lighter only because today has 20 minutes (P34).
+    let skip_today = r.in_progress && a < cx.today;
+    let avg_of = |x: i32, y: i32, f: &dyn Fn(&Day) -> Option<f64>| {
+        mean(&(x..=y.min(cx.today)).filter(|i| !(skip_today && *i == cx.today)).filter_map(|i| get(i, f)).collect::<Vec<_>>())
+    };
     let sum_of = |x: i32, y: i32, f: &dyn Fn(&Day) -> Option<f64>| {
         let v: Vec<f64> = (x..=y.min(cx.today)).filter_map(|i| get(i, f)).collect();
         (!v.is_empty()).then(|| v.iter().sum::<f64>())
@@ -1094,15 +1110,17 @@ pub fn review(cx: &Ctx, kind: &str, offset: i32, week_start: u8, defs: &[StreakD
         && let Some(total) = sum_of(a, end, fm)
     {
         let budget: f64 = (a..=end).filter_map(|i| cx.day(i).and_then(|d| d.budget)).sum();
-        let kept_days = (a..=end).filter(|i| cx.day(*i).is_some_and(|d| matches!((d.spent, d.budget), (Some(s), Some(b)) if s <= b))).count();
+        // Only spending in budgeted categories counts against the budget (C61).
+        let btotal: f64 = (a..=end).filter_map(|i| cx.day(i).and_then(|d| d.budget_spent.or(d.spent))).sum();
+        let kept_days = (a..=end).filter(|i| cx.day(*i).is_some_and(|d| matches!((d.budget_spent.or(d.spent), d.budget), (Some(s), Some(b)) if s <= b))).count();
         let n_days = (a..=end).filter(|i| cx.day(*i).is_some_and(|d| d.spent.is_some())).count();
         let sub = if budget > 0.0 {
-            if total <= budget {
+            if btotal <= budget {
                 clauses.push(format!("kept your budget on {kept_days} of {n_days} days"));
-                format!("{} under your {word}ly budget", money(&cx.sym, budget - total))
+                format!("{} under your {word}ly budget", money(&cx.sym, budget - btotal))
             } else {
-                clauses.push(format!("went {} over budget", money(&cx.sym, total - budget)));
-                format!("{} over your {word}ly budget", money(&cx.sym, total - budget))
+                clauses.push(format!("went {} over budget", money(&cx.sym, btotal - budget)));
+                format!("{} over your {word}ly budget", money(&cx.sym, btotal - budget))
             }
         } else {
             match sum_of(pa, pb, fm) {

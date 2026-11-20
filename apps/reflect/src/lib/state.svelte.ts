@@ -146,7 +146,13 @@ export async function init() {
   const mirror = () => {
     const b = (window as unknown as { SelfkitSync?: { mirror(apps: string): string } }).SelfkitSync;
     if (!b) return;
-    setTimeout(() => { try { b.mirror("chrono,hisab,agenda,dusk"); } catch { /* not available */ } load(); }, 50);
+    // Also re-read which apps are present: the first mirror creates the copies, and
+    // Today's "isn't installed" tiles use `sources` (stale on the first launch before).
+    setTimeout(async () => {
+      try { b.mirror("chrono,hisab,agenda,dusk"); } catch { /* not available */ }
+      app.sources = (await guard(api.sources())) ?? app.sources;
+      load();
+    }, 50);
   };
   mirror();
   on("data-changed", () => load()); // a sync pass brought new data

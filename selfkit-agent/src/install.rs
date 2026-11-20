@@ -204,14 +204,20 @@ pub fn install_service(exe: &Path, enable: bool, uninstall: bool) -> Result<Vec<
     #[cfg(windows)]
     {
         let _ = enable;
+        // Per-user Run key instead of a logon task: `schtasks /SC ONLOGON` needs an elevated
+        // prompt, so a standard user got no autostart (C28). Old logon tasks are removed.
+        const RUN: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+        let _ = std::process::Command::new("schtasks").args(["/Delete", "/TN", "Selfkit agent", "/F"]).status();
         let st = if uninstall {
-            std::process::Command::new("schtasks").args(["/Delete", "/TN", "Selfkit agent", "/F"]).status()?
+            std::process::Command::new("reg").args(["delete", RUN, "/v", "Selfkit agent", "/f"]).status()?
         } else {
-            let tr = format!("\"{}\" run", exe.display());
-            std::process::Command::new("schtasks").args(["/Create", "/SC", "ONLOGON", "/TN", "Selfkit agent", "/TR", &tr, "/RL", "LIMITED", "/F"]).status()?
+            // Same value as the installer (agent.nsi RUNVALUE), and its hidden launcher when present.
+            let launcher = exe.with_file_name("selfkit-agent-start.exe");
+            let cmd = if launcher.exists() { format!("\"{}\"", launcher.display()) } else { format!("\"{}\" run", exe.display()) };
+            std::process::Command::new("reg").args(["add", RUN, "/v", "Selfkit agent", "/t", "REG_SZ", "/d", &cmd, "/f"]).status()?
         };
-        anyhow::ensure!(st.success(), "schtasks failed");
-        done.push(if uninstall { "removed logon task \"Selfkit agent\"".into() } else { "created logon task \"Selfkit agent\"".into() });
+        anyhow::ensure!(st.success() || uninstall, "reg failed");
+        done.push(if uninstall { "removed the autostart entry (HKCU Run \"Selfkit agent\")".into() } else { "added autostart (HKCU Run \"Selfkit agent\")".into() });
     }
     Ok(done)
 }

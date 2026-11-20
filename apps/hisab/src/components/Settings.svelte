@@ -72,10 +72,12 @@
     const a = get(main()), b = get(c);
     return a && b ? b / a : undefined;
   }
-  async function setRate(c: string, v: string) {
+  // A row shows whichever direction gives a number ≥ 1 ("1 USD = 124.42 BDT" with main BDT,
+  // not "1 BDT = 0.00803758 USD"); a value typed into an inverted row is turned back (L2-8).
+  async function setRate(c: string, v: string, inverted = false) {
     const r = rates;
     if (!r) return;
-    const n = Number(v);
+    const n = inverted && Number(v) > 0 ? 1 / Number(v) : Number(v);
     if (!v.trim()) {
       await api.ratesManual(c, null);
     } else if (n > 0) {
@@ -86,6 +88,9 @@
     await refresh();
     showToast(`Rate for ${c} saved`);
   }
+  // Reminders on but Android notifications refused: say so (P11).
+  let notifyBlocked = $state(false);
+  if (isAndroid()) import("@tauri-apps/plugin-notification").then((n) => n.isPermissionGranted()).then((g) => (notifyBlocked = !g)).catch(() => {});
   async function notifications(on: boolean) {
     if (on && isAndroid()) {
       try {
@@ -136,10 +141,12 @@
       <button type="button" disabled={fetching} class="press text-[14px] font-semibold text-accent disabled:opacity-40" onclick={refetch}>{fetching ? "Updating…" : "Update now"}</button></div>
     {#each used as c (c)}
       {@const r = rateOf(c)}
+      {@const inv = !!r && r < 1}
+      {@const shown = r ? (inv ? 1 / r : r) : undefined}
       <label class={row}>
-        <span class="flex-1 text-[15px]">1 {main()} =</span>
-        <input inputmode="decimal" value={r ? +r.toPrecision(6) : ""} placeholder="rate" aria-label="Rate for {c}" class="num w-28 bg-transparent py-3 text-right text-[15px] outline-none {!r ? 'placeholder:text-danger' : ''}" onchange={(e) => setRate(c, (e.currentTarget as HTMLInputElement).value)} />
-        <span class="w-10 text-[15px] font-semibold">{c}</span>
+        <span class="flex-1 text-[15px]">1 {inv ? c : main()} =</span>
+        <input inputmode="decimal" value={shown ? +shown.toPrecision(6) : ""} placeholder="rate" aria-label="Rate for {c}" class="num w-28 bg-transparent py-3 text-right text-[15px] outline-none {!r ? 'placeholder:text-danger' : ''}" onchange={(e) => setRate(c, (e.currentTarget as HTMLInputElement).value, inv)} />
+        <span class="w-10 text-[15px] font-semibold">{inv ? main() : c}</span>
         {#if rates?.manual[c]}<span class="rounded-full bg-fill px-2 text-[11px] text-muted">by hand</span>{/if}
       </label>
     {/each}
@@ -158,7 +165,7 @@
 
   <p class="{h} pt-4">Notifications</p>
   <div class="card overflow-hidden">
-    <label class={row}><span class="flex-1 text-[15px]">Loan due-date reminders</span><input type="checkbox" checked={app.prefs.notify ?? false} class="h-5 w-5 accent-[var(--accent)]" onchange={(e) => notifications((e.currentTarget as HTMLInputElement).checked)} /></label>
+    <label class={row}><span class="flex flex-1 flex-col text-[15px]">Loan due-date reminders{#if app.prefs.notify && notifyBlocked}<small class="text-[12.5px] text-danger">Notifications are off for Hisab in Android settings, so nothing will show</small>{/if}</span><input type="checkbox" checked={app.prefs.notify ?? false} class="h-5 w-5 accent-[var(--accent)]" onchange={(e) => notifications((e.currentTarget as HTMLInputElement).checked)} /></label>
   </div>
   <p class="m-0 px-1 pt-1.5 text-[12px] text-muted">Off by default. Each loan sets how many days before its due date to remind you.</p>
 

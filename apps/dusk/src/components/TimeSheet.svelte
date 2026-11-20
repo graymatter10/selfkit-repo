@@ -3,7 +3,7 @@
   // with Cancel / Done. Android Back and Esc cancel (it takes over
   // app.closeGuard while open and gives it back after), Enter is Done.
   import { onMount } from "svelte";
-  import { app } from "../lib/state.svelte";
+  import { app, bridge } from "../lib/state.svelte";
   import { tdisp, uses12h } from "../lib/fmt";
   import TimeDial from "./TimeDial.svelte";
 
@@ -20,10 +20,13 @@
     const opener = document.activeElement as HTMLElement | null;
     const mine = () => (oncancel(), true);
     app.closeGuard = mine;
-    if (desktop) dial?.focus();
+    // "Has a keyboard" = not the Android app, whatever the window width: a narrow desktop
+    // window got no focus in the sheet, so Esc/arrows/Enter did nothing (L4-14/C62).
+    const keyboard = desktop || !bridge();
+    if (keyboard) dial?.focus();
     return () => {
       if (app.closeGuard === mine) app.closeGuard = prev;
-      if (desktop) opener?.focus?.();
+      if (keyboard) opener?.focus?.();
     };
   });
   function keys(e: KeyboardEvent) {

@@ -838,6 +838,12 @@ fn headline(s: &SyncStatus, now: i64) -> String {
     }
 }
 
+/// `<data_dir>/sync/settings-adopted`: written (time in ms) when shared settings from a
+/// sibling Selfkit app on this phone were merged in, so the open page reloads (C16).
+pub fn settings_adopted_marker(data_dir: &std::path::Path) -> std::path::PathBuf {
+    data_dir.join("sync").join("settings-adopted")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

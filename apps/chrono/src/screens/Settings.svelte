@@ -25,13 +25,17 @@
   const clone = (): ChronoSettings => JSON.parse(JSON.stringify($state.snapshot(app.settings)));
 
   /** Android 13+: alerts need the notification permission; ask when it matters. */
+  let notifyBlocked = $state(false);
   async function askNotify() {
     try {
-      if (!(await isPermissionGranted())) await requestPermission();
+      if (!(await isPermissionGranted())) notifyBlocked = (await requestPermission()) !== "granted";
+      else notifyBlocked = false;
     } catch (e) {
       console.warn("notification permission", e);
     }
   }
+  // Alerts / Weekly report are on by default: say when Android blocks them (P23).
+  if (/Android/i.test(navigator.userAgent)) isPermissionGranted().then((g) => (notifyBlocked = !g)).catch(() => {});
   function toggle(field: "alerts" | "weekly_report") {
     const n = clone();
     n[field] = !n[field];
@@ -65,6 +69,14 @@
     n.categories[name] = cat;
     saveSettings(n);
   }
+  let goalsEl: HTMLElement | undefined = $state();
+  // From Today's goals card: scroll to this section, and open the form when there are none (P22).
+  $effect(() => {
+    if (!app.goalsFocus || !goalsEl || !s) return;
+    app.goalsFocus = false;
+    setTimeout(() => goalsEl?.scrollIntoView({ block: "start" }), 60);
+    if (!s.goals.length) newGoal();
+  });
   function newGoal() {
     edit = { id: `g-${Date.now().toString(36)}`, kind: "limit", scope: "category", target: "entertainment", minutes: 60, enabled: true };
     editNew = true;
@@ -171,7 +183,7 @@
 {#snippet goalsCard()}
   {#if s}
     <div class="card">
-      <div class="ch" style="margin-bottom:2px"><h2>Goals and limits</h2><button type="button" class="lnk" onclick={newGoal}><Icon name="plus" size={14} stroke={2.2} /> New</button></div>
+      <div class="ch" style="margin-bottom:2px" bind:this={goalsEl}><h2>Goals and limits</h2><button type="button" class="lnk" onclick={newGoal}><Icon name="plus" size={14} stroke={2.2} /> New</button></div>
       {#if edit && editNew}{@render goalForm(edit)}{/if}
       {#each s.goals as g (g.id)}
         {#if edit && !editNew && edit.id === g.id}{@render goalForm(edit)}
@@ -183,8 +195,8 @@
         {/if}
       {/each}
       {#if !s.goals.length && !edit}<p class="hint" style="margin:8px 0 6px">No goals yet. Add a daily limit or a goal.</p>{/if}
-      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Alerts</div><div class="sb">Notify me when a limit is reached or a goal is met</div></div>{@render tg(s.alerts, "Alerts", () => toggle("alerts"))}</div>
-      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Weekly report</div><div class="sb">Ready every Monday morning</div></div>{@render tg(s.weekly_report, "Weekly report", () => toggle("weekly_report"))}</div>
+      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Alerts</div><div class="sb">{s.alerts && notifyBlocked ? "Notifications are off for Chrono in Android settings, so nothing will show" : "Notify me when a limit is reached or a goal is met"}</div></div>{@render tg(s.alerts, "Alerts", () => toggle("alerts"))}</div>
+      <div class="row" style="min-height:60px"><div style="flex:1"><div class="nm">Weekly report</div><div class="sb">{s.weekly_report && notifyBlocked ? "Notifications are off for Chrono in Android settings" : "Ready every Monday morning"}</div></div>{@render tg(s.weekly_report, "Weekly report", () => toggle("weekly_report"))}</div>
     </div>
   {/if}
 {/snippet}

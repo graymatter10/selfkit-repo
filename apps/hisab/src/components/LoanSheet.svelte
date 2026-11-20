@@ -1,6 +1,7 @@
 <script lang="ts">
   // Loan detail (status, remaining, repayments one by one, proof photos,
   // reminder) and the new/edit form.
+  import OptionalDate from "./OptionalDate.svelte";
   import { showToast } from "@selfkit/ui";
   import { api, type Loan } from "../lib/api";
   import { daysBetween, money, shortDate, todayIso } from "../lib/fmt";
@@ -33,25 +34,27 @@
     else closeSheet();
   }
 
-  async function askNotify() {
+  /** False when Android refused notifications (the reminder can't show — P11). */
+  async function askNotify(): Promise<boolean> {
     if (!app.prefs.notify) await setPrefs({ notify: true });
-    if (!isAndroid()) return;
+    if (!isAndroid()) return true;
     try {
       const n = await import("@tauri-apps/plugin-notification");
-      if (!(await n.isPermissionGranted())) await n.requestPermission();
+      if (!(await n.isPermissionGranted())) return (await n.requestPermission()) === "granted";
     } catch {}
+    return true;
   }
 
   async function saveForm() {
     const data = { ...(o ?? { repayments: [] }), ...f, amount: Number(f.amount) || 0, remind_days: Number(f.remind_days) || 0, repayments: loan?.repayments ?? [] };
-    if (f.remind && f.due) await askNotify();
+    const canNotify = f.remind && f.due ? await askNotify() : true;
     const r = await saveRec<Loan>("loans", data, id);
     if (r) {
       start = JSON.stringify(f);
       app.guard = null;
       if (id) editing = false;
       else closeSheet();
-      showToast(id ? "Loan saved" : `Loan added · ${f.person}`);
+      showToast((id ? "Loan saved" : `Loan added · ${f.person}`) + (canNotify ? "" : " · reminders need notifications, which Android blocks for Hisab"), undefined, canNotify ? 5000 : 8000);
     }
   }
 
@@ -125,7 +128,7 @@
       </div>
       <div class="card overflow-hidden">
         <label class={row}><span class={lbl}>Date given</span><input type="date" bind:value={f.given} class={inp} /></label>
-        <label class={row}><span class={lbl}>Due date</span><input type="date" bind:value={f.due} class={inp} />{#if f.due}<button type="button" aria-label="Clear due date" class="press text-muted" onclick={() => (f.due = "")}><Ic name="close" size={15} /></button>{/if}</label>
+        <label class={row}><span class={lbl}>Due date</span><OptionalDate bind:value={f.due} label="Due date" cls={inp} /></label>
         <label class={row}><span class={lbl}>Account</span>
           <select bind:value={f.account} class="{inp} appearance-none"><option value="">Not linked</option>{#each app.snap?.accounts ?? [] as a (a.id)}<option value={a.id}>{a.name}</option>{/each}</select></label>
       </div>

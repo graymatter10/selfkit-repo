@@ -73,4 +73,5 @@ export const api = {
   photoExport: (id: string) => call<string>("photo_export", { id }),
   appChanges: () => call<AppChange[]>("app_changes"),
   devHooks: () => call<string | null>("dev_hooks"),
+  startupNotice: () => call<string | null>("startup_notice"),
 };

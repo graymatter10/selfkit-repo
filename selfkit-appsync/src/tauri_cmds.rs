@@ -181,7 +181,19 @@ fn build_config(sync: &AppSync, f: &ServerForm) -> Res<Option<ServerConfig>> {
     if url.is_empty() {
         return Ok(None);
     }
-    let old = sync.server_config().map_err(e)?;
+    // Check the form before touching secure storage, so typos get a real answer (L4).
+    if !(url.starts_with("postgres://") || url.starts_with("postgresql://")) {
+        return Err("The Postgres connection must start with postgres://".into());
+    }
+    if !f.s3_endpoint.trim().is_empty() && !(f.s3_endpoint.trim().starts_with("https://") || f.s3_endpoint.trim().starts_with("http://")) {
+        return Err("The S3 endpoint must start with https://".into());
+    }
+    if !f.s3_endpoint.trim().is_empty() && f.s3_bucket.trim().is_empty() {
+        return Err("Enter the S3 bucket.".into());
+    }
+    // Unreadable secure storage only means "no saved password to keep" here; saving
+    // reports the storage problem itself.
+    let old = sync.server_config().unwrap_or(None);
     let old_pw = old.as_ref().and_then(|c| {
         let rest = c.pg_url.split_once("://")?.1;
         let auth = rest.split_once('@')?.0;
@@ -296,8 +308,18 @@ pub fn spawn_on_open(app: &AppHandle, h: &SyncHandle) {
         let (app, s) = (app.clone(), h.0.clone());
         std::thread::spawn(move || {
             let mut seen = s.state().last.map(|l| l.finished_at).unwrap_or(0);
+            // Shared settings adopted from a sibling app (SelfkitMirror.pullSettings →
+            // JNI settings_adopt) bump this marker; the page reloads like after a pass (C16).
+            let marker = crate::settings_adopted_marker(&s.config().data_dir);
+            let read_marker = || std::fs::read_to_string(&marker).unwrap_or_default();
+            let mut adopted = read_marker();
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(3));
+                let now = read_marker();
+                if now != adopted {
+                    adopted = now;
+                    let _ = app.emit("data-changed", ());
+                }
                 if let Some(l) = s.state().last
                     && l.finished_at > seen
                 {

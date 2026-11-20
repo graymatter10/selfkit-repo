@@ -51,6 +51,7 @@ check "[ -f /usr/lib/systemd/user/selfkit-agent.service ]" "systemd user unit"
 check "grep -q 'ExecStart=/usr/bin/selfkit-agent run' /usr/lib/systemd/user/selfkit-agent.service" "unit runs /usr/bin/selfkit-agent"
 check "[ -L /etc/systemd/user/default.target.wants/selfkit-agent.service ]" "unit enabled for every user"
 check "[ -f /etc/opt/chrome/native-messaging-hosts/com.selfkit.agent.json ]" "Chrome native host manifest"
+check "[ -f /usr/share/selfkit-agent/extension/manifest.json ] && [ ! -e /usr/share/selfkit-agent/extension/test ]" "browser extension shipped (L3-3)"
 check "[ -f /usr/lib/mozilla/native-messaging-hosts/com.selfkit.agent.json ]" "Firefox native host manifest"
 check "grep -q '\"path\": \"/usr/bin/selfkit-agent\"' /etc/opt/chrome/native-messaging-hosts/com.selfkit.agent.json" "manifest path"
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-$UID}; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
@@ -71,7 +72,7 @@ sudo dpkg --purge selfkit-agent >/dev/null 2>&1
 echo "== selfkit-agent tarball"
 tgz=$(ls "$dist"/selfkit-agent-*-linux-x86_64.tar.gz | head -1)
 list=$(tar -tzf "$tgz")
-for f in selfkit-agent install.sh uninstall.sh selfkit-agent.service; do
+for f in selfkit-agent install.sh uninstall.sh selfkit-agent.service extension/manifest.json extension/background.js; do
   check "grep -q '/$f\$' <<<\"\$list\"" "tarball has $f"
 done
 

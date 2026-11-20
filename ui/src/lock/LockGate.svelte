@@ -69,7 +69,9 @@
       if (r.result === "ok") {
         set(r.lock);
       } else {
-        msg = wrongText(r, r.lock.kind);
+        // A wait is shown by the live countdown line, then "Enter your PIN" again; a fixed
+        // "Try again in 30 s." in msg stayed on screen after the wait ended (B5, L7).
+        msg = "retry_in_ms" in r && r.retry_in_ms > 0 ? "" : wrongText(r, r.lock.kind);
         shake = true;
         setTimeout(() => (shake = false), 420);
         set(r.lock);
@@ -167,7 +169,14 @@
       if (on) el.setAttribute("inert", ""); else el.removeAttribute("inert");
     }
   }
-  $effect(() => { setInert(locked); });
+  $effect(() => {
+    setInert(locked);
+    if (!locked) return;
+    // Toasts, portaled sheets or the conflict bar added while locked are inert too (C17).
+    const mo = new MutationObserver(() => setInert(true));
+    mo.observe(document.body, { childList: true });
+    return () => mo.disconnect();
+  });
 
   function portal(node: HTMLElement) {
     document.body.appendChild(node);
@@ -211,7 +220,7 @@
             {#if resetErr}<p class="lk-sub lk-bad">{resetErr}</p>{/if}
             <button type="button" class="lk-btn lk-pri" disabled={!resetSecret} onclick={doReset}>Turn off the lock</button>
           {:else}
-            <p class="lk-hint">{#if android}Without sync encryption set up there is no reset code. The way back is Android Settings → Apps → {appName} → Storage → Clear data, which also deletes anything not synced yet.{:else}Without sync encryption set up there is no reset code. Close {appName} and delete <code>lock/{appName.toLowerCase()}.json</code> in the Selfkit data folder.{/if}</p>
+            <p class="lk-hint">{#if android}Without sync encryption set up there is no reset code. The way back is Android Settings → Apps → {appName} → Storage → Clear data, which also deletes anything not synced yet.{:else}Without sync encryption set up there is no reset code. Close {appName} and delete <code>{v.lock_file}</code>.{/if}</p>
           {/if}
           <button type="button" class="lk-link" onclick={() => { forgot = false; resetErr = ""; }}>Back</button>
         </div>

@@ -166,9 +166,11 @@ fn vtodo(t: &TaskView, lists: &[ListInfo], out: &mut String) {
 }
 
 /// A whole VCALENDAR with one VTODO per task.
-pub fn export(list: &[TaskView], lists: &[ListInfo]) -> String {
+/// `version` = the app's package version (tauri.conf.json), so PRODID never goes stale (L11).
+pub fn export(list: &[TaskView], lists: &[ListInfo], version: &str) -> String {
     let mut out = String::new();
-    for l in ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Selfkit//Agenda 0.4//EN", "CALSCALE:GREGORIAN", "X-WR-CALNAME:Agenda"] {
+    let prodid = format!("PRODID:-//Selfkit//Agenda {version}//EN");
+    for l in ["BEGIN:VCALENDAR", "VERSION:2.0", prodid.as_str(), "CALSCALE:GREGORIAN", "X-WR-CALNAME:Agenda"] {
         fold(l, &mut out);
     }
     for t in list {
@@ -528,7 +530,12 @@ pub fn import(store: &Store, text: &str) -> Result<ImportResult> {
             }
         };
         merged = tasks::normalize(merged);
-        if existing.as_ref().is_some_and(|t| t.data == merged) {
+        // Empty fields ("" notes, [] tags/steps from the form) aren't exported, and numbers
+        // compare by value: a re-import of an unchanged export is "unchanged" (L10).
+        let bare = |m: &Map<String, Value>| {
+            Value::Object(m.iter().filter(|(_, v)| !matches!(v, Value::Null) && v.as_str() != Some("") && v.as_array().is_none_or(|a| !a.is_empty())).map(|(k, v)| (k.clone(), v.clone())).collect())
+        };
+        if existing.as_ref().is_some_and(|t| selfkit_core::conflict::json_eq(&bare(&t.data), &bare(&merged))) {
             res.unchanged += 1;
             continue;
         }
@@ -590,7 +597,7 @@ mod tests {
         create(&a, NewTask { title: "All day due".into(), start: Some("2026-12-02".into()), reminder_min: Some(30), severity: Some(1), ..Default::default() }).unwrap();
         let d = create(&a, NewTask { title: "Done one".into(), ..Default::default() }).unwrap();
         tasks::toggle(&a, &d.id, Local::now().naive_local()).unwrap();
-        let text = export(&list(&a, Filter::All).unwrap(), &lists(&a).unwrap());
+        let text = export(&list(&a, Filter::All).unwrap(), &lists(&a).unwrap(), "0.0.0");
         assert!(text.lines().all(|l| l.len() <= 76), "folded");
 
         let b = store();
@@ -630,6 +637,19 @@ mod tests {
         let r = import(&a, &text).unwrap();
         assert_eq!((r.kept, r.unchanged), (1, 4));
         assert_eq!(tasks::get(&a, &t.id).unwrap().unwrap().data["title"], "Birthday (edited)");
+    }
+
+    #[test]
+    fn reimport_with_empty_form_fields_is_unchanged() {
+        // L10: tasks saved by the form carry notes "", tags [], steps []; an export drops them.
+        let s = store();
+        let mut d = Map::new();
+        for (k, v) in [("title", json!("Bazar করো 🛒")), ("notes", json!("")), ("tags", json!([])), ("steps", json!([])), ("severity", json!(3)), ("list", json!(tasks::INBOX)), ("created_at", json!(1_763_000_000_000_i64))] {
+            d.insert(k.into(), v);
+        }
+        tasks::put_raw(&s, "t1", d).unwrap();
+        let text = export(&list(&s, Filter::All).unwrap(), &lists(&s).unwrap(), "0.0.0");
+        assert_eq!(import(&s, &text).unwrap(), ImportResult { unchanged: 1, ..Default::default() });
     }
 
     #[test]
