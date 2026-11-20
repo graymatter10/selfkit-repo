@@ -1,6 +1,6 @@
 <script lang="ts">
   // Trends: 2 weeks / Month / 3 months of nights, the four stats, and bed/wake times.
-  import { dayShort, dur, hmParts, tdisp } from "../lib/fmt";
+  import { dateShort, dur, hmParts, tdisp } from "../lib/fmt";
   import { app, openTab, show } from "../lib/state.svelte";
   import NightBars from "./NightBars.svelte";
   import RangeChart from "./RangeChart.svelte";
@@ -41,7 +41,7 @@
     <div class="card mt-3 p-4">
       <h2 class="m-0 mb-2 text-[15px] font-[650]">Weekly averages</h2>
       {#each dash.weekly.slice(-13).reverse() as w}
-        <div class="flex h-9 items-center gap-3 text-[14px]"><span class="w-28 text-muted">Week of {dayShort(w.week)}</span>
+        <div class="flex h-9 items-center gap-3 text-[14px]"><span class="w-28 text-muted">Week of {dateShort(w.week)}</span>
           <div class="h-2 flex-1 overflow-hidden rounded-full bg-fill2"><i class="block h-full rounded-full bg-accent2" style="width:{Math.min(100, (w.avg_min / 600) * 100)}%"></i></div>
           <span class="num w-16 text-right font-semibold">{dur(w.avg_min)}</span></div>
       {/each}
